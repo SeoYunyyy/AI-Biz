@@ -1,1 +1,1 @@
-# Seoyun Dev
+# 생성형AI와 비즈니스
