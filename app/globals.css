@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* ── 모바일 앱 셸 ── */
+:root {
+  --max-app-width: 430px;
+  --bg: #F5F0EB;
+  --white: #ffffff;
+  --indigo: #6366F1;
+  --gray-900: #111827;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+}
+
+/* 앱 외부 배경 (데스크탑) */
+body {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  background: #E8E4DF;
+}
+
+/* 앱 컨테이너 */
+.app-shell {
+  width: 100%;
+  max-width: var(--max-app-width);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #FAFAFA;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(0,0,0,0.15);
+}
+
+/* iOS safe area */
+.pt-safe-or-4 {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+.pb-safe-or-4 {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* 스크롤바 숨기기 */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* 카드 애니메이션 */
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-enter {
+  animation: cardEnter 0.3s ease-out both;
+}
+
+/* 사이드바 트랜지션 */
+.transition-250 {
+  transition-duration: 250ms;
+}
+
+/* 바운스 애니메이션 (로딩 도트) */
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* 컬렉션 패널 슬라이드업 */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); max-height: 0; }
+  to   { opacity: 1; transform: translateY(0);  max-height: 300px; }
+}
+
+.animate-slideUp {
+  animation: slideUp 0.22s ease-out both;
+  overflow: hidden;
+}
+
+.animate-bounce {
+  animation: bounce 0.8s ease-in-out infinite;
+}
+
+/* 텍스트 클램프 */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 데스크탑에서 앱처럼 보이도록 */
+@media (min-width: 480px) {
+  body {
+    padding: 0;
+  }
+  .app-shell {
+    border-radius: 0;
+  }
+}
