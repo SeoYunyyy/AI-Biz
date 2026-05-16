@@ -1,13 +1,11 @@
 # app/services/metadata/youtube.py
 
-import os
 import re
 import httpx
 from typing import Optional
 
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+from app.utils.config import YOUTUBE_API_KEY
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-
 
 def extract_video_id(url: str) -> Optional[str]:
     patterns = [
