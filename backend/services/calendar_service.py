@@ -9,7 +9,7 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, extract, select
+from sqlalchemy import cast, Date, func, extract, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.content import Content
@@ -36,18 +36,17 @@ async def get_monthly_calendar(
             {date: "2026-05-15", count: 5},
         ]
     """
+    day_col = cast(Content.saved_at, Date).label("day")
+
     result = await db.execute(
-        select(
-            func.date(Content.saved_at).label("day"),
-            func.count(Content.id).label("count"),
-        )
+        select(day_col, func.count(Content.id).label("count"))
         .where(
             Content.user_id == user_id,
             extract("year",  Content.saved_at) == year,
             extract("month", Content.saved_at) == month,
         )
-        .group_by(func.date(Content.saved_at))
-        .order_by(func.date(Content.saved_at))
+        .group_by(day_col)
+        .order_by(day_col)
     )
     rows = result.all()
 
@@ -75,7 +74,7 @@ async def get_daily_contents(
         select(Content)
         .where(
             Content.user_id == user_id,
-            func.date(Content.saved_at) == target_date,
+            cast(Content.saved_at, Date) == target_date,
         )
         .order_by(Content.saved_at.desc())   # 최신 저장순
     )

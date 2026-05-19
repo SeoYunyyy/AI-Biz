@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from models.gamification import Item, UserCategoryCount, UserItem
 from schemas.gamification import ProcessContentResponse, UserItemResponse
@@ -159,8 +160,8 @@ async def get_pending_items(
     """사용자의 미수령(pending) 아이템 목록"""
     result = await db.execute(
         select(UserItem)
+        .options(selectinload(UserItem.item))
         .where(UserItem.user_id == user_id, UserItem.status == "pending")
-        .join(UserItem.item)
     )
     return list(result.scalars().all())
 
@@ -172,8 +173,8 @@ async def get_claimed_items(
     """사용자가 수령 완료한 아이템 목록"""
     result = await db.execute(
         select(UserItem)
+        .options(selectinload(UserItem.item))
         .where(UserItem.user_id == user_id, UserItem.status == "claimed")
-        .join(UserItem.item)
     )
     return list(result.scalars().all())
 
@@ -222,8 +223,8 @@ async def claim_items(
     # 수령된 아이템 목록 반환
     result = await db.execute(
         select(UserItem)
+        .options(selectinload(UserItem.item))
         .where(UserItem.id.in_(user_item_ids))
-        .join(UserItem.item)
     )
     return list(result.scalars().all())
 
