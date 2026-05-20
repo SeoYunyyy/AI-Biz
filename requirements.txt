@@ -1,0 +1,12 @@
+# 웹 프레임워크
+fastapi
+uvicorn[standard]
+
+# HTTP 클라이언트 (크롤링, API 호출)
+httpx
+
+# HTML 파싱 (크롤링)
+beautifulsoup4
+
+# 환경변수 로드
+python-dotenv
