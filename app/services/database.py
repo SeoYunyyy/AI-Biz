@@ -1,0 +1,151 @@
+# app/services/database.py
+
+import httpx
+import os
+from datetime import datetime, timezone
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "YOUR_SUPABASE_URL_HERE")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "YOUR_SUPABASE_KEY_HERE")
+
+
+def _headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+# ── 저장 ──────────────────────────────────────────────────────────────────────
+
+async def save_content(user_id: str, url: str) -> dict | None:
+    """
+    1단계: URL만 먼저 즉시 저장 (분석 전)
+    analysis_status = 'processing' 으로 시작
+    → 사용자를 기다리게 하지 않기 위해 분리
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={
+                    "user_id": user_id,
+                    "url": url,
+                    "content_type": "other",
+                    "analysis_status": "processing",
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data[0] if data else None
+
+    except httpx.HTTPError as e:
+        print(f"[database] 초기 저장 오류: {e}")
+        return None
+
+
+async def update_content(content_id: str, metadata: dict, analysis: dict) -> bool:
+    """
+    2단계: 크롤링 + AI 분석 완료 후 나머지 필드 업데이트
+    analysis_status = 'completed'
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents?id=eq.{content_id}",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                json={
+                    # 메타데이터 추출 결과
+                    "content_type": metadata.get("platform", "other"),
+                    "title": metadata.get("title", ""),
+                    "description": metadata.get("summary", ""),
+                    "thumbnail_url": metadata.get("thumbnail", ""),
+                    "author": metadata.get("author", ""),
+                    "metadata": {
+                        "date": metadata.get("date", ""),
+                        "original_url": metadata.get("original_url", ""),
+                    },
+                    # AI 분석 결과
+                    "topics": analysis.get("tags", []),
+                    "hashtags": [f"#{t}" for t in analysis.get("tags", [])],
+                    "intent": [analysis.get("save_purpose", "")],
+                    # 상태 업데이트
+                    "analysis_status": "completed",
+                    "analyzed_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            response.raise_for_status()
+            return True
+
+    except httpx.HTTPError as e:
+        print(f"[database] 업데이트 오류: {e}")
+        return False
+
+
+async def mark_failed(content_id: str) -> None:
+    """분석 실패 시 status만 failed로 업데이트"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents?id=eq.{content_id}",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                json={"analysis_status": "failed"},
+            )
+    except httpx.HTTPError as e:
+        print(f"[database] 실패 처리 오류: {e}")
+
+
+# ── 중복 체크 ──────────────────────────────────────────────────────────────────
+
+async def check_duplicate(user_id: str, url: str) -> dict | None:
+    """
+    같은 유저가 같은 URL 저장하려 할 때 중복 감지
+    있으면 기존 데이터 반환, 없으면 None
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "url": f"eq.{url}",
+                    "select": "id,title,analysis_status,hashtags",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data[0] if data else None
+
+    except httpx.HTTPError as e:
+        print(f"[database] 중복 체크 오류: {e}")
+        return None
+
+
+# ── 검색 ──────────────────────────────────────────────────────────────────────
+
+async def search_contents(user_id: str, query_embedding: list[float], limit: int = 5) -> list[dict]:
+    """
+    벡터 유사도 검색 (schema.sql의 match_user_contents RPC 호출)
+    "저번에 저장한 딥러닝 기사" 같은 자연어 검색에 사용
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/match_user_contents",
+                headers=_headers(),
+                json={
+                    "query_embedding": query_embedding,
+                    "user_id_param": user_id,
+                    "match_count": limit,
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except httpx.HTTPError as e:
+        print(f"[database] 검색 오류: {e}")
+        return []
