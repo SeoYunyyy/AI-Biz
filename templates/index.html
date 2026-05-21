@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keepit</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/pretendard@latest/dist/web/static/pretendard.css"
+    />
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <nav>
+      <a class="logo" href="/">
+        <svg
+          class="logo-icon"
+          viewBox="0 0 100 100"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect width="100" height="100" rx="22" fill="#5A3002" />
+          <line
+            x1="28"
+            y1="22"
+            x2="28"
+            y2="78"
+            stroke="white"
+            stroke-width="5"
+            stroke-linecap="round"
+          />
+          <line
+            x1="72"
+            y1="50"
+            x2="33"
+            y2="50"
+            stroke="white"
+            stroke-width="5"
+            stroke-linecap="round"
+          />
+          <line
+            x1="33"
+            y1="50"
+            x2="52"
+            y2="28"
+            stroke="white"
+            stroke-width="5"
+            stroke-linecap="round"
+          />
+          <line
+            x1="33"
+            y1="50"
+            x2="52"
+            y2="72"
+            stroke="white"
+            stroke-width="5"
+            stroke-linecap="round"
+          />
+        </svg>
+        <span class="logo-text">eepit</span>
+      </a>
+      <div class="nav-btns">
+        <button id="btn-archives">아카이브</button>
+        <button id="btn-reminders">리마인더</button>
+        <button id="btn-report">월간 레포트</button>
+      </div>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <h1 class="hero-title">오늘은 무엇을 Keep하고 싶나요?</h1>
+        <p class="hero-sub">키핏이 저장하고 요약하고 다시 알려드려요</p>
+
+        <div class="folder-stack">
+          <div class="folder-item fi1">
+            <div class="ftab"></div>
+            <div class="fbody"><span class="flabel">음악</span></div>
+          </div>
+          <div class="folder-item fi2">
+            <div class="ftab"></div>
+            <div class="fbody"><span class="flabel">기술</span></div>
+          </div>
+          <div class="folder-item fi3">
+            <div class="ftab"></div>
+            <div class="fbody"><span class="flabel">디자인</span></div>
+          </div>
+          <div class="folder-item fi4">
+            <div class="ftab"></div>
+            <div class="fbody"><span class="flabel">음식</span></div>
+          </div>
+          <div class="folder-item fi5">
+            <div class="ftab"></div>
+            <div class="fbody"><span class="flabel">여행</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="prompt-section">
+        <div class="prompt-box" id="prompt-box">
+          <input
+            type="text"
+            id="prompt-input"
+            class="prompt-input"
+            placeholder="URL을 붙여넣거나 찾고 싶은 자료를 말해보세요"
+            autocomplete="off"
+          />
+          <button id="submit-btn" class="prompt-btn">&#8594;</button>
+        </div>
+        <p class="hint">
+          마감기한 추가 예시: https://example.com 마감: 2026-06-01
+        </p>
+      </section>
+
+      <section id="results" class="results-section"></section>
+    </main>
+
+    <div id="modal" class="modal">
+      <div class="modal-panel">
+        <button id="modal-close" class="modal-close">&times;</button>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+  </body>
+</html>
