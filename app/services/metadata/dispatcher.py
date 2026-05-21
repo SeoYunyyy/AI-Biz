@@ -1,6 +1,6 @@
 # app/services/metadata/dispatcher.py
 
-import youtube, web, news, naver_blog, map, shopping
+from app.services.metadata import youtube, web, news, naver_blog, map, shopping
 
 
 def _detect_type(url: str) -> str:

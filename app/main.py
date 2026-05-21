@@ -1,10 +1,13 @@
 # app/main.py
+from dotenv import load_dotenv
+load_dotenv()
+
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
-from app.services.metadata.dispatcher import dispatch
+from app.services.metadata.dispatcher import extract as dispatch
 from app.services.ai_classifier import classify
 from app.services.embedding import run as embed, generate_embedding
 from app.services.database import (
