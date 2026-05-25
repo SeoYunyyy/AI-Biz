@@ -75,7 +75,7 @@ export function ContentCard({ card, userId, index }: Props) {
             <p className="text-[11px] text-gray-400 mt-0.5 truncate">{channelName}</p>
           )}
           <div className="flex flex-wrap gap-1 mt-1.5">
-            {card.hashtags.slice(0, 3).map((tag) => (
+            {(card.hashtags ?? []).slice(0, 3).map((tag) => (
               <span
                 key={tag}
                 className="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full"

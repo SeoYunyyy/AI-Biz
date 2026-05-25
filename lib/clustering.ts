@@ -96,7 +96,7 @@ export async function runClustering(userId: string): Promise<void> {
   // Step 2: 해당 ID들의 임베딩 조회
   const { data: embedRows, error: embedError } = await db
     .from('embeddings')
-    .select('content_id, embedding')
+    .select('content_id, vec')
     .in('content_id', contentIds);
 
   if (embedError || !embedRows?.length) return;
@@ -110,11 +110,11 @@ export async function runClustering(userId: string): Promise<void> {
     ])
   );
 
-  const parsed: EmbeddingRow[] = (embedRows as { content_id: string; embedding: unknown }[])
+  const parsed: EmbeddingRow[] = (embedRows as { content_id: string; vec: unknown }[])
     .map((r) => {
       const meta = metaMap.get(r.content_id);
       if (!meta) return null;
-      const embedding = parseVector(r.embedding);
+      const embedding = parseVector(r.vec);
       if (embedding.length === 0) return null;
       return {
         content_id: r.content_id,

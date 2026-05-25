@@ -1,0 +1,8 @@
+{
+  "_comment": "팀원이 각자 30~50건씩 손수 채워서 총 200건 확보 (발표 데모용)",
+  "urls": [
+    {"url": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID", "expected_category": "FITNESS"},
+    {"url": "https://m.blog.naver.com/example/000000000000", "expected_category": "FOOD"},
+    {"url": "https://brunch.co.kr/@example/123", "expected_category": "LEARN"}
+  ]
+}

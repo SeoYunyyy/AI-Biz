@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     // 1) created_at 대신 saved_at 으로 이름 변경!
     const { data: contents, error } = await db
       .from('contents')
-      .select('id, title, summary, thumbnail_url, category, url, saved_at')
+      .select('id, title, summary, thumbnail_url, category, hashtags, url, saved_at')
       .eq('user_id', userId)
       .order('saved_at', { ascending: false });
 
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    return NextResponse.json(Object.values(collections));
+    return NextResponse.json({ collections: Object.values(collections) });
   } catch (error: any) {
     console.error('Collections error:', error);
     return NextResponse.json({ error: '서버 치명적 오류', detail: error.message }, { status: 500 });

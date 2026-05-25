@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import type { Collection, Content } from '@/types';
 
@@ -24,6 +24,33 @@ export function Sidebar({
   onNewChat,
 }: Props) {
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const [reembedState, setReembedState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [reembedResult, setReembedResult] = useState<string>('');
+
+  const handleReembed = async () => {
+    if (reembedState === 'running') return;
+    setReembedState('running');
+    setReembedResult('');
+    try {
+      const res = await fetch('/api/reembed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const visionCount = (data.results as { hasVision: boolean }[]).filter((r) => r.hasVision).length;
+        setReembedResult(`✅ ${data.processed}개 완료 (Vision: ${visionCount}개)`);
+        setReembedState('done');
+      } else {
+        setReembedResult(`❌ ${data.error || '실패'}`);
+        setReembedState('error');
+      }
+    } catch {
+      setReembedResult('❌ 네트워크 오류');
+      setReembedState('error');
+    }
+  };
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -104,6 +131,31 @@ export function Sidebar({
               <p className="text-sm">아직 저장된 콘텐츠가 없어요</p>
               <p className="text-xs mt-1">링크를 저장해보세요!</p>
             </div>
+          )}
+
+          {/* 썸네일 검색 개선 (기존 콘텐츠 재분석) */}
+          {recentContents.length > 0 && (
+            <section className="border-t border-gray-100 pt-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                검색 품질 개선
+              </h3>
+              <button
+                onClick={handleReembed}
+                disabled={reembedState === 'running' || reembedState === 'done'}
+                className="w-full flex items-center gap-2 px-3 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-medium disabled:opacity-50 active:scale-98 transition-transform text-left"
+              >
+                <span>{reembedState === 'running' ? '⏳' : reembedState === 'done' ? '✅' : '🔍'}</span>
+                <div>
+                  <p>{reembedState === 'running' ? '썸네일 분석 중...' : reembedState === 'done' ? '분석 완료!' : '기존 콘텐츠 썸네일 재분석'}</p>
+                  {reembedState === 'idle' && (
+                    <p className="text-[10px] text-indigo-400 mt-0.5">"안경 쓴 사람" 같은 시각적 검색 가능해져요</p>
+                  )}
+                  {reembedResult && (
+                    <p className="text-[11px] mt-0.5 text-indigo-700">{reembedResult}</p>
+                  )}
+                </div>
+              </button>
+            </section>
           )}
         </div>
       </div>

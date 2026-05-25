@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const { data, error, count } = await db
     .from('contents')
     .select(
-      'id, url, content_type, title, thumbnail_url, author, metadata, hashtags, topics, moods, collection_id, analysis_status, saved_at',
+      'id, url, title, summary, thumbnail_url, category, hashtags, analysis_status, saved_at',
       { count: 'exact' }
     )
     .eq('user_id', userId)
@@ -30,5 +30,16 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: '콘텐츠 로드 실패' }, { status: 500 });
 
-  return NextResponse.json({ contents: data || [], total: count || 0 });
+  // DB 컬럼을 ContentCard 형식으로 매핑 (content_type은 URL에서 추론)
+  const contents = (data || []).map((c: Record<string, unknown>) => ({
+    ...c,
+    content_type: typeof c.url === 'string' && /youtube\.com|youtu\.be/.test(c.url) ? 'youtube' : 'blog',
+    author: null,
+    metadata: null,
+    topics: [],
+    moods: [],
+    collection_id: null,
+  }));
+
+  return NextResponse.json({ contents, total: count || 0 });
 }

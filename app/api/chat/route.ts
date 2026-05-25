@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { generateEmbedding, generateChatResponse } from '@/lib/openai';
+import { generateEmbedding, generateChatResponse, expandQuery, extractSearchIntent } from '@/lib/openai';
+import { detectPlatform, detectQueryPlatform, platformLabel } from '@/lib/platform';
 import type { ContentCard } from '@/types';
 
 export const runtime = 'nodejs';
@@ -39,55 +40,82 @@ function detectMode(query: string): 'memory' | 'collection' | 'general' {
   return 'general';
 }
 
+// ── 플랫폼 필터 헬퍼 ────────────────────────────────────────────
+// platform 컬럼 값 또는 URL 파생값으로 플랫폼을 확인
+function getPlatform(c: Record<string, unknown>): string {
+  if (c.platform && typeof c.platform === 'string') return c.platform;
+  // platform 컬럼이 NULL이면 URL에서 파생 (기존 데이터 호환)
+  return detectPlatform((c.url as string) || '');
+}
+
 // ── 폴백: 수동 벡터 검색 ────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function manualSearch(
   db: any,
   userId: string,
   queryEmbedding: number[],
-  limit = 5
+  limit = 5,
+  platformFilter: string | null = null   // null = 플랫폼 무관
 ): Promise<ContentCard[]> {
   // 1. 이 유저의 모든 임베딩 가져오기
   const { data: embedRows, error: embedError } = await db
     .from('embeddings')
-    .select('content_id, embedding');
+    .select('content_id, vec');
 
   if (embedError || !embedRows?.length) {
-    // embeddings 테이블이 없거나 비어있으면 텍스트 기반 최신순 반환
+    // embeddings 없으면 최신순으로 폴백
     const { data: fallback } = await db
       .from('contents')
-      .select('id, url, content_type, title, thumbnail_url, author, metadata, hashtags, topics, moods, collection_id, saved_at')
+      .select('id, url, title, summary, thumbnail_url, category, hashtags, platform, analysis_status, saved_at')
       .eq('user_id', userId)
       .order('saved_at', { ascending: false })
       .limit(limit);
-    return (fallback || []).map((c: ContentRow) => toCard(c, 1));
+    return (fallback || []).map((c: Record<string, unknown>) => toCard({
+      ...c,
+      content_type: getPlatform(c) === 'youtube' ? 'youtube' : 'blog',
+      author: null, metadata: null, topics: [], moods: [], collection_id: null,
+    } as ContentRow, 1));
   }
 
-  // 2. 코사인 유사도 계산
+  // 2. 코사인 유사도 계산 — 플랫폼 필터 시 후보를 더 넉넉하게 확보
   interface Scored { content_id: string; score: number; }
-  const scored: Scored[] = (embedRows as { content_id: string; embedding: unknown }[])
+  const candidateLimit = platformFilter ? limit * 4 : limit;
+  const scored: Scored[] = (embedRows as { content_id: string; vec: unknown }[])
     .map((row) => ({
       content_id: row.content_id,
-      score: cosine(queryEmbedding, parseVector(row.embedding)),
+      score: cosine(queryEmbedding, parseVector(row.vec)),
     }))
     .sort((a: Scored, b: Scored) => b.score - a.score)
-    .slice(0, limit);
+    .slice(0, candidateLimit);
 
   if (!scored.length) return [];
 
-  // 3. 상위 content_id로 contents 조회 (user_id 필터 포함)
+  // 3. contents 조회 (platform 컬럼 포함)
   const topIds = scored.map((s: Scored) => s.content_id);
   const { data: contents } = await db
     .from('contents')
-    .select('id, url, content_type, title, thumbnail_url, author, metadata, hashtags, topics, moods, collection_id, saved_at')
+    .select('id, url, title, summary, thumbnail_url, category, hashtags, platform, analysis_status, saved_at')
     .eq('user_id', userId)
     .in('id', topIds);
 
   if (!contents?.length) return [];
 
-  return (contents as ContentRow[])
-    .map((c) => toCard(c, scored.find((s: Scored) => s.content_id === c.id)?.score ?? 0))
-    .sort((a: ContentCard, b: ContentCard) => (b.similarity ?? 0) - (a.similarity ?? 0));
+  // 4. JS에서 platform 값으로 필터링 (NULL이면 URL에서 파생)
+  const rows = contents as Record<string, unknown>[];
+  let filtered = rows;
+  if (platformFilter) {
+    const matched = rows.filter((c) => getPlatform(c) === platformFilter);
+    if (matched.length > 0) filtered = matched; // 없으면 전체 폴백
+  }
+
+  return filtered
+    .map((c) => toCard({
+      ...c,
+      content_type: getPlatform(c) === 'youtube' ? 'youtube' : 'blog',
+      author: null, metadata: null, topics: [], moods: [], collection_id: null,
+    } as ContentRow, scored.find((s: Scored) => s.content_id === c.id)?.score ?? 0))
+    .sort((a: ContentCard, b: ContentCard) => (b.similarity ?? 0) - (a.similarity ?? 0))
+    .slice(0, limit);
 }
 
 // ── 컬렉션 의도 처리 ─────────────────────────────────────────────
@@ -162,19 +190,14 @@ function toCard(c: ContentRow, similarity: number): ContentCard {
   };
 }
 
-function getCardLabel(index: number, similarity: number, savedAt: string): string {
-  if (index === 0) return '가장 가능성 높은 매칭';
-  const daysSinceSaved = Math.floor(
-    (Date.now() - new Date(savedAt).getTime()) / (1000 * 60 * 60 * 24)
-  );
-  if (index === 1) return daysSinceSaved < 14 ? '비슷한 시기에 저장한 콘텐츠' : '비슷한 분위기의 콘텐츠';
-  return similarity > 0.6 ? '혹시 이건 어때요?' : '같은 분위기인데 한참 안 보신 거예요';
+function getCardLabel(index: number): string {
+  return `${index + 1}위 후보`;
 }
 
 // ── 메인 핸들러 ──────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { query, userId } = await req.json();
+    const { query, userId, history = [] } = await req.json();
     if (!query || !userId) {
       return NextResponse.json({ error: 'query와 userId가 필요합니다.' }, { status: 400 });
     }
@@ -200,9 +223,35 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 쿼리 임베딩 생성
-    const queryEmbedding = await generateEmbedding(query);
-    const mode = detectMode(query);
+    // ── 대화 맥락 통합 ───────────────────────────────────────────
+    // 이전 대화가 있으면 맥락을 종합해 실제 검색 의도를 추출
+    const hasHistory = Array.isArray(history) && history.length > 0;
+    const searchIntent = hasHistory
+      ? await extractSearchIntent(query, history)
+      : query;
+
+    // 플랫폼 필터 감지: 유저 메시지만 사용 (AI 답변 오염 방지)
+    const userOnlyContext = hasHistory
+      ? history
+          .filter((m: { role: string; content: string }) => m.role === 'user')
+          .map((m: { role: string; content: string }) => m.content)
+          .join(' ') + ' ' + query
+      : query;
+    const platformFilter = detectQueryPlatform(userOnlyContext); // null = 무관
+
+    // 모드 감지: 전체 맥락 기반
+    const fullContext = hasHistory
+      ? history.map((m: { role: string; content: string }) => m.content).join(' ') + ' ' + query
+      : query;
+    const mode = detectMode(fullContext);
+
+    // 쿼리 확장 + 임베딩 생성 (검색 의도 기반)
+    const needsExpansion =
+      mode === 'memory' ||
+      /썸네일|사진|이미지|안경|머리|얼굴|배경|색|옷|표지|커버|화면|영상에서|보여주던|있었는데|모르겠|기억/.test(userOnlyContext) ||
+      searchIntent.trim().length < 20;
+    const embeddingInput = needsExpansion ? await expandQuery(searchIntent) : searchIntent;
+    const queryEmbedding = await generateEmbedding(embeddingInput);
 
     // ── 컬렉션 모드 ──────────────────────────────────────────────
     if (mode === 'collection') {
@@ -236,31 +285,47 @@ export async function POST(req: NextRequest) {
     // ── 기억 회수 / 일반 모드 ─────────────────────────────────────
     let cards: ContentCard[] = [];
 
-    // 1순위: RPC 함수 시도
+    // 1순위: RPC 함수 시도 (플랫폼 필터 있으면 더 많이 받아서 JS 필터링)
+    const rpcCount = platformFilter ? 10 : 5;
     const { data: rpcResults, error: rpcError } = await db.rpc('match_user_contents', {
       query_embedding: JSON.stringify(queryEmbedding),
       user_id_param: userId,
-      match_count: 5,
+      match_count: rpcCount,
     });
 
     if (!rpcError && rpcResults?.length) {
-      cards = rpcResults.slice(0, 3).map(
-        (r: ContentRow & { similarity: number }, i: number) => ({
-          ...toCard(r, r.similarity),
-          label: getCardLabel(i, r.similarity, r.saved_at),
-        })
-      );
+      let pool: (ContentRow & { similarity: number })[] = rpcResults;
+
+      // RPC 결과에 platform 필터 적용
+      if (platformFilter) {
+        const matched = pool.filter((r) => getPlatform(r as unknown as Record<string, unknown>) === platformFilter);
+        if (matched.length > 0) pool = matched;
+      }
+
+      cards = pool.slice(0, 3).map((r, i) => ({
+        ...toCard(r, r.similarity),
+        label: getCardLabel(i),
+      }));
     } else {
       // 2순위: 수동 벡터 검색 폴백
       if (rpcError) console.error('RPC error (using fallback):', rpcError.message);
-      const fallbackCards = await manualSearch(db, userId, queryEmbedding, 5);
+      const fallbackCards = await manualSearch(db, userId, queryEmbedding, 5, platformFilter);
       cards = fallbackCards.slice(0, 3).map((c, i) => ({
         ...c,
-        label: getCardLabel(i, c.similarity ?? 0, c.saved_at),
+        label: getCardLabel(i),
       }));
     }
 
-    const message = await generateChatResponse(query, cards);
+    // platform 일치 여부 확인 (AI 답변용)
+    const hasTypeMatch = !platformFilter ||
+      cards.some((c) => getPlatform(c as unknown as Record<string, unknown>) === platformFilter);
+
+    const message = await generateChatResponse(query, cards, {
+      platformFilter,
+      hasTypeMatch,
+      history,
+      searchIntent: hasHistory ? searchIntent : undefined,
+    });
 
     return NextResponse.json({
       message,

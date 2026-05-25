@@ -201,7 +201,7 @@ function MiniCard({ card, userId }: { card: ContentCard; userId: string }) {
       )}
       {/* 해시태그 */}
       <div className="flex gap-1 mt-1 flex-wrap">
-        {card.hashtags.slice(0, 2).map((tag) => (
+        {(card.hashtags ?? []).slice(0, 2).map((tag) => (
           <span key={tag} className="text-[9px] text-indigo-400 bg-indigo-50 px-1 rounded-full">
             {tag}
           </span>
