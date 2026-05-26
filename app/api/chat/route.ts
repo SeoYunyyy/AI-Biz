@@ -74,7 +74,7 @@ async function manualSearch(
       ...c,
       content_type: getPlatform(c) === 'youtube' ? 'youtube' : 'blog',
       author: null, metadata: null, topics: [], moods: [], collection_id: null,
-    } as ContentRow, 1));
+    } as unknown as ContentRow, 1));
   }
 
   // 2. 코사인 유사도 계산 — 플랫폼 필터 시 후보를 더 넉넉하게 확보
@@ -113,7 +113,7 @@ async function manualSearch(
       ...c,
       content_type: getPlatform(c) === 'youtube' ? 'youtube' : 'blog',
       author: null, metadata: null, topics: [], moods: [], collection_id: null,
-    } as ContentRow, scored.find((s: Scored) => s.content_id === c.id)?.score ?? 0))
+    } as unknown as ContentRow, scored.find((s: Scored) => s.content_id === c.id)?.score ?? 0))
     .sort((a: ContentCard, b: ContentCard) => (b.similarity ?? 0) - (a.similarity ?? 0))
     .slice(0, limit);
 }
@@ -224,26 +224,30 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 대화 맥락 통합 ───────────────────────────────────────────
-    // 이전 대화가 있으면 맥락을 종합해 실제 검색 의도를 추출
     const hasHistory = Array.isArray(history) && history.length > 0;
-    const searchIntent = hasHistory
-      ? await extractSearchIntent(query, history)
+
+    // 현재 쿼리가 이전 대화를 참조하는지 판단
+    // 참조어가 없으면 → 새 주제로 간주해 이전 대화 무시
+    const isFollowUp = hasHistory &&
+      /그거|그것|그런|아까|저번|이전|방금|말한|찾던|그때|혹시 그|위에서|아까 말|그 영상|그 글|그 상품/.test(query);
+
+    // 검색 의도 추출: 팔로업일 때만, 최근 2턴(4메시지)만 사용
+    const recentHistory = hasHistory ? history.slice(-4) : [];
+    const searchIntent = isFollowUp
+      ? await extractSearchIntent(query, recentHistory)
       : query;
 
-    // 플랫폼 필터 감지: 유저 메시지만 사용 (AI 답변 오염 방지)
-    const userOnlyContext = hasHistory
-      ? history
+    // 플랫폼 필터: 현재 쿼리 + (팔로업이면 직전 유저 메시지까지)
+    const userOnlyContext = isFollowUp
+      ? recentHistory
           .filter((m: { role: string; content: string }) => m.role === 'user')
           .map((m: { role: string; content: string }) => m.content)
           .join(' ') + ' ' + query
       : query;
-    const platformFilter = detectQueryPlatform(userOnlyContext); // null = 무관
+    const platformFilter = detectQueryPlatform(userOnlyContext);
 
-    // 모드 감지: 전체 맥락 기반
-    const fullContext = hasHistory
-      ? history.map((m: { role: string; content: string }) => m.content).join(' ') + ' ' + query
-      : query;
-    const mode = detectMode(fullContext);
+    // 모드 감지: 현재 쿼리 중심 (이전 대화 오염 방지)
+    const mode = detectMode(query);
 
     // 쿼리 확장 + 임베딩 생성 (검색 의도 기반)
     const needsExpansion =
@@ -323,8 +327,9 @@ export async function POST(req: NextRequest) {
     const message = await generateChatResponse(query, cards, {
       platformFilter,
       hasTypeMatch,
-      history,
-      searchIntent: hasHistory ? searchIntent : undefined,
+      // 팔로업일 때만 대화 맥락 전달 — 새 주제면 이전 대화 오염 방지
+      history: isFollowUp ? recentHistory : [],
+      searchIntent: isFollowUp ? searchIntent : undefined,
     });
 
     return NextResponse.json({

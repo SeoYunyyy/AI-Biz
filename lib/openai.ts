@@ -131,79 +131,70 @@ export async function generateChatResponse(
   }
 ): Promise<string> {
   if (matchedCards.length === 0) {
-    return '아직 저장된 콘텐츠가 없어요. 아래 링크 저장하기 버튼으로 유튜브나 블로그 링크를 저장해보세요!';
+    return '아직 저장된 콘텐츠가 없어요. 아래 + 버튼으로 유튜브나 블로그 링크를 저장해보세요!';
   }
 
   const ai = getClient();
-  const vague = isVagueQuery(query);
   const filter = options?.platformFilter ?? null;
   const hasTypeMatch = options?.hasTypeMatch ?? true;
   const history = options?.history ?? [];
-  const searchIntent = options?.searchIntent;
 
-  const typeLabel = filter ? platformLabel(filter) : null;
+  // ── 유사도 판단 ────────────────────────────────────────────────
+  const maxSim = Math.max(...matchedCards.map((c) => c.similarity ?? 0));
+  const avgSim = matchedCards.reduce((s, c) => s + (c.similarity ?? 0), 0) / matchedCards.length;
+  // 유사도가 매우 낮으면 카드를 보여줘도 "못 찾았을 수 있음"을 알림
+  const notFound = maxSim < 0.30;
+  const lowConf  = !notFound && (avgSim < 0.42 || isVagueQuery(query));
 
+  // ── 카드 목록 (AI에게 넘길 때 유사도 % 제거 — 혼란 방지) ─────
   const cardList = matchedCards
     .map((c, i) => {
-      const sim = c.similarity != null ? ` (유사도 ${Math.round(c.similarity * 100)}%)` : '';
       const tags = c.hashtags?.slice(0, 3).join(' ') || '';
-      const type = c.content_type === 'youtube' ? '📹유튜브' : '📄';
-      return `[${i + 1}] ${type} "${c.title || '제목 없음'}"${sim} — ${tags} (${formatTimeAgo(c.saved_at)})`;
+      const type = c.content_type === 'youtube' ? '[유튜브]' :
+                   c.content_type === 'other'   ? '[쇼핑]'  : '[글]';
+      return `${i + 1}. ${type} "${c.title || '제목 없음'}" — ${tags} (${formatTimeAgo(c.saved_at)})`;
     })
     .join('\n');
 
-  const avgSimilarity = matchedCards.reduce((s, c) => s + (c.similarity ?? 0), 0) / matchedCards.length;
-  const lowConfidence = avgSimilarity < 0.45 || vague;
-
-  const typeContext = typeLabel && !hasTypeMatch
-    ? `\n주의: 사용자가 ${typeLabel}을 찾고 있지만 저장된 ${typeLabel} 중 적합한 것을 못 찾았습니다. 이 점을 언급하고 다른 특징을 물어보세요.`
-    : typeLabel
-    ? `\n참고: 사용자가 ${typeLabel}을 찾고 있으며 검색 결과도 해당 플랫폼입니다.`
+  // ── 플랫폼 불일치 안내 ─────────────────────────────────────────
+  const typeLabel = filter ? platformLabel(filter) : null;
+  const typeMismatch = typeLabel && !hasTypeMatch
+    ? `사용자가 "${typeLabel}"를 원하지만 저장된 ${typeLabel} 중 맞는 것이 없었습니다.`
     : '';
 
-  const intentContext = searchIntent
-    ? `\n[대화를 종합한 실제 검색 의도]: "${searchIntent}"`
-    : '';
-
-  // 이전 대화 메시지를 GPT messages 배열에 포함 (최대 6개)
-  const historyMessages = history.slice(-6).map((m) => ({
+  // ── 이전 대화 메시지 (최대 4개, 팔로업일 때만 전달됨) ─────────
+  const historyMessages = history.slice(-4).map((m) => ({
     role: m.role as 'user' | 'assistant',
     content: m.content,
   }));
 
+  const systemPrompt = `당신은 사용자의 개인 콘텐츠 보관함 도우미입니다. 짧고 자연스럽게 답하세요.
+
+상황별 답변 방식:
+- notFound=true  → "저장하신 내용 중 딱 맞는 게 없어요. 혹시 제목이나 주제를 더 기억하세요?" (카드 설명 최소화)
+- lowConf=true   → 카드를 소개하되 마지막에 "맞나요? 더 구체적으로 말씀해 주시면 더 잘 찾을 수 있어요." 한 문장 추가
+- 정상            → 찾은 콘텐츠 1~2줄로 소개
+${typeMismatch ? `\n주의: ${typeMismatch}` : ''}
+
+규칙: 2~3문장 이내. 유사도·기술적 설명 언급 금지. 카드 번호(1. 2. 3.)는 그대로 언급 가능.`;
+
+  const userPrompt = `[사용자 질문] ${query}
+[상황] notFound=${notFound}, lowConf=${lowConf}
+[검색 결과]
+${cardList}`;
+
   const response = await ai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      {
-        role: 'system',
-        content: `당신은 사용자의 개인 콘텐츠 라이브러리 도우미입니다. 친근하고 따뜻한 말투로 대화하세요.
-
-규칙:
-1. 이전 대화 맥락을 기억하고 자연스럽게 이어가세요. "아까 말씀하신 ~"처럼 연결하세요.
-2. 질문이 모호하거나 유사도가 낮으면(lowConfidence=true), 카드를 보여주되 **유도 질문 1개**를 마지막에 추가하세요.
-   유도 질문 예시: "제목에 포함된 단어 기억나시나요?", "언제쯤 저장하셨어요?", "어떤 주제였나요?"
-3. 유도 질문에 사용자가 구체적으로 답하면, 그 정보까지 합쳐서 검색했음을 알려주세요.
-4. 콘텐츠 타입(유튜브/블로그)이 맞지 않으면 솔직하게 말하고 더 좁혀달라고 하세요.
-5. 2~3문장 이내로 답하세요.${typeContext}${intentContext}`,
-      },
+      { role: 'system', content: systemPrompt },
       ...historyMessages,
-      {
-        role: 'user',
-        content: `사용자 질문: "${query}"
-lowConfidence: ${lowConfidence}
-typeMatched: ${hasTypeMatch}
-
-검색된 콘텐츠:
-${cardList}
-
-위 규칙에 따라 답변하세요.`,
-      },
+      { role: 'user', content: userPrompt },
     ],
-    temperature: 0.7,
-    max_tokens: 150,
+    temperature: 0.5,
+    max_tokens: 120,
   });
 
-  return response.choices[0].message.content || '이런 콘텐츠를 찾고 계신 것 같아요!';
+  return response.choices[0].message.content?.trim() || '이런 콘텐츠를 찾았어요!';
 }
 
 // ── 대화 맥락에서 검색 의도 추출 ──────────────────────────────
@@ -212,11 +203,14 @@ export async function extractSearchIntent(
   currentQuery: string,
   history: { role: string; content: string }[]
 ): Promise<string> {
+  // 히스토리 없으면 현재 쿼리 그대로
   if (!history.length) return currentQuery;
 
   const ai = getClient();
   try {
-    const conversation = history
+    // 최근 2턴(유저+AI 각 1회)만 사용 — 오래된 주제 오염 방지
+    const recentTwo = history.slice(-4);
+    const conversation = recentTwo
       .map((m) => `${m.role === 'user' ? '사용자' : 'AI'}: ${m.content}`)
       .join('\n');
 
@@ -225,19 +219,19 @@ export async function extractSearchIntent(
       messages: [
         {
           role: 'system',
-          content: `아래 대화 내용을 분석해서, 사용자가 지금 찾고 싶어 하는 콘텐츠를
-하나의 구체적인 검색 문장으로 정리하세요.
-- 이전 대화의 단서들을 모두 합쳐서 작성하세요.
-- 콘텐츠 타입(유튜브/블로그), 주제, 시각적 특징, 시기 등 언급된 정보를 모두 포함하세요.
-- 결과는 검색에 바로 쓸 수 있는 한국어 문장 1개만 출력하세요.`,
+          content: `직전 대화 1~2턴과 현재 질문을 보고,
+사용자가 지금 찾으려는 콘텐츠를 구체적인 한 문장으로 정리하세요.
+- 현재 질문이 새 주제라면 현재 질문만 반영하세요.
+- 이전 대화의 추가 단서(타입·주제·시각적 특징)가 있으면 합쳐서 작성하세요.
+- 검색에 바로 쓸 수 있는 한국어 문장 1개만 출력하세요.`,
         },
         {
           role: 'user',
-          content: `[대화 기록]\n${conversation}\n\n[현재 질문]\n사용자: ${currentQuery}\n\n위 내용을 바탕으로 사용자가 찾는 콘텐츠를 한 문장으로 정리하세요.`,
+          content: `[직전 대화]\n${conversation}\n\n[현재 질문] ${currentQuery}`,
         },
       ],
       temperature: 0.2,
-      max_tokens: 150,
+      max_tokens: 100,
     });
     return response.choices[0].message.content?.trim() || currentQuery;
   } catch {

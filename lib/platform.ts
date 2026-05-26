@@ -33,6 +33,12 @@ export function detectPlatform(url: string): string {
   if (/github\.com/.test(u)) return 'github';
   if (/stackoverflow\.com/.test(u)) return 'stackoverflow';
 
+  // 쇼핑
+  if (
+    /smartstore\.naver\.com|brand\.naver\.com/.test(u) ||
+    /shopping\.naver\.com|search\.shopping\.naver\.com/.test(u)
+  ) return 'shopping';
+
   // 블로그·아티클
   if (
     /blog\.naver\.com/.test(u) ||
@@ -57,6 +63,7 @@ export function detectQueryPlatform(text: string): string | null {
   const t = text.toLowerCase();
   if (/유튜브|youtube|영상|동영상|비디오|video|채널|유튜버|shorts/.test(t)) return 'youtube';
   if (/뉴스|news|기사|언론|신문|보도|언론사/.test(t)) return 'news';
+  if (/쇼핑|shopping|스마트스토어|smartstore|상품|제품|구매|가격|최저가|리뷰|후기/.test(t)) return 'shopping';
   if (/인스타|instagram|인스타그램/.test(t)) return 'instagram';
   if (/트위터|twitter|엑스|x\.com/.test(t)) return 'twitter';
   if (/블로그|blog|포스트|글|아티클|article|tistory|velog|brunch|medium/.test(t)) return 'blog';
@@ -69,6 +76,7 @@ export function platformLabel(platform: string | null): string {
   const map: Record<string, string> = {
     youtube: '유튜브 영상',
     news: '뉴스 기사',
+    shopping: '쇼핑 상품',
     instagram: '인스타그램',
     twitter: '트위터',
     blog: '블로그 글',
