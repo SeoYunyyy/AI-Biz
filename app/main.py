@@ -141,19 +141,39 @@ async def ingest(req: IngestRequest):
 
 # ── 검색 ───────────────────────────────────────────────────────────────────────
 
+SEARCH_FOLLOWUPS = [
+    "혹시 유튜브 영상이었나요, 아니면 블로그/뉴스 글이었나요?",
+    "어떤 주제였는지 조금 더 기억나시나요? (예: 요리, 여행, IT 등)",
+    "언제쯤 저장하셨는지 기억나시나요?",
+    "제목에 특정 단어가 포함됐었나요?",
+]
+
 @app.post("/search")
 async def search(req: SearchRequest):
     """
     자연어로 저장된 콘텐츠 검색.
-    "저번에 본 딥러닝 기사" → 벡터 유사도로 찾아줌
+    유사도 상위 3개만 반환, 결과 없으면 유도 질문 제공.
     """
-    # 검색어를 임베딩으로 변환
     query_embedding = await generate_embedding(req.query)
     if not query_embedding:
         raise HTTPException(status_code=500, detail="검색어 임베딩 실패")
 
-    results = await search_contents(req.user_id, query_embedding, req.limit)
-    return {"results": results}
+    results = await search_contents(req.user_id, query_embedding, limit=3)
+
+    if not results:
+        return {
+            "results": [],
+            "found": False,
+            "message": "저장된 콘텐츠 중 찾지 못했어요. 아래 힌트를 참고해서 다시 검색해보세요.",
+            "follow_up_questions": SEARCH_FOLLOWUPS,
+        }
+
+    return {
+        "results": results,
+        "found": True,
+        "message": None,
+        "follow_up_questions": [],
+    }
 
 
 # 마감기한 엔드포인트 추가

@@ -135,10 +135,10 @@ async def check_duplicate(user_id: str, url: str) -> dict | None:
 
 # ── 검색 ──────────────────────────────────────────────────────────────────────
 
-async def search_contents(user_id: str, query_embedding: list[float], limit: int = 5) -> list[dict]:
+async def search_contents(user_id: str, query_embedding: list[float], limit: int = 3, threshold: float = 0.3) -> list[dict]:
     """
     벡터 유사도 검색 (schema.sql의 match_user_contents RPC 호출)
-    "저번에 저장한 딥러닝 기사" 같은 자연어 검색에 사용
+    threshold 이상인 결과만 반환, 상위 limit개 제한
     """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -148,11 +148,14 @@ async def search_contents(user_id: str, query_embedding: list[float], limit: int
                 json={
                     "query_embedding": query_embedding,
                     "user_id_param": user_id,
-                    "match_count": limit,
+                    "match_count": limit * 3,  # threshold 필터링 후 limit개 남도록 넉넉히 요청
                 },
             )
             response.raise_for_status()
-            return response.json()
+            results = response.json()
+
+        filtered = [r for r in results if r.get("similarity", 0) >= threshold]
+        return filtered[:limit]
 
     except httpx.HTTPError as e:
         print(f"[database] 검색 오류: {e}")
