@@ -46,7 +46,7 @@ async def extract(url: str) -> dict:
     return {
         "title": _clean(title),
         "date": _normalize_date(date),
-        "summary": _clean(description) or body_text[:200] if body_text else "",
+        "summary": _build_summary(description, body_text),
         "category": "웹",
         "tags": [],
         "thumbnail": thumbnail or "",
@@ -86,7 +86,7 @@ def _extract_body(soup: BeautifulSoup) -> str:
         return ""
     paragraphs = candidates.find_all("p")
     text = " ".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 30)
-    return text[:500]  # ai_classifier에 넘길 여유분 포함
+    return text[:3500]  # ai_classifier에 넘길 여유분 포함
 
 
 def _extract_date(soup: BeautifulSoup, html: str) -> Optional[str]:
@@ -130,3 +130,12 @@ def _empty_result(url: str, error: str = "") -> dict:
         "original_url": url,
         "error": error,
     }
+
+
+def _build_summary(description: Optional[str], body: str) -> str:
+    parts = []
+    if description:
+        parts.append(_clean(description))
+    if body:
+        parts.append(body[:1500])
+    return " ".join(parts)

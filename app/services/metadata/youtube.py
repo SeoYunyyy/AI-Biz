@@ -76,7 +76,7 @@ async def _fetch_from_api(video_id: str, original_url: str) -> Optional[dict]:
         return {
             "title": snippet.get("title", ""),
             "date": snippet.get("publishedAt", "")[:10],  # YYYY-MM-DD만
-            "summary": snippet.get("description", "")[:200],
+            "summary": snippet.get("description", "")[:3500],
             "category": "영상",
             "tags": snippet.get("tags", [])[:5],  # 최대 5개
             "thumbnail": thumbnail,

@@ -44,7 +44,7 @@ async def extract(url: str) -> dict:
     return {
         "title": _clean(title),
         "date": date,
-        "summary": body[:200] if body else "",
+        "summary": body[:3500] if body else "",
         "category": "뉴스",
         "tags": [],
         "thumbnail": thumbnail,

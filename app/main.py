@@ -90,6 +90,10 @@ async def ingest(req: IngestRequest):
             "category": analysis.get("category", ""),
             "one_line_summary": analysis.get("one_line_summary", ""),
             "tags": analysis.get("tags", []),
+            "has_deadline": analysis.get("has_deadline", False),      # 추가
+            "deadline_date": analysis.get("deadline_date"),           # 추가
+            "deadline_note": analysis.get("deadline_note"),           # 추가
+            "sub_category": analysis.get("sub_category", ""),         # 추가
             "analysis_status": "completed",
         }
 

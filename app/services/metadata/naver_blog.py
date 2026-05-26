@@ -54,7 +54,7 @@ async def extract(url: str) -> dict:
     return {
         "title": _clean(title),
         "date": date,
-        "summary": _clean(description) or body[:200],
+        "summary": _build_summary(description, body),
         "category": "블로그",
         "tags": [],
         "thumbnail": thumbnail,
@@ -135,3 +135,14 @@ def _empty_result(url: str, error: str = "") -> dict:
         "original_url": url,
         "error": error,
     }
+
+
+def _build_summary(description: Optional[str], body: str) -> str:
+    """OG description + 본문 합쳐서 AI가 읽을 충분한 텍스트 제공"""
+    parts = []
+    if description:
+        parts.append(_clean(description))
+    if body:
+        # 본문은 1500자까지 (마감기한 정보 놓치지 않게)
+        parts.append(body[:1500])
+    return " ".join(parts)
