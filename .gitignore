@@ -27,6 +27,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ─── 데이터베이스 ──────────────────────────────────────
+*.db
+keepit.db
+knowledge.db
+
+# ─── 빌드 산출물 ───────────────────────────────────────
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
 # ─── OS ───────────────────────────────────────────────
 .DS_Store
 Thumbs.db
