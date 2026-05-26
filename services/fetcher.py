@@ -15,7 +15,8 @@ def fetch_url_content(url: str) -> dict:
             return {
                 'title': data.get('title', ''),
                 'text': f"채널: {data.get('author_name', '')}",
-                'url': url
+                'url': url,
+                'thumbnail': data.get('thumbnail_url', '')
             }
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -25,7 +26,7 @@ def fetch_url_content(url: str) -> dict:
 
     title = (soup.title.get_text() or '').strip() if soup.title else ''
 
-    og_desc = soup.find('meta', property='og:description')
+    og_desc  = soup.find('meta', property='og:description')
     meta_desc = soup.find('meta', attrs={'name': 'description'})
     description = (
         og_desc.get('content', '') if og_desc
@@ -33,8 +34,21 @@ def fetch_url_content(url: str) -> dict:
         else ''
     )
 
+    og_image     = soup.find('meta', property='og:image')
+    twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+    thumbnail = (
+        og_image.get('content', '') if og_image
+        else twitter_image.get('content', '') if twitter_image
+        else ''
+    )
+
     paragraphs = ' '.join(p.get_text() for p in soup.find_all('p'))[:2000]
 
-    return {'title': title, 'text': f"{description} {paragraphs}".strip(), 'url': url}
+    return {
+        'title': title,
+        'text': f"{description} {paragraphs}".strip(),
+        'url': url,
+        'thumbnail': thumbnail
+    }
 
-# YouTube oEmbed 또는 일반 HTML 파싱으로 URL의 제목·본문 추출
+# YouTube oEmbed 또는 일반 HTML 파싱으로 URL의 제목·본문·썸네일 추출
