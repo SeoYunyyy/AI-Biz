@@ -236,3 +236,28 @@ async def get_collections(user_id: str) -> list[dict]:
     except httpx.HTTPError as e:
         print(f"[database] 폴더 목록 조회 오류: {e}")
         return []
+    
+async def find_similar_contents(user_id: str, embedding: list[float], threshold: float = 0.5, limit: int = 3) -> list[dict]:
+    """
+    새로 저장하려는 콘텐츠와 유사한 기존 콘텐츠 검색
+    threshold: 유사도 기준 (0.85 이상이면 비슷한 내용으로 판단)
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/match_user_contents",
+                headers=_headers(),
+                json={
+                    "query_embedding": embedding,
+                    "user_id_param": user_id,
+                    "match_count": limit,
+                },
+            )
+            response.raise_for_status()
+            results = response.json()
+            # threshold 이상인 것만 필터링
+            return [r for r in results if r.get("similarity", 0) >= threshold]
+
+    except httpx.HTTPError as e:
+        print(f"[database] 유사 콘텐츠 검색 오류: {e}")
+        return []

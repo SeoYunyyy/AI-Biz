@@ -19,6 +19,7 @@ from app.services.database import (
     get_deadlines,
     get_or_create_collection, 
     get_collections,
+    find_similar_contents,
 )
 
 app = FastAPI(title="Keepit API")
@@ -91,6 +92,12 @@ async def ingest(req: IngestRequest):
         # 5. 임베딩 생성 + embeddings 테이블 저장
         await embed(content_id, metadata, analysis)
 
+        # 5-1. 유사 콘텐츠 검색
+        from app.services.embedding import generate_embedding, build_embed_text
+        embed_text = build_embed_text(metadata, analysis)
+        embedding = await generate_embedding(embed_text)
+        similar = await find_similar_contents(req.user_id, embedding) if embedding else []
+
         # 6. contents 업데이트 (completed)
         await update_content(content_id, metadata, analysis, collection_id=collection_id)
 
@@ -102,11 +109,21 @@ async def ingest(req: IngestRequest):
             "category": analysis.get("category", ""),
             "one_line_summary": analysis.get("one_line_summary", ""),
             "tags": analysis.get("tags", []),
-            "has_deadline": analysis.get("has_deadline", False),      # 추가
-            "deadline_date": analysis.get("deadline_date"),           # 추가
-            "deadline_note": analysis.get("deadline_note"),           # 추가
-            "sub_category": analysis.get("sub_category", ""),         # 추가
+            "has_deadline": analysis.get("has_deadline", False),
+            "deadline_date": analysis.get("deadline_date"),
+            "deadline_note": analysis.get("deadline_note"),
+            "sub_category": analysis.get("sub_category", ""),
             "analysis_status": "completed",
+            "similar_contents": [        # 추가
+                {
+                    "id": s["id"],
+                    "title": s["title"],
+                    "url": s["url"],
+                    "similarity": round(s["similarity"], 2),
+                    "one_line_summary": s.get("one_line_summary", ""),
+                }
+                for s in similar
+            ],
         }
 
     except Exception as e:
