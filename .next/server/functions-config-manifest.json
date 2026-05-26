@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/chat": {
+      "maxDuration": 30
+    },
+    "/api/cluster": {
+      "maxDuration": 60
+    },
+    "/api/collections": {},
+    "/api/contents": {},
+    "/api/ingest": {
+      "maxDuration": 60
+    },
+    "/api/views": {}
+  }
+}
