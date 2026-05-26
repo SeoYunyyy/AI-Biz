@@ -46,7 +46,7 @@ async def save_content(user_id: str, url: str) -> dict | None:
         return None
 
 
-async def update_content(content_id: str, metadata: dict, analysis: dict, collection_id: str | None = None) -> bool:
+async def update_content(content_id: str, metadata: dict, analysis: dict, collection_id: str | None = None, thumbnail_description: str = "") -> bool:
     """
     2단계: 크롤링 + AI 분석 완료 후 나머지 필드 업데이트
     analysis_status = 'completed'
@@ -76,10 +76,12 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
                     "has_deadline": analysis.get("has_deadline", False),         # 추가
                     "deadline_date": analysis.get("deadline_date"),              # 추가
                     "deadline_note": analysis.get("deadline_note"),              # 추가
+                    # 썸네일 Vision 분석 결과
+                    "thumbnail_description": thumbnail_description or None,
                     # 상태 업데이트
                     "analysis_status": "completed",
                     "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                    "collection_id": collection_id,  # 추가
+                    "collection_id": collection_id,
                 },
             )
             response.raise_for_status()

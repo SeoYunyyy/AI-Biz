@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from app.services.metadata.dispatcher import extract as dispatch
 from app.services.ai_classifier import classify
 from app.services.embedding import run as embed, generate_embedding
+from app.services.thumbnail_vision import analyze_thumbnail
 from app.services.database import (
     save_content,
     update_content,
@@ -57,9 +58,10 @@ async def ingest(req: IngestRequest):
     1. 중복 체크
     2. 즉시 저장 (processing)
     3. 메타데이터 추출 (dispatcher)
-    4. AI 분류 (ai_classifier)
-    5. 임베딩 생성 + 저장 (embedding)
-    6. contents 업데이트 (completed)
+    4. 썸네일 Vision 분석 (thumbnail_vision)
+    5. AI 분류 (ai_classifier)
+    6. 임베딩 생성 + 저장 (embedding)
+    7. contents 업데이트 (completed)
     """
 
     # 1. 중복 체크
@@ -78,28 +80,33 @@ async def ingest(req: IngestRequest):
         # 3. 메타데이터 추출 (dispatcher가 URL 보고 적절한 추출기 선택)
         metadata = await dispatch(req.url)
 
-        # 4. AI 분류
+        # 4. 썸네일 Vision 분석 (thumbnail_url 있을 때만, 실패해도 파이프라인 계속)
+        thumbnail_description = await analyze_thumbnail(
+            metadata.get("thumbnail", ""),
+            metadata.get("title", ""),
+        )
+
+        # 5. AI 분류
         analysis = await classify(metadata, user_instruction=req.instruction)
 
-        # 4-1. 사용자 지정 폴더 처리
+        # 5-1. 사용자 지정 폴더 처리
         collection_id = req.collection_id
         if not collection_id and analysis.get("user_collection"):
-            # 채팅으로 폴더 지정한 경우 자동 생성/연결
             collection_id = await get_or_create_collection(
                 req.user_id, analysis["user_collection"]
             )
 
-        # 5. 임베딩 생성 + embeddings 테이블 저장
-        await embed(content_id, metadata, analysis)
+        # 6. 임베딩 생성 + embeddings 테이블 저장 (썸네일 설명 포함)
+        await embed(content_id, metadata, analysis, thumbnail_description)
 
-        # 5-1. 유사 콘텐츠 검색
+        # 6-1. 유사 콘텐츠 검색
         from app.services.embedding import generate_embedding, build_embed_text
-        embed_text = build_embed_text(metadata, analysis)
+        embed_text = build_embed_text(metadata, analysis, thumbnail_description)
         embedding = await generate_embedding(embed_text)
         similar = await find_similar_contents(req.user_id, embedding) if embedding else []
 
-        # 6. contents 업데이트 (completed)
-        await update_content(content_id, metadata, analysis, collection_id=collection_id)
+        # 7. contents 업데이트 (completed)
+        await update_content(content_id, metadata, analysis, collection_id=collection_id, thumbnail_description=thumbnail_description)
 
         return {
             "id": content_id,

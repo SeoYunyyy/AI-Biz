@@ -46,10 +46,11 @@ async def generate_embedding(text: str) -> list[float]:
         return []
 
 
-def build_embed_text(metadata: dict, analysis: dict) -> str:
+def build_embed_text(metadata: dict, analysis: dict, thumbnail_description: str = "") -> str:
     """
     임베딩용 텍스트 조합.
-    제목 + 태그 + 요약을 합쳐서 검색 품질을 높임.
+    제목 + 태그 + 요약 + 썸네일 설명을 합쳐서 검색 품질을 높임.
+    thumbnail_description: GPT-4o Vision이 분석한 썸네일 텍스트 설명
     """
     parts = [
         metadata.get("title", ""),
@@ -57,6 +58,7 @@ def build_embed_text(metadata: dict, analysis: dict) -> str:
         analysis.get("one_line_summary", ""),
         analysis.get("detailed_summary", ""),
         metadata.get("summary", ""),
+        thumbnail_description,
     ]
     return " ".join(p for p in parts if p).strip()
 
@@ -92,16 +94,16 @@ async def save_embedding(content_id: str, embedding: list[float]) -> bool:
         return False
 
 
-async def run(content_id: str, metadata: dict, analysis: dict) -> bool:
+async def run(content_id: str, metadata: dict, analysis: dict, thumbnail_description: str = "") -> bool:
     """
     외부에서 호출하는 메인 함수.
     메타데이터 + AI 분석 결과 받아서 임베딩 생성 후 저장.
 
     사용 예:
         from app.services.embedding import run as embed
-        success = await embed(content_id, metadata, analysis)
+        success = await embed(content_id, metadata, analysis, thumbnail_description)
     """
-    embed_text = build_embed_text(metadata, analysis)
+    embed_text = build_embed_text(metadata, analysis, thumbnail_description)
     if not embed_text:
         print(f"[embedding] content_id={content_id} 임베딩할 텍스트 없음")
         return False
