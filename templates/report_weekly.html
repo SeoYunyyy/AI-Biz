@@ -8,38 +8,47 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #fdf8f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #2c1206; }
 
-  .header { background: linear-gradient(135deg, #6b3a2a, #3b1f0e); color: #fdf3ec; padding: 48px 40px 56px; }
-  .header .badge { font-size: 12px; opacity: 0.7; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
-  .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
-  .header .subtitle { font-size: 15px; opacity: 0.7; }
+  /* ── 상단 네비 ── */
+  .top-nav { background: #1e0c04; display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; }
+  .nav-brand { font-size: 20px; font-weight: 800; color: #fdf3ec; letter-spacing: -0.5px; }
+  .nav-home-btn { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18); color: #fdf3ec; font-size: 13px; font-weight: 600; padding: 8px 20px; border-radius: 20px; cursor: pointer; }
 
-  .hero-wrap { margin: -36px 40px 0; position: relative; z-index: 10; }
-  .type-hero { background: linear-gradient(135deg, #8b4513, #3b1f0e); border-radius: 22px; padding: 32px 36px; box-shadow: 0 12px 40px rgba(60,20,0,0.25); display: flex; align-items: center; gap: 28px; overflow: hidden; position: relative; }
-  .type-hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; background: rgba(255,255,255,0.05); border-radius: 50%; }
-  .type-emoji-big { font-size: 64px; flex-shrink: 0; }
-  .type-info { flex: 1; }
-  .type-label { font-size: 11px; color: rgba(253,243,236,0.6); letter-spacing: 2px; margin-bottom: 6px; }
-  .type-name { font-size: 28px; font-weight: 800; color: #fdf3ec; margin-bottom: 8px; }
-  .type-desc { font-size: 14px; color: rgba(253,243,236,0.78); line-height: 1.65; }
-  .share-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: #fdf3ec; font-size: 13px; font-weight: 600; padding: 10px 20px; border-radius: 20px; cursor: pointer; backdrop-filter: blur(10px); align-self: flex-start; }
+  /* ── 히어로 섹션 ── */
+  .hero-section { background: #2c1206; padding: 52px 48px 56px; display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; min-height: 360px; }
+  .hero-left { flex: 1; display: flex; flex-direction: column; gap: 0; }
+  .hero-badge { font-size: 12px; color: #c8874a; letter-spacing: 3px; font-weight: 700; text-transform: uppercase; margin-bottom: 18px; display: flex; align-items: center; gap: 6px; }
+  .hero-week-title { font-size: 52px; font-weight: 900; color: #fdf3ec; line-height: 1.1; margin-bottom: 10px; letter-spacing: -1px; }
+  .hero-daterange { font-size: 13px; color: rgba(253,243,236,0.45); margin-bottom: 28px; }
+  .hero-type-label { font-size: 11px; color: rgba(253,243,236,0.5); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .hero-type-name { font-size: 38px; font-weight: 800; color: #fdf3ec; line-height: 1.15; margin-bottom: 14px; }
+  .hero-type-desc { font-size: 14px; color: rgba(253,243,236,0.72); line-height: 1.75; max-width: 500px; margin-bottom: 28px; }
+  .hero-share-btn { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); color: #fdf3ec; font-size: 13px; font-weight: 600; padding: 11px 24px; border-radius: 24px; cursor: pointer; width: fit-content; }
+  .hero-right { flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; padding-top: 12px; }
+  .hero-emoji-main { font-size: 120px; line-height: 1; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35)); }
+  .hero-emoji-sub { font-size: 96px; line-height: 1; margin-top: 28px; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.3)); }
 
-  .content { padding: 36px 40px; display: flex; flex-direction: column; gap: 36px; }
+  /* ── 통계 행 (히어로 아래) ── */
+  .stats-row-wrap { background: #fdf8f5; padding: 32px 48px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .stat-card { background: #fff; border-radius: 20px; padding: 22px 24px; border: 1px solid #ede0d4; display: flex; align-items: center; gap: 16px; }
+  .stat-card .stat-emoji { font-size: 32px; flex-shrink: 0; }
+  .stat-card .stat-text .value { font-size: 28px; font-weight: 800; color: #2c1206; line-height: 1.1; }
+  .stat-card .stat-text .unit { font-size: 12px; color: #b08060; margin-top: 2px; }
+  .stat-card.highlight { background: #7a3b1e; border-color: #7a3b1e; }
+  .stat-card.highlight .stat-text .value { color: #fdf3ec; }
+  .stat-card.highlight .stat-text .unit { color: rgba(253,243,236,0.7); }
+
+  /* ── AI 카드 (히어로 아래 별도) ── */
+  .ai-section-wrap { background: #fdf8f5; padding: 0 48px 36px; }
+  .ai-card { background: #fff; border-radius: 20px; padding: 24px 28px; border: 1px solid #ede0d4; display: flex; align-items: flex-start; gap: 18px; }
+  .ai-icon { font-size: 36px; flex-shrink: 0; }
+  .ai-inner { flex: 1; }
+  .ai-nickname { font-size: 18px; font-weight: 800; color: #2c1206; margin-bottom: 8px; }
+  .ai-body { font-size: 14px; color: #6b4c38; line-height: 1.75; }
+  .ai-tag { display: inline-block; background: #f5e6d8; color: #8b4513; font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-top: 12px; font-weight: 700; }
+
+  .content { padding: 36px 48px; display: flex; flex-direction: column; gap: 36px; }
   .section-title { font-size: 12px; font-weight: 700; color: #c8a890; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 16px; }
-
-  /* AI 총평 */
-  .ai-card { background: #fff9f5; border-radius: 18px; padding: 24px 28px; border: 1px solid #ede0d4; }
-  .ai-title { font-size: 20px; font-weight: 800; color: #2c1206; margin-bottom: 10px; line-height: 1.35; }
-  .ai-body { font-size: 15px; color: #6b4c38; line-height: 1.75; }
-  .ai-tag { display: inline-block; background: #f5e6d8; color: #8b4513; font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-top: 14px; font-weight: 700; }
-
-  /* 통계 */
-  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-  .stat-card { background: #fff9f5; border-radius: 18px; padding: 20px; text-align: center; border: 1px solid #ede0d4; }
-  .stat-card .stat-emoji { font-size: 28px; margin-bottom: 10px; }
-  .stat-card .value { font-size: 28px; font-weight: 800; color: #2c1206; }
-  .stat-card .unit { font-size: 12px; color: #b08060; margin-top: 4px; }
-  .stat-card.highlight { background: linear-gradient(135deg, #8b4513, #6b3a2a); border: none; }
-  .stat-card.highlight .value, .stat-card.highlight .unit { color: #fdf3ec; }
 
   /* 2열 레이아웃 (지난주 비교 + TOP5만) */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
@@ -148,44 +157,64 @@
 </head>
 <body>
 
-  <div class="header">
-    <div class="badge">✨ Weekly Recap</div>
-    <h1 id="header-week">주간 리포트</h1>
-    <div class="subtitle" id="header-subtitle">나의 이번 주 취향 리포트</div>
-  </div>
+  <!-- 네비게이션 -->
+  <nav class="top-nav">
+    <div class="nav-brand">Keepit</div>
+    <button class="nav-home-btn" onclick="window.parent.document.getElementById('weekly-report-overlay')?.remove()">← 홈으로</button>
+  </nav>
 
-  <div class="hero-wrap">
-    <div class="type-hero">
-      <div class="type-emoji-big" id="type-emoji">✨</div>
-      <div class="type-info">
-        <div class="type-label">이번 주 취향 유형</div>
-        <div class="type-name" id="type-name">분석 중...</div>
-        <div class="type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
-      </div>
-      <button class="share-btn" onclick="document.getElementById('shareModal').classList.add('show')">↗ 공유하기</button>
+  <!-- 히어로 섹션 -->
+  <div class="hero-section">
+    <div class="hero-left">
+      <div class="hero-badge">✦ WEEKLY RECAP</div>
+      <h1 class="hero-week-title" id="hero-week">주간 리포트</h1>
+      <div class="hero-daterange" id="hero-daterange">로딩 중...</div>
+      <div class="hero-type-label">이번 주 취향 유형</div>
+      <div class="hero-type-name" id="type-name">분석 중...</div>
+      <div class="hero-type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
+      <button class="hero-share-btn" onclick="document.getElementById('shareModal').classList.add('show')">↗ 공유하기</button>
+    </div>
+    <div class="hero-right">
+      <div class="hero-emoji-main" id="hero-emoji-main">✨</div>
+      <div class="hero-emoji-sub" id="hero-emoji-sub">💻</div>
     </div>
   </div>
 
-  <div class="content">
+  <!-- 통계 행 -->
+  <div class="stats-row-wrap">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-emoji">🔗</div>
+        <div class="stat-text"><div class="value" id="stat-total">-</div><div class="unit">저장한 링크</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">🗂️</div>
+        <div class="stat-text"><div class="value" id="stat-collection">-</div><div class="unit">생성된 컬렉션</div></div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-emoji">🔥</div>
+        <div class="stat-text"><div class="value" id="stat-streak">-</div><div class="unit">연속 저장 중!</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">⏱️</div>
+        <div class="stat-text"><div class="value" id="stat-time">-</div><div class="unit">예상 소비 시간</div></div>
+      </div>
+    </div>
+  </div>
 
-    <div>
-      <div class="section-title">🤖 AI 총평</div>
-      <div class="ai-card">
-        <div class="ai-title" id="ai-title">이번 주도 열심히 저장하셨군요!</div>
+  <!-- AI 총평 -->
+  <div class="ai-section-wrap">
+    <div class="ai-card">
+      <div class="ai-icon">🤖</div>
+      <div class="ai-inner">
+        <div class="ai-nickname" id="ai-nickname">분석 중...</div>
         <div class="ai-body" id="ai-body">데이터를 분석하는 중이에요...</div>
         <span class="ai-tag">GPT-4o mini 분석</span>
       </div>
     </div>
+  </div>
 
-    <div>
-      <div class="section-title">📊 이번 주 숫자</div>
-      <div class="stats-grid">
-        <div class="stat-card"><div class="stat-emoji">🔗</div><div class="value" id="stat-total">-</div><div class="unit">저장한 링크</div></div>
-        <div class="stat-card"><div class="stat-emoji">📚</div><div class="value" id="stat-collection">-</div><div class="unit">생성된 컬렉션</div></div>
-        <div class="stat-card highlight"><div class="stat-emoji">🔥</div><div class="value" id="stat-streak">-</div><div class="unit">연속 저장 중!</div></div>
-        <div class="stat-card"><div class="stat-emoji">⏱️</div><div class="value" id="stat-time">-</div><div class="unit">예상 총 시청시간</div></div>
-      </div>
-    </div>
+  <div class="content">
 
     <!-- 전주 비교 + TOP5: 2열 유지 -->
     <div class="two-col">
@@ -295,11 +324,26 @@ const AVG_MIN = {youtube:12, blog:5, naver_blog:5, news:3, naver_news:3, instagr
 
 function getWeekLabel() {
   const now = new Date();
-  return `${now.getMonth()+1}월 ${Math.ceil(now.getDate()/7)}주차`;
+  return `${now.getFullYear()}년 ${now.getMonth()+1}월 ${Math.ceil(now.getDate()/7)}주차`;
+}
+function getWeekDateRange() {
+  const now = new Date();
+  const day = now.getDay() === 0 ? 6 : now.getDay() - 1; // 월=0
+  const mon = new Date(now); mon.setDate(now.getDate() - day);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${fmt(mon)} ~ ${fmt(sun)}`;
 }
 function getUserId() {
   return new URLSearchParams(window.location.search).get('user_id') || '';
 }
+// 카테고리별 서브 이모지 (히어로 오른쪽 두 번째 이모지)
+const CATEGORY_EMOJI = {
+  'IT/기술':'💻','영상/엔터':'🎬','음악':'🎵','독서/책':'📚','뉴스/사회':'📰',
+  '정치/경제':'💼','스포츠':'⚽','게임':'🎮','요리/식품':'🍽️','여행':'✈️',
+  '패션/뷰티':'👗','운동/헬스':'💪','교육/학습':'📖','예술/디자인':'🎨',
+  '기타/알쓸신잡':'🌐','종교':'🕊️'
+};
 
 function renderWordCloud(topics) {
   const wrap = document.getElementById('wc-wrap');
@@ -455,7 +499,8 @@ function renderComparison(comparison) {
 async function loadReport() {
   const uid = getUserId();
   const qs = uid ? `?user_id=${uid}` : '';
-  document.getElementById('header-week').textContent = getWeekLabel();
+  document.getElementById('hero-week').textContent = getWeekLabel();
+  document.getElementById('hero-daterange').textContent = getWeekDateRange();
 
   try {
     const [repRes, statsRes] = await Promise.all([
@@ -468,19 +513,23 @@ async function loadReport() {
     if (rep.empty) {
       document.getElementById('type-name').textContent = '아직 저장한 콘텐츠가 없어요';
       document.getElementById('type-desc').textContent = '이번 주 콘텐츠를 저장해보세요!';
-      document.getElementById('ai-title').textContent = '이번 주 기록이 없어요';
+      document.getElementById('ai-nickname').textContent = '기록 없음';
       document.getElementById('ai-body').textContent = '콘텐츠를 저장하면 주간 리포트가 생성돼요.';
       return;
     }
 
-    document.getElementById('type-emoji').textContent = rep.personality_emoji || '✨';
+    // 히어로 이모지 (메인 + 카테고리 서브)
+    const mainEmoji = rep.personality_emoji || '✨';
+    document.getElementById('hero-emoji-main').textContent = mainEmoji;
+    document.getElementById('hero-emoji-sub').textContent = CATEGORY_EMOJI[rep.top_category] || '🌐';
+
     document.getElementById('type-name').textContent = rep.personality_type || rep.nickname || rep.top_topic + ' 탐험가';
     document.getElementById('type-desc').textContent = rep.personality_desc || '';
 
-    const summary = rep.ai_summary || '';
-    const firstSentence = summary.split(/[.!?]/)[0];
-    document.getElementById('ai-title').textContent = firstSentence ? firstSentence + '.' : '이번 주도 열심히 저장하셨군요!';
-    document.getElementById('ai-body').textContent = summary;
+    // AI 카드: 닉네임 + 전체 요약
+    const nick = rep.personality_type || rep.nickname || '';
+    document.getElementById('ai-nickname').textContent = nick ? `정보를 탐색하는 ${nick.slice(-1)}` : '이번 주 총평';
+    document.getElementById('ai-body').textContent = rep.ai_summary || '';
 
     document.getElementById('stat-total').textContent = rep.total + '개';
     document.getElementById('stat-collection').textContent = rep.collection_count + '개';
@@ -504,14 +553,11 @@ async function loadReport() {
       document.getElementById('discovery-desc').textContent = `지난주까지는 없었던 관심사예요. ${rep.new_discovery.topic}에 새로운 관심이 생기셨나봐요. 다음 주엔 더 많이 저장하게 될지도 몰라요!`;
     }
 
-    document.getElementById('share-emoji').textContent = rep.personality_emoji || '✨';
+    document.getElementById('share-emoji').textContent = mainEmoji;
     document.getElementById('share-type').textContent = rep.personality_type || rep.nickname || '-';
     document.getElementById('share-total').textContent = rep.total;
     document.getElementById('share-streak').textContent = rep.streak + '일';
     document.getElementById('share-time').textContent = rep.estimated_time || '-';
-
-    const nick = rep.personality_type || rep.nickname;
-    if (nick) document.getElementById('header-subtitle').textContent = nick + '의 이번 주 취향 리포트';
 
   } catch (e) {
     console.error('리포트 로드 실패:', e);
