@@ -32,6 +32,11 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/weekly-report')
+def weekly_report_page():
+    return render_template('report_weekly.html')
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({'error': str(e)}), 500

@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>주간 레포트 — Keepit</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@latest/dist/web/static/pretendard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brown:      #5A3002;
+      --brown-mid:  #7A4515;
+      --amber:      #C06010;
+      --orange:     #E88A2A;
+      --tan:        #9A7050;
+      --cream:      #F9F4EF;
+      --border:     #EAD9CC;
+      --text:       #2C1A0E;
+      --subtext:    #9A7055;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, sans-serif;
+      background: #FDFDFD;
+      color: var(--text);
+    }
+
+    /* ── 네비 ── */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 48px;
+      background: var(--brown);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .logo { display: flex; align-items: center; gap: 8px; text-decoration: none; }
+    .logo-icon { width: 36px; height: 36px; }
+    .logo-text { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+    .back-link {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 14px;
+      font-family: inherit;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .back-link:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── 레이아웃 ── */
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    /* ── 로딩 ── */
+    .spinner-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 80px 0;
+      color: var(--subtext);
+      font-size: 15px;
+    }
+    .spinner {
+      width: 34px; height: 34px;
+      border: 3px solid var(--border);
+      border-top-color: var(--brown);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── 인사말 ── */
+    .greeting {
+      font-size: 24px;
+      font-weight: 500;
+      margin-bottom: 32px;
+      line-height: 1.45;
+    }
+
+    /* ── 닉네임 카드 ── */
+    .nickname-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      overflow: hidden;
+      box-shadow: 0 4px 28px rgba(90,48,2,0.08);
+      margin-bottom: 32px;
+    }
+    .ribbon-row {
+      display: flex;
+      align-items: stretch;
+    }
+    .ribbon-tail {
+      width: 88px;
+      flex-shrink: 0;
+    }
+    .ribbon-tail.l {
+      background: linear-gradient(180deg, #FFDEC0 0%, #FF8D28 100%);
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 20% 50%);
+    }
+    .ribbon-tail.r {
+      background: linear-gradient(180deg, #FFE0C4 0%, #FF8D28 100%);
+      clip-path: polygon(0 0, 100% 0, 80% 50%, 100% 100%, 0 100%);
+    }
+    .ribbon-center {
+      flex: 1;
+      background: linear-gradient(180deg, #FFDEC0 0%, #FF8D28 100%);
+      padding: 16px 0;
+      text-align: center;
+      font-size: 17px;
+      font-weight: 700;
+      color: #540C0C;
+    }
+    .char-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 24px 36px;
+      gap: 18px;
+    }
+    .char-emoji { font-size: 88px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.12)); }
+    .char-pill {
+      background: #F5F5F5;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      border-radius: 32px;
+      padding: 12px 28px;
+      font-size: 19px;
+      font-weight: 500;
+      color: #540C0C;
+      text-align: center;
+    }
+
+    /* ── 통계 카드 4개 ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 56px;
+    }
+    .stat-card {
+      border-radius: 20px;
+      padding: 18px 18px 20px;
+      color: #fff;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .stat-card:nth-child(1) { background: var(--brown); }
+    .stat-card:nth-child(2) { background: var(--amber); }
+    .stat-card:nth-child(3) { background: var(--brown-mid); }
+    .stat-card:nth-child(4) { background: var(--tan); }
+    .stat-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .stat-label { font-size: 11px; font-weight: 600; opacity: .82; line-height: 1.4; }
+    .stat-badge {
+      background: rgba(255,255,255,0.22);
+      border-radius: 50px;
+      padding: 2px 8px;
+      font-size: 14px;
+      flex-shrink: 0;
+      margin-left: 6px;
+    }
+    .stat-value { font-size: 20px; font-weight: 700; letter-spacing: -.4px; line-height: 1.25; margin-top: 10px; }
+
+    /* ── 구분선 ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 0 48px;
+    }
+
+    /* ── 차트 섹션 공통 ── */
+    .chart-section {
+      margin-bottom: 48px;
+    }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--brown);
+      margin-bottom: 20px;
+    }
+    .chart-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 28px 24px;
+      box-shadow: 0 2px 16px rgba(90,48,2,0.05);
+    }
+
+    /* ── 1. 주제 섹션 (워드클라우드 + 막대) ── */
+    .topics-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .wordcloud-box {
+      background: var(--cream);
+      border-radius: 14px;
+      padding: 20px;
+      min-height: 240px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 10px 14px;
+      overflow: hidden;
+    }
+    .wc-word {
+      display: inline-block;
+      font-weight: 700;
+      line-height: 1.15;
+      cursor: default;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    .wc-word:hover { transform: scale(1.12) !important; opacity: .85; }
+
+    .bar-box { display: flex; flex-direction: column; justify-content: center; }
+    .bar-item { margin-bottom: 14px; }
+    .bar-item:last-child { margin-bottom: 0; }
+    .bar-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 5px;
+    }
+    .bar-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .bar-cnt  { font-size: 12px; color: var(--subtext); font-weight: 500; }
+    .bar-track {
+      background: var(--cream);
+      border-radius: 99px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.8s cubic-bezier(0.25,1,0.5,1);
+    }
+
+    /* ── 2. 콘텐츠 카테고리 ── */
+    .category-chart-wrap {
+      position: relative;
+      height: 220px;
+    }
+
+    /* ── 3. 새 파일 카드 ── */
+    .files-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .file-card {
+      border-radius: 16px;
+      padding: 18px 16px 16px;
+      min-height: 96px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: default;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .file-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+
+    /* 카드 색상 순환 */
+    .file-card:nth-child(6n+1) { background: linear-gradient(135deg,#F0E6DA,#E8D4C0); color: var(--brown); }
+    .file-card:nth-child(6n+2) { background: linear-gradient(135deg,#DDEAF5,#C8DCED); color: #1A3A5C; }
+    .file-card:nth-child(6n+3) { background: linear-gradient(135deg,#E8F0E0,#D4E8C8); color: #2A4A1A; }
+    .file-card:nth-child(6n+4) { background: linear-gradient(135deg,#F5E8D0,#EDD4B0); color: #5A3A02; }
+    .file-card:nth-child(6n+5) { background: linear-gradient(135deg,#EDE8F8,#DDD0F0); color: #3A1A6A; }
+    .file-card:nth-child(6n+6) { background: linear-gradient(135deg,#F8E8E8,#F0D0D0); color: #6A1A1A; }
+
+    .file-icon { font-size: 22px; margin-bottom: 8px; }
+    .file-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; line-height: 1.3; }
+    .file-meta { font-size: 12px; opacity: .65; font-weight: 500; }
+
+    /* ── 4. 일별 선 그래프 ── */
+    .line-chart-wrap {
+      position: relative;
+      height: 260px;
+    }
+
+    /* ── 빈 상태 ── */
+    .empty-msg {
+      text-align: center;
+      color: var(--subtext);
+      font-size: 14px;
+      padding: 32px 0;
+    }
+
+    /* ── 반응형 ── */
+    @media (max-width: 680px) {
+      nav { padding: 14px 20px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .topics-row { grid-template-columns: 1fr; }
+      .files-grid { grid-template-columns: 1fr 1fr; }
+      .greeting { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="/">
+    <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" rx="22" fill="#5A3002"/>
+      <line x1="28" y1="22" x2="28" y2="78" stroke="white" stroke-width="5" stroke-linecap="round"/>
+      <line x1="72" y1="50" x2="33" y2="50" stroke="white" stroke-width="5" stroke-linecap="round"/>
+      <line x1="33" y1="50" x2="52" y2="28" stroke="white" stroke-width="5" stroke-linecap="round"/>
+      <line x1="33" y1="50" x2="52" y2="72" stroke="white" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+    <span class="logo-text">eepit</span>
+  </a>
+  <a class="back-link" href="/">&#8592; 홈으로</a>
+</nav>
+
+<main class="page">
+
+  <!-- ① 닉네임 + 통계 카드 -->
+  <div id="content">
+    <div class="spinner-wrap">
+      <div class="spinner"></div>
+      <p>이번 주 데이터를 집계하고 있어요…</p>
+    </div>
+  </div>
+
+  <!-- ② 차트 영역 (스크롤) -->
+  <div id="charts-section" style="display:none">
+
+    <hr class="divider">
+
+    <!-- 1. 이번주 저장한 주제 -->
+    <div class="chart-section">
+      <p class="section-title">이번주 저장한 주제</p>
+      <div class="chart-card">
+        <div class="topics-row">
+          <!-- 워드클라우드 -->
+          <div id="wordCloud" class="wordcloud-box"></div>
+          <!-- Top5 가로 막대 -->
+          <div class="bar-box" id="topicsBar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 콘텐츠 카테고리 -->
+    <div class="chart-section">
+      <p class="section-title">이번주 저장한 콘텐츠 카테고리</p>
+      <div class="chart-card">
+        <div class="category-chart-wrap">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 새로 생긴 파일 -->
+    <div class="chart-section">
+      <p class="section-title">이번주 새로 생긴 파일</p>
+      <div class="chart-card">
+        <div class="files-grid" id="filesGrid"></div>
+      </div>
+    </div>
+
+    <!-- 4. 일별 방문횟수 -->
+    <div class="chart-section">
+      <p class="section-title">일별 방문횟수</p>
+      <div class="chart-card">
+        <div class="line-chart-wrap">
+          <canvas id="dailyChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /charts-section -->
+</main>
+
+<script>
+  // ── Chart.js 기본 설정 ──
+  Chart.defaults.font.family = "'Pretendard', -apple-system, sans-serif"
+  Chart.defaults.color = '#9A7055'
+
+  const COLORS = ['#5A3002','#C06010','#7A4515','#E88A2A','#9A7050']
+
+  const TYPE_LABEL = {
+    video:'영상', article:'기사', music:'음악',
+    place:'맵', recipe:'레시피', other:'기타'
+  }
+  const FOLDER_ICONS = ['📁','📂','🗂️','📋','📌','🗃️']
+
+  // ── ① 닉네임 + 통계 카드 ──
+  async function loadReport() {
+    const el = document.getElementById('content')
+    try {
+      const res  = await fetch('/api/weekly-report')
+      const data = await res.json()
+
+      if (data.empty) {
+        el.innerHTML = '<p style="text-align:center;color:#9A7055;padding:80px 0">이번 주 저장된 자료가 없어요 🔖</p>'
+        return
+      }
+
+      el.innerHTML = `
+        <p class="greeting">안녕하세요! 이번 주도 고생 많으셨어요 🎉</p>
+
+        <div class="nickname-card">
+          <div class="ribbon-row">
+            <div class="ribbon-tail l"></div>
+            <div class="ribbon-center">✨ 이번 주 나의 키핏 이름은?</div>
+            <div class="ribbon-tail r"></div>
+          </div>
+          <div class="char-area">
+            <span class="char-emoji">🤖</span>
+            <span class="char-pill">${data.nickname}</span>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-top">
+              <span class="stat-label">가장 많이<br>찾아본 주제</span>
+              <span class="stat-badge">↗</span>
+            </div>
+            <div class="stat-value">${data.top_topic}<br>${data.top_topic_cnt}개</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span class="stat-label">저장한<br>링크 개수</span>
+              <span class="stat-badge">↗</span>
+            </div>
+            <div class="stat-value">${data.total}개</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span class="stat-label">가장 많이 저장한<br>카테고리</span>
+              <span class="stat-badge">↗</span>
+            </div>
+            <div class="stat-value">${data.top_category}<br>${data.top_category_cnt}개</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span class="stat-label">가장 많이<br>활동한 요일</span>
+              <span class="stat-badge">↗</span>
+            </div>
+            <div class="stat-value">${data.top_day}<br>${data.top_day_cnt}개</div>
+          </div>
+        </div>
+      `
+    } catch (e) {
+      el.innerHTML = `<p style="text-align:center;color:#9A7055;padding:60px 0">오류: ${e.message}</p>`
+    }
+  }
+
+  // ── ② 차트 데이터 로드 ──
+  async function loadCharts() {
+    try {
+      const res  = await fetch('/api/weekly-stats')
+      const data = await res.json()
+
+      document.getElementById('charts-section').style.display = 'block'
+
+      buildWordCloud(data.all_topics)
+      buildTopicsBar(data.top_topics)
+      buildCategoryChart(data.content_types)
+      buildFilesGrid(data.recent_categories)
+      buildDailyChart(data.daily_counts)
+
+    } catch (e) {
+      console.error('차트 로드 실패', e)
+    }
+  }
+
+  // ── 워드클라우드 (CSS 기반) ──
+  function buildWordCloud(topics) {
+    const el = document.getElementById('wordCloud')
+    if (!topics.length) { el.innerHTML = '<p class="empty-msg">데이터 없음</p>'; return }
+
+    const max   = topics[0].cnt
+    const rotates = [0, 0, -10, 8, 0, -6, 10, 0, -8, 5]
+
+    topics.forEach((t, i) => {
+      const ratio = t.cnt / max
+      const size  = Math.round(13 + ratio * 40)          // 13 ~ 53px
+      const color = COLORS[i % COLORS.length]
+      const rot   = rotates[i % rotates.length]
+      const weight= ratio > 0.6 ? 800 : ratio > 0.3 ? 700 : 500
+
+      const span = document.createElement('span')
+      span.className   = 'wc-word'
+      span.textContent = t.subcategory
+      span.style.cssText = `font-size:${size}px;color:${color};font-weight:${weight};transform:rotate(${rot}deg);`
+      el.appendChild(span)
+    })
+  }
+
+  // ── Top5 가로 막대 ──
+  function buildTopicsBar(topics) {
+    const el = document.getElementById('topicsBar')
+    if (!topics.length) { el.innerHTML = '<p class="empty-msg">데이터 없음</p>'; return }
+
+    const max = topics[0].cnt
+
+    topics.forEach((t, i) => {
+      const pct = Math.max(8, Math.round((t.cnt / max) * 100))
+      el.insertAdjacentHTML('beforeend', `
+        <div class="bar-item">
+          <div class="bar-label-row">
+            <span class="bar-name">${t.subcategory}</span>
+            <span class="bar-cnt">${t.cnt}개</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:0%;background:${COLORS[i % COLORS.length]}"
+                 data-target="${pct}"></div>
+          </div>
+        </div>
+      `)
+    })
+
+    // 애니메이션: 0 → target width
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.bar-fill').forEach(bar => {
+        bar.style.width = bar.dataset.target + '%'
+      })
+    })
+  }
+
+  // ── 콘텐츠 카테고리 세로 막대 (Chart.js) ──
+  function buildCategoryChart(types) {
+    const el = document.getElementById('categoryChart')
+    if (!types.length) { el.insertAdjacentHTML('afterend', '<p class="empty-msg">데이터 없음</p>'); return }
+
+    const labels = types.map(t => TYPE_LABEL[t.content_type] ?? t.content_type ?? '기타')
+    const values = types.map(t => t.cnt)
+    const colors = types.map((_, i) => COLORS[i % COLORS.length])
+
+    new Chart(el, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderRadius: 10,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.parsed.y}개`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 13, weight: '600' } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#F0E4D6' },
+            ticks: { precision: 0 }
+          }
+        }
+      }
+    })
+  }
+
+  // ── 새 파일 카드 ──
+  function buildFilesGrid(cats) {
+    const el = document.getElementById('filesGrid')
+    if (!cats.length) { el.innerHTML = '<p class="empty-msg">이번 주 저장된 파일이 없어요.</p>'; return }
+
+    cats.forEach((c, i) => {
+      const date  = c.latest ? c.latest.slice(0, 10) : ''
+      const icon  = FOLDER_ICONS[i % FOLDER_ICONS.length]
+      el.insertAdjacentHTML('beforeend', `
+        <div class="file-card">
+          <div class="file-icon">${icon}</div>
+          <div>
+            <div class="file-name">${c.category}</div>
+            <div class="file-meta">${c.cnt}개 저장 &nbsp;·&nbsp; ${date}</div>
+          </div>
+        </div>
+      `)
+    })
+  }
+
+  // ── 일별 방문 선 그래프 (Chart.js) ──
+  function buildDailyChart(daily) {
+    const el = document.getElementById('dailyChart')
+    if (!daily.length) { el.insertAdjacentHTML('afterend','<p class="empty-msg">데이터 없음</p>'); return }
+
+    const labels = daily.map(d => `${d.label}\n${d.day.slice(5)}`)
+    const values = daily.map(d => d.cnt)
+
+    new Chart(el, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          borderColor: '#5A3002',
+          backgroundColor: 'rgba(90,48,2,0.07)',
+          borderWidth: 2.5,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#5A3002',
+          pointBorderWidth: 2.5,
+          fill: true,
+          tension: 0.4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.parsed.y}개 저장`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { size: 12 },
+              maxRotation: 0,
+              callback(val, i) {
+                const parts = this.getLabelForValue(val).split('\n')
+                return parts
+              }
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#F0E4D6' },
+            ticks: { precision: 0 }
+          }
+        }
+      }
+    })
+  }
+
+  // ── 실행: 두 fetch 병렬 처리 ──
+  Promise.all([loadReport(), loadCharts()])
+</script>
+</body>
+</html>
