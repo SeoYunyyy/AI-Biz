@@ -1,0 +1,58 @@
+import os
+import httpx
+import json
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+
+
+async def analyze_thumbnail(thumbnail_url: str, title: str) -> str:
+    """GPT-4o Vision으로 썸네일 분석. 실패 시 빈 문자열 반환."""
+    if not thumbnail_url:
+        return ""
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                OPENAI_API_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": thumbnail_url,
+                                        "detail": "low",
+                                    },
+                                },
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        f'이미지는 "{title}"의 썸네일입니다. '
+                                        "다음을 간결하게 설명하세요 (150자 이내):\n"
+                                        "1. 사람이 있다면: 헤어스타일, 성별, 옷차림, 표정\n"
+                                        "2. 배경·장소\n"
+                                        "3. 텍스트·자막·그래픽 요소\n"
+                                        "4. 전반적 분위기·색감"
+                                    ),
+                                },
+                            ],
+                        }
+                    ],
+                    "max_tokens": 200,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip()
+
+    except (httpx.HTTPError, KeyError, json.JSONDecodeError) as e:
+        print(f"[thumbnail_vision] 분석 실패: {e}")
+        return ""

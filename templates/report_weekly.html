@@ -6,265 +6,269 @@
 <title>Mything - 주간 리포트</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #f5ede6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
-  .phone { width: 390px; background: #fdf8f5; border-radius: 48px; box-shadow: 0 30px 80px rgba(60,20,0,0.18); overflow: hidden; }
+  body { background: #fdf8f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #2c1206; }
 
-  .header { background: linear-gradient(135deg, #6b3a2a, #3b1f0e); color: #fdf3ec; padding: 60px 28px 40px; text-align: center; }
+  .header { background: linear-gradient(135deg, #6b3a2a, #3b1f0e); color: #fdf3ec; padding: 48px 40px 56px; }
   .header .badge { font-size: 12px; opacity: 0.7; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
-  .header h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
-  .header .subtitle { font-size: 14px; opacity: 0.7; }
+  .header h1 { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+  .header .subtitle { font-size: 15px; opacity: 0.7; }
 
-  .section { padding: 28px 20px 0; }
+  .hero-wrap { margin: -36px 40px 0; position: relative; z-index: 10; }
+  .type-hero { background: linear-gradient(135deg, #8b4513, #3b1f0e); border-radius: 22px; padding: 32px 36px; box-shadow: 0 12px 40px rgba(60,20,0,0.25); display: flex; align-items: center; gap: 28px; overflow: hidden; position: relative; }
+  .type-hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; background: rgba(255,255,255,0.05); border-radius: 50%; }
+  .type-emoji-big { font-size: 64px; flex-shrink: 0; }
+  .type-info { flex: 1; }
+  .type-label { font-size: 11px; color: rgba(253,243,236,0.6); letter-spacing: 2px; margin-bottom: 6px; }
+  .type-name { font-size: 28px; font-weight: 800; color: #fdf3ec; margin-bottom: 8px; }
+  .type-desc { font-size: 14px; color: rgba(253,243,236,0.78); line-height: 1.65; }
+  .share-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: #fdf3ec; font-size: 13px; font-weight: 600; padding: 10px 20px; border-radius: 20px; cursor: pointer; backdrop-filter: blur(10px); align-self: flex-start; }
+
+  .content { padding: 36px 40px; display: flex; flex-direction: column; gap: 36px; }
   .section-title { font-size: 12px; font-weight: 700; color: #c8a890; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 16px; }
 
-  .type-hero { margin: -24px 20px 0; background: linear-gradient(135deg, #8b4513, #3b1f0e); border-radius: 22px; padding: 28px 24px; box-shadow: 0 12px 40px rgba(60,20,0,0.25); position: relative; z-index: 10; text-align: center; overflow: hidden; }
-  .type-hero::before { content: ''; position: absolute; top: -30px; right: -30px; width: 120px; height: 120px; background: rgba(255,255,255,0.05); border-radius: 50%; }
-  .type-label { font-size: 11px; color: rgba(253,243,236,0.6); letter-spacing: 2px; margin-bottom: 8px; }
-  .type-emoji { font-size: 48px; margin-bottom: 10px; }
-  .type-name { font-size: 24px; font-weight: 800; color: #fdf3ec; margin-bottom: 8px; }
-  .type-desc { font-size: 13px; color: rgba(253,243,236,0.75); line-height: 1.6; }
-  .share-btn { margin-top: 18px; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: #fdf3ec; font-size: 13px; font-weight: 600; padding: 8px 18px; border-radius: 20px; cursor: pointer; backdrop-filter: blur(10px); }
+  /* AI 총평 */
+  .ai-card { background: #fff9f5; border-radius: 18px; padding: 24px 28px; border: 1px solid #ede0d4; }
+  .ai-title { font-size: 20px; font-weight: 800; color: #2c1206; margin-bottom: 10px; line-height: 1.35; }
+  .ai-body { font-size: 15px; color: #6b4c38; line-height: 1.75; }
+  .ai-tag { display: inline-block; background: #f5e6d8; color: #8b4513; font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-top: 14px; font-weight: 700; }
 
-  .ai-card { background: #fff9f5; border-radius: 18px; padding: 20px; border: 1px solid #ede0d4; }
-  .ai-title { font-size: 18px; font-weight: 800; color: #2c1206; margin-bottom: 10px; line-height: 1.35; }
-  .ai-body { font-size: 14px; color: #6b4c38; line-height: 1.75; }
-  .ai-tag { display: inline-block; background: #f5e6d8; color: #8b4513; font-size: 11px; padding: 4px 10px; border-radius: 20px; margin-top: 12px; font-weight: 700; }
-
-  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .stat-card { background: #fff9f5; border-radius: 18px; padding: 18px; text-align: center; border: 1px solid #ede0d4; }
-  .stat-card .emoji { font-size: 26px; margin-bottom: 8px; }
-  .stat-card .value { font-size: 26px; font-weight: 800; color: #2c1206; }
-  .stat-card .unit { font-size: 12px; color: #b08060; margin-top: 3px; }
+  /* 통계 */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .stat-card { background: #fff9f5; border-radius: 18px; padding: 20px; text-align: center; border: 1px solid #ede0d4; }
+  .stat-card .stat-emoji { font-size: 28px; margin-bottom: 10px; }
+  .stat-card .value { font-size: 28px; font-weight: 800; color: #2c1206; }
+  .stat-card .unit { font-size: 12px; color: #b08060; margin-top: 4px; }
   .stat-card.highlight { background: linear-gradient(135deg, #8b4513, #6b3a2a); border: none; }
   .stat-card.highlight .value, .stat-card.highlight .unit { color: #fdf3ec; }
 
+  /* 2열 레이아웃 (지난주 비교 + TOP5만) */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+  /* 전주 대비 */
   .compare-list { display: flex; flex-direction: column; gap: 10px; }
-  .compare-item { background: #fff9f5; border-radius: 14px; padding: 14px 16px; border: 1px solid #ede0d4; display: flex; align-items: center; gap: 12px; }
-  .compare-icon { font-size: 20px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: #f5e6d8; border-radius: 10px; flex-shrink: 0; }
+  .compare-item { background: #fff9f5; border-radius: 14px; padding: 14px 18px; border: 1px solid #ede0d4; display: flex; align-items: center; gap: 14px; }
+  .compare-icon { font-size: 20px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; background: #f5e6d8; border-radius: 10px; flex-shrink: 0; }
   .compare-text { flex: 1; }
-  .compare-topic { font-size: 13px; font-weight: 700; color: #2c1206; margin-bottom: 2px; }
+  .compare-topic { font-size: 14px; font-weight: 700; color: #2c1206; margin-bottom: 2px; }
   .compare-sub { font-size: 12px; color: #b08060; }
-  .compare-badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px; flex-shrink: 0; }
+  .compare-badge { font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; flex-shrink: 0; }
   .badge-up { background: #fde8d8; color: #c2410c; }
   .badge-down { background: #e8f0fe; color: #1d4ed8; }
   .badge-new { background: #d1fae5; color: #065f46; }
 
-  .topic-list { display: flex; flex-direction: column; gap: 12px; }
-  .topic-item { display: flex; align-items: center; gap: 12px; }
-  .topic-rank { font-size: 16px; font-weight: 800; color: #e0c8b8; width: 24px; flex-shrink: 0; }
+  /* TOP 5 */
+  .topic-list { display: flex; flex-direction: column; gap: 14px; }
+  .topic-item { display: flex; align-items: center; gap: 14px; }
+  .topic-rank { font-size: 18px; font-weight: 800; color: #e0c8b8; width: 26px; flex-shrink: 0; }
   .topic-rank.gold { color: #c8874a; }
   .topic-rank.silver { color: #a0917f; }
   .topic-rank.bronze { color: #8b6040; }
   .topic-bar-wrap { flex: 1; }
-  .topic-name { font-size: 14px; font-weight: 600; color: #2c1206; margin-bottom: 5px; }
-  .topic-bar { height: 6px; background: #f0e0d0; border-radius: 10px; overflow: hidden; }
+  .topic-name { font-size: 14px; font-weight: 600; color: #2c1206; margin-bottom: 6px; }
+  .topic-bar { height: 7px; background: #f0e0d0; border-radius: 10px; overflow: hidden; }
   .topic-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, #c8874a, #6b3a2a); }
-  .topic-count { font-size: 12px; color: #b08060; min-width: 28px; text-align: right; flex-shrink: 0; }
+  .topic-count { font-size: 13px; color: #b08060; min-width: 32px; text-align: right; flex-shrink: 0; }
 
-  .wc-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; height: 280px; position: relative; overflow: hidden; }
+  /* 워드클라우드 — 높이 키우고 꽉 차게 */
+  .wc-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; height: 340px; position: relative; overflow: hidden; }
   .wc-wrap svg { position: absolute; top: 0; left: 0; }
 
-  .heatmap-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 18px; }
-  .heatmap-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 12px; }
-  .heatmap-day-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 8px; }
-  .heatmap-label { font-size: 10px; color: #b08060; text-align: center; font-weight: 600; }
-  .heatmap-cell-week { border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 4px 8px; gap: 4px; }
-  .heatmap-date { font-size: 11px; color: #6b4c38; font-weight: 700; }
-  .heatmap-count { font-size: 10px; color: #b08060; }
-  .heatmap-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-  .heatmap-legend span { font-size: 10px; color: #b08060; }
-  .legend-cell { width: 12px; height: 12px; border-radius: 3px; }
+  /* 히트맵 */
+  .heatmap-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 22px; }
+  .heatmap-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 14px; }
+  .heatmap-day-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 8px; }
+  .heatmap-label { font-size: 11px; color: #b08060; text-align: center; font-weight: 600; }
+  .heatmap-cell-week { border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 4px 14px; gap: 4px; }
+  .heatmap-date { font-size: 13px; color: #6b4c38; font-weight: 700; }
+  .heatmap-count { font-size: 11px; color: #b08060; }
+  .heatmap-legend { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 4px; }
+  .heatmap-legend span { font-size: 11px; color: #b08060; }
+  .legend-cell { width: 13px; height: 13px; border-radius: 3px; }
 
-  .time-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 20px; }
-  .time-bars { display: flex; align-items: flex-end; gap: 6px; height: 100px; margin-bottom: 10px; }
+  /* 시간대 차트 */
+  .time-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 24px; }
+  .time-bars { display: flex; align-items: flex-end; gap: 12px; height: 130px; margin-bottom: 14px; }
   .time-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
   .time-bar { width: 100%; border-radius: 8px 8px 0 0; }
-  .time-label { font-size: 10px; color: #b08060; font-weight: 600; text-align: center; }
-  .time-count { font-size: 11px; color: #6b3a2a; font-weight: 700; }
-  .peak-badge { font-size: 12px; color: #6b3a2a; font-weight: 700; background: #f5e6d8; padding: 6px 14px; border-radius: 20px; display: flex; justify-content: center; }
+  .time-label { font-size: 11px; color: #b08060; font-weight: 600; text-align: center; }
+  .time-count { font-size: 13px; color: #6b3a2a; font-weight: 700; }
+  .peak-badge { font-size: 13px; color: #6b3a2a; font-weight: 700; background: #f5e6d8; padding: 8px 18px; border-radius: 20px; display: inline-block; }
 
-  .time-estimate { background: linear-gradient(135deg, #c8874a, #8b4513); border-radius: 18px; padding: 22px 20px; text-align: center; color: #fdf3ec; }
-  .estimate-num { font-size: 42px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
-  .estimate-unit { font-size: 16px; opacity: 0.8; margin-bottom: 12px; }
-  .estimate-sub { font-size: 13px; opacity: 0.7; line-height: 1.6; }
+  /* 콘텐츠 총량 — 트렌디 리디자인 */
+  .estimate-card { background: #2c1206; border-radius: 20px; padding: 32px 36px; color: #fdf3ec; }
+  .estimate-label { font-size: 11px; color: rgba(253,243,236,0.45); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+  .estimate-big { font-size: 60px; font-weight: 800; line-height: 1.05; margin-bottom: 28px; font-variant-numeric: tabular-nums; }
+  .estimate-big span { font-size: 26px; font-weight: 600; opacity: 0.6; margin-left: 4px; }
+  .estimate-rows { display: flex; flex-direction: column; gap: 14px; }
+  .estimate-row { display: flex; align-items: center; gap: 14px; }
+  .estimate-type-icon { font-size: 18px; width: 26px; flex-shrink: 0; }
+  .estimate-type-name { font-size: 13px; color: rgba(253,243,236,0.65); width: 64px; flex-shrink: 0; }
+  .estimate-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+  .estimate-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #c8874a, #e8a870); }
+  .estimate-mins { font-size: 13px; color: rgba(253,243,236,0.5); min-width: 40px; text-align: right; flex-shrink: 0; }
 
-  .discovery-card { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 20px; }
-  .discovery-new { display: inline-block; background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-bottom: 12px; }
-  .discovery-topic { font-size: 22px; font-weight: 800; color: #2c1206; margin-bottom: 8px; }
-  .discovery-desc { font-size: 13px; color: #6b4c38; line-height: 1.7; }
+  /* 새로운 발견 */
+  .discovery-card { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 24px 28px; }
+  .discovery-new { display: inline-block; background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; }
+  .discovery-topic { font-size: 26px; font-weight: 800; color: #2c1206; margin-bottom: 10px; }
+  .discovery-desc { font-size: 14px; color: #6b4c38; line-height: 1.7; }
 
-  .type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .type-card { background: #fff9f5; border-radius: 16px; padding: 14px 10px; text-align: center; border: 1px solid #ede0d4; }
-  .type-card .emoji { font-size: 22px; margin-bottom: 6px; }
-  .type-card .type-name { font-size: 11px; color: #b08060; margin-bottom: 4px; }
-  .type-card .type-count { font-size: 22px; font-weight: 800; color: #2c1206; }
+  /* 콘텐츠 유형 — 3열, 카드 더 크게 + 비율 바 */
+  .type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .type-card { background: #fff9f5; border-radius: 18px; padding: 22px 18px 18px; border: 1px solid #ede0d4; position: relative; overflow: hidden; }
+  .type-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .ct-emoji { font-size: 28px; }
+  .ct-name { font-size: 13px; color: #b08060; font-weight: 600; }
+  .ct-count { font-size: 36px; font-weight: 800; color: #2c1206; margin-bottom: 10px; }
+  .ct-bar-bg { height: 5px; background: #f0e0d0; border-radius: 4px; overflow: hidden; }
+  .ct-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #c8874a, #6b3a2a); }
 
+  /* 공유 모달 */
   .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.show { display: flex; }
-  .share-card { background: linear-gradient(135deg, #8b4513, #3b1f0e); border-radius: 24px; padding: 32px 28px; width: 320px; text-align: center; color: #fdf3ec; position: relative; }
+  .share-card { background: linear-gradient(135deg, #8b4513, #3b1f0e); border-radius: 24px; padding: 36px 32px; width: 340px; text-align: center; color: #fdf3ec; }
   .share-card-emoji { font-size: 56px; margin-bottom: 12px; }
   .share-card-title { font-size: 13px; opacity: 0.6; margin-bottom: 6px; letter-spacing: 1px; }
-  .share-card-type { font-size: 26px; font-weight: 800; margin-bottom: 16px; }
-  .share-card-stats { display: flex; justify-content: center; gap: 24px; margin-bottom: 20px; }
+  .share-card-type { font-size: 26px; font-weight: 800; margin-bottom: 18px; }
+  .share-card-stats { display: flex; justify-content: center; gap: 28px; margin-bottom: 22px; }
   .share-stat { text-align: center; }
-  .share-stat-num { font-size: 22px; font-weight: 800; }
+  .share-stat-num { font-size: 24px; font-weight: 800; }
   .share-stat-label { font-size: 11px; opacity: 0.6; margin-top: 2px; }
   .share-card-footer { font-size: 12px; opacity: 0.5; }
   .share-card-footer strong { opacity: 1; font-size: 14px; }
-  .share-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: center; }
-  .share-action-btn { flex: 1; padding: 10px; border-radius: 12px; border: none; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .share-actions { display: flex; gap: 10px; margin-top: 22px; }
+  .share-action-btn { flex: 1; padding: 12px; border-radius: 12px; border: none; font-size: 14px; font-weight: 700; cursor: pointer; }
   .btn-save { background: rgba(255,255,255,0.2); color: #fdf3ec; }
   .btn-close { background: rgba(255,255,255,0.1); color: rgba(253,243,236,0.7); }
 
-  .footer { padding: 32px 20px 52px; text-align: center; }
-  .footer p { font-size: 12px; color: #c8a890; line-height: 1.8; }
+  .footer { padding: 40px; text-align: center; }
+  .footer p { font-size: 13px; color: #c8a890; line-height: 1.8; }
   .footer strong { color: #6b3a2a; }
 </style>
 </head>
 <body>
-<div class="phone">
 
-  <!-- 헤더 -->
   <div class="header">
     <div class="badge">✨ Weekly Recap</div>
     <h1 id="header-week">주간 리포트</h1>
     <div class="subtitle" id="header-subtitle">나의 이번 주 취향 리포트</div>
   </div>
 
-  <!-- 취향 유형 카드 -->
-  <div style="padding: 0 20px; margin-top: -24px; position: relative; z-index: 10;">
+  <div class="hero-wrap">
     <div class="type-hero">
-      <div class="type-label">이번 주 취향 유형</div>
-      <div class="type-emoji" id="type-emoji">✨</div>
-      <div class="type-name" id="type-name">분석 중...</div>
-      <div class="type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
-      <button class="share-btn" onclick="document.getElementById('shareModal').classList.add('show')">
-        ↗ 공유하기
-      </button>
+      <div class="type-emoji-big" id="type-emoji">✨</div>
+      <div class="type-info">
+        <div class="type-label">이번 주 취향 유형</div>
+        <div class="type-name" id="type-name">분석 중...</div>
+        <div class="type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
+      </div>
+      <button class="share-btn" onclick="document.getElementById('shareModal').classList.add('show')">↗ 공유하기</button>
     </div>
   </div>
 
-  <!-- AI 총평 -->
-  <div class="section">
-    <div class="section-title">🤖 AI 총평</div>
-    <div class="ai-card">
-      <div class="ai-title" id="ai-title">이번 주도 열심히 저장하셨군요!</div>
-      <div class="ai-body" id="ai-body">데이터를 분석하는 중이에요...</div>
-      <span class="ai-tag">GPT-4o mini 분석</span>
-    </div>
-  </div>
+  <div class="content">
 
-  <!-- 통계 -->
-  <div class="section">
-    <div class="section-title">📊 이번 주 숫자</div>
-    <div class="stats-grid">
-      <div class="stat-card"><div class="emoji">🔗</div><div class="value" id="stat-total">-</div><div class="unit">저장한 링크</div></div>
-      <div class="stat-card"><div class="emoji">📚</div><div class="value" id="stat-collection">-</div><div class="unit">생성된 컬렉션</div></div>
-      <div class="stat-card highlight"><div class="emoji">🔥</div><div class="value" id="stat-streak">-</div><div class="unit">연속 저장 중!</div></div>
-      <div class="stat-card"><div class="emoji">⏱️</div><div class="value" id="stat-time">-</div><div class="unit">예상 총 시청시간</div></div>
+    <div>
+      <div class="section-title">🤖 AI 총평</div>
+      <div class="ai-card">
+        <div class="ai-title" id="ai-title">이번 주도 열심히 저장하셨군요!</div>
+        <div class="ai-body" id="ai-body">데이터를 분석하는 중이에요...</div>
+        <span class="ai-tag">GPT-4o mini 분석</span>
+      </div>
     </div>
-  </div>
 
-  <!-- 전주 대비 -->
-  <div class="section">
-    <div class="section-title">📈 지난주와 비교</div>
-    <div class="compare-list" id="compare-list">
-      <div class="compare-item">
-        <div class="compare-icon">📊</div>
-        <div class="compare-text">
-          <div class="compare-topic">데이터 불러오는 중</div>
-          <div class="compare-sub">잠시만 기다려주세요</div>
+    <div>
+      <div class="section-title">📊 이번 주 숫자</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-emoji">🔗</div><div class="value" id="stat-total">-</div><div class="unit">저장한 링크</div></div>
+        <div class="stat-card"><div class="stat-emoji">📚</div><div class="value" id="stat-collection">-</div><div class="unit">생성된 컬렉션</div></div>
+        <div class="stat-card highlight"><div class="stat-emoji">🔥</div><div class="value" id="stat-streak">-</div><div class="unit">연속 저장 중!</div></div>
+        <div class="stat-card"><div class="stat-emoji">⏱️</div><div class="value" id="stat-time">-</div><div class="unit">예상 총 시청시간</div></div>
+      </div>
+    </div>
+
+    <!-- 전주 비교 + TOP5: 2열 유지 -->
+    <div class="two-col">
+      <div>
+        <div class="section-title">📈 지난주와 비교</div>
+        <div class="compare-list" id="compare-list"></div>
+      </div>
+      <div>
+        <div class="section-title">🏆 관심 주제 TOP 5</div>
+        <div class="topic-list" id="topic-list"></div>
+      </div>
+    </div>
+
+    <!-- 워드클라우드: 단독 행 -->
+    <div>
+      <div class="section-title">☁️ 이번 주 키워드</div>
+      <div class="wc-wrap" id="wc-wrap"></div>
+    </div>
+
+    <!-- 히트맵: 단독 행 -->
+    <div>
+      <div class="section-title">📅 요일별 저장 패턴</div>
+      <div class="heatmap-wrap">
+        <div class="heatmap-day-labels">
+          <div class="heatmap-label">월</div><div class="heatmap-label">화</div>
+          <div class="heatmap-label">수</div><div class="heatmap-label">목</div>
+          <div class="heatmap-label">금</div><div class="heatmap-label">토</div>
+          <div class="heatmap-label">일</div>
+        </div>
+        <div class="heatmap-week" id="heatmap"></div>
+        <div class="heatmap-legend">
+          <span>적음</span>
+          <div class="legend-cell" style="background:#f5e6d8"></div>
+          <div class="legend-cell" style="background:#d4a574"></div>
+          <div class="legend-cell" style="background:#a0522d"></div>
+          <div class="legend-cell" style="background:#6b3a2a"></div>
+          <div class="legend-cell" style="background:#3b1f0e"></div>
+          <span>많음</span>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- TOP 5 -->
-  <div class="section">
-    <div class="section-title">🏆 관심 주제 TOP 5</div>
-    <div class="topic-list" id="topic-list">
-      <div class="topic-item">
-        <div class="topic-rank gold">1</div>
-        <div class="topic-bar-wrap"><div class="topic-name">불러오는 중...</div><div class="topic-bar"><div class="topic-fill" style="width:100%"></div></div></div>
-        <div class="topic-count">-</div>
+    <!-- 시간대: 단독 행 -->
+    <div>
+      <div class="section-title">⏰ 저장 시간대</div>
+      <div class="time-wrap">
+        <div class="time-bars" id="time-bars"></div>
+        <div class="peak-badge" id="peak-badge">분석 중...</div>
       </div>
     </div>
-  </div>
 
-  <!-- 워드클라우드 -->
-  <div class="section">
-    <div class="section-title">☁️ 이번 주 키워드</div>
-    <div class="wc-wrap" id="wc-wrap"></div>
-  </div>
-
-  <!-- 요일별 히트맵 (1주) -->
-  <div class="section">
-    <div class="section-title">📅 요일별 저장 패턴</div>
-    <div class="heatmap-wrap">
-      <div class="heatmap-day-labels">
-        <div class="heatmap-label">월</div><div class="heatmap-label">화</div>
-        <div class="heatmap-label">수</div><div class="heatmap-label">목</div>
-        <div class="heatmap-label">금</div><div class="heatmap-label">토</div>
-        <div class="heatmap-label">일</div>
-      </div>
-      <div class="heatmap-week" id="heatmap"></div>
-      <div class="heatmap-legend">
-        <span>적음</span>
-        <div class="legend-cell" style="background:#f5e6d8"></div>
-        <div class="legend-cell" style="background:#d4a574"></div>
-        <div class="legend-cell" style="background:#a0522d"></div>
-        <div class="legend-cell" style="background:#6b3a2a"></div>
-        <div class="legend-cell" style="background:#3b1f0e"></div>
-        <span>많음</span>
+    <!-- 콘텐츠 총량: 트렌디 리디자인 -->
+    <div>
+      <div class="section-title">⏱️ 이번 주 콘텐츠 총량</div>
+      <div class="estimate-card">
+        <div class="estimate-label">예상 소비 시간</div>
+        <div class="estimate-big" id="estimate-num">-</div>
+        <div class="estimate-rows" id="estimate-rows"></div>
       </div>
     </div>
-  </div>
 
-  <!-- 저장 시간대 -->
-  <div class="section">
-    <div class="section-title">⏰ 저장 시간대</div>
-    <div class="time-wrap">
-      <div class="time-bars" id="time-bars"></div>
-      <div class="peak-badge" id="peak-badge">저장 시간대 분석 중...</div>
+    <!-- 새로운 발견 -->
+    <div id="discovery-section" style="display:none;">
+      <div class="section-title">🌱 이번 주 새로운 발견</div>
+      <div class="discovery-card">
+        <span class="discovery-new">이번 주 처음!</span>
+        <div class="discovery-topic" id="discovery-topic">-</div>
+        <div class="discovery-desc" id="discovery-desc">-</div>
+      </div>
     </div>
-  </div>
 
-  <!-- 예상 시청 시간 -->
-  <div class="section">
-    <div class="section-title">⏱️ 이번 주 콘텐츠 총량</div>
-    <div class="time-estimate">
-      <div class="estimate-num" id="estimate-num">-</div>
-      <div class="estimate-unit">이번 주 저장 콘텐츠 예상 소비 시간</div>
-      <div class="estimate-sub" id="estimate-sub">데이터를 불러오는 중이에요</div>
+    <!-- 콘텐츠 유형 -->
+    <div>
+      <div class="section-title">📱 콘텐츠 유형</div>
+      <div class="type-grid" id="type-grid"></div>
     </div>
+
   </div>
 
-  <!-- 이번 주의 새로운 발견 -->
-  <div class="section" id="discovery-section" style="display:none;">
-    <div class="section-title">🌱 이번 주 새로운 발견</div>
-    <div class="discovery-card">
-      <span class="discovery-new">이번 주 처음!</span>
-      <div class="discovery-topic" id="discovery-topic">-</div>
-      <div class="discovery-desc" id="discovery-desc">-</div>
-    </div>
-  </div>
-
-  <!-- 콘텐츠 타입 -->
-  <div class="section">
-    <div class="section-title">📱 콘텐츠 유형</div>
-    <div class="type-grid" id="type-grid">
-      <div class="type-card"><div class="emoji">⏳</div><div class="type-name">불러오는 중</div><div class="type-count">-</div></div>
-    </div>
-  </div>
-
-  <!-- 푸터 -->
   <div class="footer">
-    <p>Powered by <strong>Mything</strong> × GPT-4o mini<br>매주 월요일 자동으로 생성돼요 ✨</p>
+    <p>Powered by <strong>Mything</strong> × GPT-4o mini &nbsp;·&nbsp; 매주 월요일 자동으로 생성돼요 ✨</p>
   </div>
 
-</div>
-
-<!-- 공유 모달 -->
 <div class="modal-overlay" id="shareModal" onclick="if(event.target===this)this.classList.remove('show')">
   <div class="share-card">
     <div class="share-card-title" id="share-title">주간 취향 리포트</div>
@@ -286,40 +290,44 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.7/build/d3.layout.cloud.js"></script>
 <script>
-const WC_COLORS = [
-  '#3b1f0e','#6b3a2a','#a0522d','#8b4513','#c8874a','#d4956a',
-  '#7c4a1e','#5c3317','#b87333','#cd853f','#8b6914','#a0785a',
-  '#c97b3f','#9e6240','#704214','#e8a870','#a0652a','#7a3b1e',
-];
+const WC_COLORS = ['#3b1f0e','#6b3a2a','#a0522d','#8b4513','#c8874a','#d4956a','#7c4a1e','#5c3317','#b87333','#cd853f','#8b6914','#a0785a','#c97b3f','#9e6240','#704214','#e8a870','#a0652a','#7a3b1e'];
+const AVG_MIN = {youtube:12, blog:5, naver_blog:5, news:3, naver_news:3, instagram:2, other:5};
 
 function getWeekLabel() {
   const now = new Date();
-  const month = now.getMonth() + 1;
-  const week = Math.ceil(now.getDate() / 7);
-  return `${month}월 ${week}주차`;
+  return `${now.getMonth()+1}월 ${Math.ceil(now.getDate()/7)}주차`;
 }
-
 function getUserId() {
   return new URLSearchParams(window.location.search).get('user_id') || '';
 }
 
 function renderWordCloud(topics) {
-  const words = topics.map(t => ({ text: t.subcategory, size: Math.max(10, Math.min(52, 10 + t.cnt * 4)) }));
   const wrap = document.getElementById('wc-wrap');
   wrap.innerHTML = '';
   const W = wrap.offsetWidth, H = wrap.offsetHeight;
-  if (!words.length) return;
+  if (!W || !H || !topics.length) return;
+
+  // 최댓값 기준으로 폰트 크기 스케일 — 많은 것은 크게, 적은 것은 작게
+  const maxCnt = Math.max(...topics.map(t => t.cnt));
+  const words = topics.map(t => ({
+    text: t.subcategory,
+    size: Math.round(8 + (t.cnt / maxCnt) * 72)
+  }));
+
   d3.layout.cloud()
-    .size([W, H]).words(words).padding(2)
-    .rotate(() => (Math.random() > 0.8 ? 90 : 0))
-    .font('bold').fontSize(d => d.size)
+    .size([W, H])
+    .words(words)
+    .padding(0)           // 다닥다닥 붙이기
+    .rotate(() => Math.random() > 0.75 ? 90 : 0)
+    .font('bold')
+    .fontSize(d => d.size)
     .on('end', drawn => {
       d3.select('#wc-wrap').append('svg').attr('width', W).attr('height', H)
         .append('g').attr('transform', `translate(${W/2},${H/2})`)
         .selectAll('text').data(drawn).enter().append('text')
         .style('font-size', d => `${d.size}px`)
         .style('font-weight', '700')
-        .style('font-family', '-apple-system, sans-serif')
+        .style('font-family', '-apple-system,sans-serif')
         .style('fill', (_, i) => WC_COLORS[i % WC_COLORS.length])
         .attr('text-anchor', 'middle')
         .attr('transform', d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
@@ -336,11 +344,9 @@ function renderHeatmap(dailyCounts) {
     const cell = document.createElement('div');
     cell.className = 'heatmap-cell-week';
     const level = d.cnt === 0 ? 0 : Math.ceil((d.cnt / maxH) * 5);
-    cell.style.background = colors[level];
-    cell.style.borderRadius = '10px';
-    const dateNum = d.day.slice(-2).replace(/^0/, '');
     const light = level >= 3;
-    cell.innerHTML = `<div class="heatmap-date" style="color:${light ? '#fdf3ec' : '#6b4c38'}">${dateNum}</div><div class="heatmap-count" style="color:${light ? 'rgba(253,243,236,0.7)' : '#b08060'}">${d.cnt}개</div>`;
+    cell.style.background = colors[level];
+    cell.innerHTML = `<div class="heatmap-date" style="color:${light?'#fdf3ec':'#6b4c38'}">${d.day.slice(-2).replace(/^0/,'')}</div><div class="heatmap-count" style="color:${light?'rgba(253,243,236,0.7)':'#b08060'}">${d.cnt}개</div>`;
     el.appendChild(cell);
   });
 }
@@ -352,68 +358,95 @@ function renderTimeBars(timeDist, peakSlot) {
   timeDist.forEach(d => {
     const col = document.createElement('div');
     col.className = 'time-col';
-    const barH = Math.round((d.count / maxT) * 90);
-    const peak = d.peak;
+    const barH = Math.round((d.count / maxT) * 120);
     col.innerHTML = `
-      <div class="time-count" style="${peak ? 'color:#6b3a2a;font-weight:800' : ''}">${d.count}</div>
-      <div class="time-bar" style="height:${barH}px;background:${d.color};${peak ? 'box-shadow:0 4px 12px rgba(107,58,42,0.35)' : ''}"></div>
-      <div class="time-label" style="${peak ? 'color:#6b3a2a;font-weight:800' : ''}">${d.label}<br><span style="font-size:9px">${d.sub}</span></div>`;
+      <div class="time-count" style="${d.peak?'color:#6b3a2a;font-weight:800':''}">${d.count}</div>
+      <div class="time-bar" style="height:${barH}px;background:${d.color};${d.peak?'box-shadow:0 4px 12px rgba(107,58,42,0.35)':''}"></div>
+      <div class="time-label" style="${d.peak?'color:#6b3a2a;font-weight:800':''}">${d.label}<br><span style="font-size:10px">${d.sub}</span></div>`;
     container.appendChild(col);
   });
   const peakMap = {'새벽':'새벽 시간에','오전':'오전에','오후':'오후에','저녁':'저녁 시간에','심야':'심야에'};
-  document.getElementById('peak-badge').textContent = `${peakMap[peakSlot] || peakSlot} 가장 활발해요`;
+  document.getElementById('peak-badge').textContent = `${peakMap[peakSlot]||peakSlot} 가장 활발해요`;
 }
 
 function renderTopics(topics) {
   const ranks = ['gold','silver','bronze','',''];
   const el = document.getElementById('topic-list');
   el.innerHTML = '';
-  const maxCnt = topics.length ? topics[0].cnt : 1;
-  topics.slice(0, 5).forEach((t, i) => {
-    const pct = Math.round((t.cnt / maxCnt) * 100);
+  const maxCnt = topics[0]?.cnt || 1;
+  topics.slice(0,5).forEach((t, i) => {
     el.innerHTML += `
       <div class="topic-item">
         <div class="topic-rank ${ranks[i]}">${i+1}</div>
         <div class="topic-bar-wrap">
           <div class="topic-name">${t.subcategory}</div>
-          <div class="topic-bar"><div class="topic-fill" style="width:${pct}%"></div></div>
+          <div class="topic-bar"><div class="topic-fill" style="width:${Math.round(t.cnt/maxCnt*100)}%"></div></div>
         </div>
         <div class="topic-count">${t.cnt}개</div>
       </div>`;
   });
 }
 
-function renderContentTypes(types) {
+function renderEstimate(contentTypes, estimatedTime) {
+  // 숫자 파싱: "1시간 18분" → big display
+  document.getElementById('estimate-num').innerHTML = estimatedTime
+    ? estimatedTime.replace('시간', '<span>시간</span>').replace('분', '<span>분</span>')
+    : '-';
+
+  // 타입별 예상 분수 계산
+  const totalMins = contentTypes.reduce((s, t) => s + (AVG_MIN[t.content_type]||5) * t.cnt, 0) || 1;
+  const el = document.getElementById('estimate-rows');
+  el.innerHTML = '';
+  contentTypes.slice(0,6).forEach(t => {
+    const mins = (AVG_MIN[t.content_type]||5) * t.cnt;
+    const pct = Math.round((mins / totalMins) * 100);
+    const h = Math.floor(mins / 60), m = mins % 60;
+    const timeStr = h ? `${h}h ${m}m` : `${m}m`;
+    el.innerHTML += `
+      <div class="estimate-row">
+        <div class="estimate-type-icon">${t.emoji}</div>
+        <div class="estimate-type-name">${t.label}</div>
+        <div class="estimate-bar-wrap"><div class="estimate-bar-fill" style="width:${pct}%"></div></div>
+        <div class="estimate-mins">${timeStr}</div>
+      </div>`;
+  });
+}
+
+function renderContentTypes(types, totalCount) {
   const el = document.getElementById('type-grid');
   el.innerHTML = '';
-  types.slice(0, 6).forEach(t => {
+  const maxCnt = Math.max(...types.map(t => t.cnt), 1);
+  types.forEach(t => {
+    const pct = Math.round((t.cnt / maxCnt) * 100);
     el.innerHTML += `
       <div class="type-card">
-        <div class="emoji">${t.emoji}</div>
-        <div class="type-name">${t.label}</div>
-        <div class="type-count">${t.cnt}</div>
+        <div class="type-card-top">
+          <div class="ct-emoji">${t.emoji}</div>
+          <div class="ct-name">${t.label}</div>
+        </div>
+        <div class="ct-count">${t.cnt}</div>
+        <div class="ct-bar-bg"><div class="ct-bar-fill" style="width:${pct}%"></div></div>
       </div>`;
   });
 }
 
 function renderComparison(comparison) {
-  const iconMap = {'요리':'🍳','레시피':'🍳','기술':'💻','개발':'💻','카페':'☕','맛집':'🍽️','여행':'✈️','건강':'💪','운동':'🏃','패션':'👗','뷰티':'💄','인테리어':'🏠','독서':'📚','영화':'🎬','음악':'🎵'};
+  const iconMap = {'요리':'🍳','레시피':'🍳','기술':'💻','개발':'💻','카페':'☕','맛집':'🍽️','여행':'✈️','건강':'💪','운동':'🏃','jazz':'🎷','음악':'🎵','독서':'📚','영화':'🎬','지원금':'💰','신청':'📋','뉴스':'📰','패션':'👗'};
   const el = document.getElementById('compare-list');
   el.innerHTML = '';
   comparison.forEach(c => {
-    const icon = iconMap[c.topic] || '📌';
-    let badge = '';
-    if (c.change === 'new') badge = `<div class="compare-badge badge-new">NEW</div>`;
-    else if (c.change === 'up') badge = `<div class="compare-badge badge-up">▲ ${c.pct}%</div>`;
-    else badge = `<div class="compare-badge badge-down">▼ ${Math.abs(c.pct)}%</div>`;
-    const sub = c.change === 'new' ? '이번 주 처음 관심을 가지셨어요!' : c.change === 'up' ? '지난주보다 관심이 늘었어요' : '지난주보다 관심이 줄었어요';
+    const matchKey = Object.keys(iconMap).find(k => c.topic.toLowerCase().includes(k));
+    const icon = matchKey ? iconMap[matchKey] : '📌';
+    const badge = c.change==='new'
+      ? `<div class="compare-badge badge-new">NEW</div>`
+      : c.change==='up'
+      ? `<div class="compare-badge badge-up">▲ ${c.pct}%</div>`
+      : `<div class="compare-badge badge-down">▼ ${Math.abs(c.pct)}%</div>`;
+    const sub = c.change==='new' ? '이번 주 처음 관심을 가지셨어요!' : c.change==='up' ? '지난주보다 관심이 늘었어요' : '지난주보다 관심이 줄었어요';
     el.innerHTML += `
       <div class="compare-item">
         <div class="compare-icon">${icon}</div>
-        <div class="compare-text">
-          <div class="compare-topic">${c.topic}</div>
-          <div class="compare-sub">${sub}</div>
-        </div>
+        <div class="compare-text"><div class="compare-topic">${c.topic}</div><div class="compare-sub">${sub}</div></div>
         ${badge}
       </div>`;
   });
@@ -440,61 +473,43 @@ async function loadReport() {
       return;
     }
 
-    // 취향 유형
     document.getElementById('type-emoji').textContent = rep.personality_emoji || '✨';
-    document.getElementById('type-name').textContent = rep.personality_type || rep.nickname || (rep.top_topic + ' 탐험가');
+    document.getElementById('type-name').textContent = rep.personality_type || rep.nickname || rep.top_topic + ' 탐험가';
     document.getElementById('type-desc').textContent = rep.personality_desc || '';
 
-    // AI 총평
     const summary = rep.ai_summary || '';
     const firstSentence = summary.split(/[.!?]/)[0];
-    document.getElementById('ai-title').textContent = firstSentence ? firstSentence + '!' : '이번 주도 열심히 저장하셨군요!';
-    document.getElementById('ai-body').textContent = summary || '';
+    document.getElementById('ai-title').textContent = firstSentence ? firstSentence + '.' : '이번 주도 열심히 저장하셨군요!';
+    document.getElementById('ai-body').textContent = summary;
 
-    // 통계
     document.getElementById('stat-total').textContent = rep.total + '개';
     document.getElementById('stat-collection').textContent = rep.collection_count + '개';
     document.getElementById('stat-streak').textContent = rep.streak + '일';
     document.getElementById('stat-time').textContent = rep.estimated_time || '-';
 
-    // 전주 대비
-    if (rep.comparison && rep.comparison.length) renderComparison(rep.comparison);
+    if (rep.comparison?.length) renderComparison(rep.comparison);
+    if (stats.top_topics?.length) renderTopics(stats.top_topics);
+    if (stats.all_topics?.length) renderWordCloud(stats.all_topics);
+    if (stats.daily_counts?.length) renderHeatmap(stats.daily_counts);
+    if (rep.time_distribution?.length) renderTimeBars(rep.time_distribution, rep.peak_slot);
 
-    // TOP 5
-    if (stats.top_topics && stats.top_topics.length) renderTopics(stats.top_topics);
+    if (stats.content_types?.length) {
+      renderEstimate(stats.content_types, rep.estimated_time);
+      renderContentTypes(stats.content_types, rep.total);
+    }
 
-    // 워드클라우드
-    if (stats.all_topics && stats.all_topics.length) renderWordCloud(stats.all_topics);
-
-    // 히트맵
-    if (stats.daily_counts && stats.daily_counts.length) renderHeatmap(stats.daily_counts);
-
-    // 시간대
-    if (rep.time_distribution && rep.time_distribution.length) renderTimeBars(rep.time_distribution, rep.peak_slot);
-
-    // 예상 시청시간
-    document.getElementById('estimate-num').textContent = rep.estimated_time || '-';
-    const typeSummary = (stats.content_types || []).slice(0,3).map(t => `${t.label} ${t.cnt}개`).join(' · ');
-    document.getElementById('estimate-sub').textContent = (typeSummary ? typeSummary + '\n' : '') + '전부 다 보셨다면 알찬 한 주였을 거예요 😄';
-
-    // 새로운 발견
     if (rep.new_discovery) {
       document.getElementById('discovery-section').style.display = '';
       document.getElementById('discovery-topic').textContent = rep.new_discovery.topic;
-      document.getElementById('discovery-desc').textContent = `지난주까지는 없었던 관심사예요. ${rep.new_discovery.topic}에 대한 새로운 관심이 생기셨나봐요. 다음 주엔 더 많이 저장하게 될지도 몰라요!`;
+      document.getElementById('discovery-desc').textContent = `지난주까지는 없었던 관심사예요. ${rep.new_discovery.topic}에 새로운 관심이 생기셨나봐요. 다음 주엔 더 많이 저장하게 될지도 몰라요!`;
     }
 
-    // 콘텐츠 타입
-    if (stats.content_types && stats.content_types.length) renderContentTypes(stats.content_types);
-
-    // 공유 모달 업데이트
     document.getElementById('share-emoji').textContent = rep.personality_emoji || '✨';
     document.getElementById('share-type').textContent = rep.personality_type || rep.nickname || '-';
     document.getElementById('share-total').textContent = rep.total;
     document.getElementById('share-streak').textContent = rep.streak + '일';
     document.getElementById('share-time').textContent = rep.estimated_time || '-';
 
-    // 헤더 부제목
     const nick = rep.personality_type || rep.nickname;
     if (nick) document.getElementById('header-subtitle').textContent = nick + '의 이번 주 취향 리포트';
 

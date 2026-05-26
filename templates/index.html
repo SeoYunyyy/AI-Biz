@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Keepit</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@latest/dist/web/static/pretendard.css" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <nav>
+      <a class="logo" href="/">
+        <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100" height="100" rx="22" fill="#5A3002"/>
+          <line x1="28" y1="22" x2="28" y2="78" stroke="white" stroke-width="5" stroke-linecap="round"/>
+          <line x1="72" y1="50" x2="33" y2="50" stroke="white" stroke-width="5" stroke-linecap="round"/>
+          <line x1="33" y1="50" x2="52" y2="28" stroke="white" stroke-width="5" stroke-linecap="round"/>
+          <line x1="33" y1="50" x2="52" y2="72" stroke="white" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+        <span class="logo-text">eepit</span>
+      </a>
+      <div class="nav-btns">
+        <button id="btn-archives">아카이브</button>
+        <button id="btn-reminders">리마인더</button>
+        <button id="btn-report">월간 레포트</button>
+        <button id="btn-weekly-report">주간 레포트</button>
+      </div>
+    </nav>
+
+    <div class="page-wrapper">
+      <!-- 좌측 사이드바: 생성된 그룹 목록 -->
+      <aside class="left-sidebar" id="left-sidebar">
+        <div class="sidebar-header">내 그룹</div>
+        <div id="group-list" class="group-list"></div>
+      </aside>
+
+      <!-- 메인 콘텐츠 -->
+      <main class="main-content">
+        <section class="hero">
+          <h1 class="hero-title">오늘은 무엇을 Keep하고 싶나요?</h1>
+          <p class="hero-sub">키핏이 저장하고 요약하고 다시 알려드려요</p>
+
+          <!-- Top 5 폴더 (JS로 동적 생성) -->
+          <div id="folder-grid" class="folder-grid">
+            <div class="folder-placeholder">저장된 콘텐츠가 없어요</div>
+          </div>
+        </section>
+
+        <section class="prompt-section">
+          <div class="prompt-box" id="prompt-box">
+            <input
+              type="text"
+              id="prompt-input"
+              class="prompt-input"
+              placeholder="URL을 붙여넣거나 찾고 싶은 자료를 말해보세요"
+              autocomplete="off"
+            />
+            <button id="submit-btn" class="prompt-btn">&#8594;</button>
+          </div>
+          <p class="hint">마감기한 추가 예시: https://example.com 마감: 2026-06-01</p>
+        </section>
+
+        <section id="results" class="results-section"></section>
+      </main>
+
+      <!-- 우측 슬라이드 패널 (그룹 상세 / AI 채팅) -->
+      <div class="right-panel" id="right-panel">
+        <div class="right-panel-inner">
+          <div class="panel-header">
+            <span id="panel-title" class="panel-title"></span>
+            <button id="panel-close" class="panel-close-btn">접기 ›</button>
+          </div>
+          <div id="panel-body" class="panel-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 아카이브·리마인더·레포트 모달 -->
+    <div id="modal" class="modal">
+      <div class="modal-panel">
+        <button id="modal-close" class="modal-close">&times;</button>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- 그룹 수정 모달 (Glassmorphism) -->
+    <div id="group-edit-modal" class="group-edit-modal">
+      <div class="glass-panel">
+        <div class="group-edit-header">
+          <input type="text" id="group-edit-name" class="group-name-input" />
+          <button id="group-edit-close" class="edit-close-btn">&times;</button>
+        </div>
+        <div id="group-edit-items" class="group-edit-items"></div>
+        <div class="group-edit-footer">
+          <button id="group-edit-save" class="save-btn">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+  </body>
+</html>
