@@ -7,7 +7,6 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 from flask import Flask, render_template, jsonify
 
-from database.db import init_db
 from routes.archive import archive_bp
 from routes.search import search_bp
 from routes.reminder import reminder_bp
@@ -43,7 +42,6 @@ def handle_exception(e):
 
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)
 
 # Flask 앱 초기화 및 기능별 Blueprint 등록, 서버 실행

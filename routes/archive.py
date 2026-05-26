@@ -1,80 +1,99 @@
 # ── 아카이브 (URL 저장 / 카테고리 조회 / 아이템 조회) ──
 
-import json
+import os
 from flask import Blueprint, request, jsonify
-from database.db import get_db
+from database.db import get_db, row_to_item
 from services.fetcher import fetch_url_content
 from services.analyzer import analyze_content
+from services.category_mapper import map_topics_to_category
 
 archive_bp = Blueprint('archive', __name__)
+
+USER_ID = os.getenv('SUPABASE_USER_ID')
 
 
 @archive_bp.route('/api/save', methods=['POST'])
 def save():
-    data = request.json
-    url = data.get('url', '').strip()
+    data     = request.json
+    url      = data.get('url', '').strip()
     deadline = data.get('deadline')
 
     if not url:
         return jsonify({'error': 'URL을 입력해주세요'}), 400
 
+    if not USER_ID:
+        return jsonify({'error': '.env에 SUPABASE_USER_ID를 설정해주세요'}), 500
+
     try:
-        content = fetch_url_content(url)
+        content  = fetch_url_content(url)
         analysis = analyze_content(content, deadline)
     except Exception as e:
         return jsonify({'error': f'분석 중 오류: {str(e)}'}), 500
 
-    thumbnail = content.get('thumbnail', '')
+    subcategory = (analysis.get('subcategory') or '').strip()
+    metadata    = {'category': analysis.get('category', '기타')}
+    if deadline:
+        metadata['deadline'] = deadline
 
-    conn = get_db()
-    conn.execute(
-        'INSERT INTO items (url, title, category, subcategory, summary, content_type, tags, deadline, thumbnail) VALUES (?,?,?,?,?,?,?,?,?)',
-        (
-            url, analysis['title'], analysis['category'], analysis['subcategory'],
-            analysis.get('summary'), analysis['content_type'],
-            json.dumps(analysis.get('tags', []), ensure_ascii=False), deadline,
-            thumbnail
-        )
-    )
-    conn.commit()
-    conn.close()
+    row = {
+        'user_id':          USER_ID,
+        'url':              url,
+        'title':            analysis.get('title', ''),
+        'description':      analysis.get('summary'),
+        'thumbnail_url':    content.get('thumbnail', ''),
+        'content_type':     analysis.get('content_type', 'other'),
+        'topics':           [subcategory] if subcategory else [],
+        'hashtags':         analysis.get('tags', []),
+        'analysis_status':  'completed',
+        'metadata':         metadata,
+    }
 
-    return jsonify({'success': True, 'item': {**analysis, 'url': url, 'thumbnail': thumbnail}})
+    db     = get_db()
+    result = db.table('contents').insert(row).execute()
+    saved  = result.data[0] if result.data else row
+
+    return jsonify({'success': True, 'item': row_to_item(saved)})
 
 
 @archive_bp.route('/api/categories')
 def categories():
-    conn = get_db()
-    rows = conn.execute(
-        'SELECT category, subcategory, COUNT(*) as count FROM items GROUP BY category, subcategory ORDER BY count DESC'
-    ).fetchall()
-    conn.close()
+    db    = get_db()
+    query = db.table('contents').select('metadata, topics')
+    if USER_ID:
+        query = query.eq('user_id', USER_ID)
+    rows = query.execute().data
 
     cats = {}
     for row in rows:
-        cat = row['category']
-        if cat not in cats:
-            cats[cat] = []
-        cats[cat].append({'name': row['subcategory'], 'count': row['count']})
+        metadata = row.get('metadata') or {}
+        topics   = row.get('topics') or []
+        cat = metadata.get('category') or map_topics_to_category(topics)
+        sub = topics[0] if topics else '기타'
+        cats.setdefault(cat, {})
+        cats[cat][sub] = cats[cat].get(sub, 0) + 1
 
-    return jsonify(cats)
+    return jsonify({
+        cat: [{'name': sub, 'count': cnt}
+              for sub, cnt in sorted(subs.items(), key=lambda x: -x[1])]
+        for cat, subs in cats.items()
+    })
 
 
 @archive_bp.route('/api/items')
 def items():
-    category = request.args.get('category', '')
+    category    = request.args.get('category', '')
     subcategory = request.args.get('subcategory', '')
 
-    conn = get_db()
-    rows = conn.execute(
-        'SELECT * FROM items WHERE category=? AND subcategory=? ORDER BY created_at DESC',
-        (category, subcategory)
-    ).fetchall()
-    conn.close()
+    db    = get_db()
+    query = db.table('contents').select('*').order('saved_at', desc=True)
+    if USER_ID:
+        query = query.eq('user_id', USER_ID)
+    all_rows = query.execute().data
 
-    result = [dict(r) for r in rows]
-    for r in result:
-        r['tags'] = json.loads(r['tags']) if r['tags'] else []
+    result = [
+        row_to_item(r) for r in all_rows
+        if row_to_item(r)['category'] == category and row_to_item(r)['subcategory'] == subcategory
+    ]
 
     return jsonify({'items': result})
 

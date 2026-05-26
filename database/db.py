@@ -1,49 +1,50 @@
-# ── DB 연결 및 초기화 ──
+# ── Supabase 클라이언트 연결 ──
+# Supabase SQL Editor에서 아래 SQL을 먼저 실행해주세요:
+#
+# CREATE TABLE IF NOT EXISTS groups (
+#     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+#     name TEXT NOT NULL,
+#     item_ids JSONB DEFAULT '[]'::jsonb,
+#     created_at TIMESTAMPTZ DEFAULT NOW()
+# );
 
-import sqlite3
-from pathlib import Path
+import os
+from dotenv import load_dotenv
+from supabase import create_client, Client
+from services.category_mapper import map_topics_to_category
 
-DB_PATH = Path(__file__).parent.parent / 'keepit.db'
+load_dotenv()
+
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("SUPABASE_URL 또는 SUPABASE_SERVICE_KEY 환경변수가 없습니다. .env 파일을 확인하세요.")
+
+_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_db() -> Client:
+    return _client
 
 
-def init_db():
-    conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS items (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            url         TEXT NOT NULL,
-            title       TEXT,
-            category    TEXT,
-            subcategory TEXT,
-            summary     TEXT,
-            content_type TEXT,
-            tags        TEXT,
-            deadline    TEXT,
-            thumbnail   TEXT DEFAULT '',
-            created_at  TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    # 기존 DB에 thumbnail 컬럼이 없으면 추가
-    try:
-        conn.execute("ALTER TABLE items ADD COLUMN thumbnail TEXT DEFAULT ''")
-        conn.commit()
-    except Exception:
-        pass
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS groups (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            name       TEXT NOT NULL,
-            item_ids   TEXT DEFAULT '[]',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+def row_to_item(row: dict) -> dict:
+    # contents 테이블 row → 프론트엔드 item 형식으로 변환
+    metadata = row.get('metadata') or {}
+    topics   = row.get('topics') or []
+    category = metadata.get('category') or map_topics_to_category(topics)
+    return {
+        'id':           row.get('id', ''),
+        'url':          row.get('url', ''),
+        'title':        row.get('title', ''),
+        'category':     category,
+        'subcategory':  topics[0] if topics else '-',
+        'summary':      row.get('description', ''),
+        'content_type': row.get('content_type', 'other'),
+        'tags':         row.get('hashtags') or [],
+        'thumbnail':    row.get('thumbnail_url', ''),
+        'deadline':     metadata.get('deadline'),
+        'created_at':   row.get('saved_at', ''),
+    }
 
-# SQLite DB 연결 반환 및 items 테이블 초기화
+# Supabase 클라이언트 반환 및 contents row → item dict 변환 헬퍼
