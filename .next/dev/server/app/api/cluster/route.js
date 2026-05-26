@@ -1,0 +1,11 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/cluster/route.js")
+R.c("server/chunks/app_api_cluster_route_ts_0j-7359._.js")
+R.c("server/chunks/node_modules_next_0ezs-2m._.js")
+R.c("server/chunks/node_modules_@supabase_postgrest-js_dist_index_mjs_0uel2xe._.js")
+R.c("server/chunks/node_modules_@supabase_auth-js_dist_module_00jw3pg._.js")
+R.c("server/chunks/node_modules_openai_0s.2wkl._.js")
+R.c("server/chunks/node_modules_0_hdopb._.js")
+R.c("server/chunks/[root-of-the-server]__0fd3-th._.js")
+R.c("server/chunks/_next-internal_server_app_api_cluster_route_actions_0th59jv.js")
+R.m("[project]/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/app/api/cluster/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)")
+module.exports=R.m("[project]/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/app/api/cluster/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)").exports
