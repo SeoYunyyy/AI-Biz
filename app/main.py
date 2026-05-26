@@ -11,6 +11,7 @@ from app.services.metadata.dispatcher import extract as dispatch
 from app.services.ai_classifier import classify
 from app.services.embedding import run as embed, generate_embedding
 from app.services.thumbnail_vision import analyze_thumbnail
+from app.services.chat import process_chat
 from app.services.database import (
     save_content,
     update_content,
@@ -38,6 +39,10 @@ class SearchRequest(BaseModel):
     query: str
     user_id: str
     limit: int = 5
+
+class ChatRequest(BaseModel):
+    query: str
+    user_id: str
 
 
 # ── 헬스체크 ───────────────────────────────────────────────────────────────────
@@ -197,3 +202,20 @@ async def create_collection(user_id: str, name: str):
     if not collection_id:
         raise HTTPException(status_code=500, detail="폴더 생성 실패")
     return {"collection_id": collection_id, "name": name}
+
+
+# ── 채팅 ───────────────────────────────────────────────────────────────────────
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    """
+    자연어 채팅 인터페이스.
+
+    의도 자동 파악 후 처리:
+    - search  : 콘텐츠 검색 → 결과 없으면 유도 질문
+    - deadline: 마감기한 정리
+    - folder  : 유사 폴더 감지 → 확인 요청
+    - cleanup : 만료 콘텐츠 정리 안내
+    """
+    result = await process_chat(req.user_id, req.query)
+    return result
