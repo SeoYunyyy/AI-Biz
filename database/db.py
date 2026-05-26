@@ -25,7 +25,22 @@ def init_db():
             content_type TEXT,
             tags        TEXT,
             deadline    TEXT,
+            thumbnail   TEXT DEFAULT '',
             created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    # 기존 DB에 thumbnail 컬럼이 없으면 추가
+    try:
+        conn.execute("ALTER TABLE items ADD COLUMN thumbnail TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS groups (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            item_ids   TEXT DEFAULT '[]',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()

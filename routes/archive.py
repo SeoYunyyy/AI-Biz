@@ -24,19 +24,22 @@ def save():
     except Exception as e:
         return jsonify({'error': f'분석 중 오류: {str(e)}'}), 500
 
+    thumbnail = content.get('thumbnail', '')
+
     conn = get_db()
     conn.execute(
-        'INSERT INTO items (url, title, category, subcategory, summary, content_type, tags, deadline) VALUES (?,?,?,?,?,?,?,?)',
+        'INSERT INTO items (url, title, category, subcategory, summary, content_type, tags, deadline, thumbnail) VALUES (?,?,?,?,?,?,?,?,?)',
         (
             url, analysis['title'], analysis['category'], analysis['subcategory'],
             analysis.get('summary'), analysis['content_type'],
-            json.dumps(analysis.get('tags', []), ensure_ascii=False), deadline
+            json.dumps(analysis.get('tags', []), ensure_ascii=False), deadline,
+            thumbnail
         )
     )
     conn.commit()
     conn.close()
 
-    return jsonify({'success': True, 'item': {**analysis, 'url': url}})
+    return jsonify({'success': True, 'item': {**analysis, 'url': url, 'thumbnail': thumbnail}})
 
 
 @archive_bp.route('/api/categories')
