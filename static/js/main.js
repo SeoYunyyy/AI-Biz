@@ -507,8 +507,25 @@ document.getElementById('btn-report').addEventListener('click', async () => {
     `)
 })
 
+<<<<<<< HEAD
 // ── 초기 로드 ──
 loadTopFolders()
 loadGroups()
 
 // URL 저장 시 결과 카드 표시, 자연어 입력 시 AI 채팅 패널 슬라이드 오픈 / 폴더 클릭 시 카테고리 상세 패널 표시 / 그룹 생성 시 좌측 사이드바 업데이트
+=======
+// 주간 레포트 — 전용 페이지로 이동
+document.getElementById('btn-weekly-report').addEventListener('click', () => {
+    window.location.href = '/weekly-report'
+})
+
+// 닫기 이벤트
+document.getElementById('modal-close').addEventListener('click', closeModal)
+modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
+
+// 입력 이벤트
+submitBtn.addEventListener('click', handleSubmit)
+promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
+
+// URL 입력 시 저장, 자연어 입력 시 검색 / 네비게이션 버튼으로 아카이브·리마인더·월간 레포트·주간 레포트 모달 표시
+>>>>>>> 874c95a539044f0e0a1ed238f1a1144146799d25
