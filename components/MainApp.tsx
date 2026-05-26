@@ -7,6 +7,7 @@ import { ChatInput } from './ChatInput';
 import { CollectionStrip } from './CollectionStrip';
 import { Sidebar } from './Sidebar';
 import { Toast } from './Toast';
+import { LoginPage } from './LoginPage';
 import type { ChatMessage, Collection, Content, ContentCard } from '@/types';
 
 let msgIdCounter = 0;
@@ -23,20 +24,16 @@ export function MainApp() {
   const [isClustering, setIsClustering] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // ── 익명 로그인 ──────────────────────────────────────────────
+  // ── 로그인 상태 확인 ──────────────────────────────────────────
   useEffect(() => {
-    const init = async () => {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUserId(session.user.id);
-      } else {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (data?.user) setUserId(data.user.id);
-        if (error) console.error('auth error:', error);
-      }
-    };
-    init();
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUserId(session.user.id);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // ── 데이터 로드 ──────────────────────────────────────────────
@@ -210,14 +207,7 @@ export function MainApp() {
   };
 
   if (!userId) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-3xl mb-3 animate-pulse">✨</div>
-          <p className="text-sm text-gray-400">로딩 중...</p>
-        </div>
-      </div>
-    );
+    return <LoginPage />;
   }
 
   return (
