@@ -71,6 +71,11 @@ async def update_content(content_id: str, metadata: dict, analysis: dict) -> boo
                     "topics": analysis.get("tags", []),
                     "hashtags": [f"#{t}" for t in analysis.get("tags", [])],
                     "intent": [analysis.get("save_purpose", "")],
+                    "category": analysis.get("category", "기타/알쓸신잡"),      # 추가
+                    "sub_category": analysis.get("sub_category", ""),           # 추가
+                    "has_deadline": analysis.get("has_deadline", False),         # 추가
+                    "deadline_date": analysis.get("deadline_date"),              # 추가
+                    "deadline_note": analysis.get("deadline_note"),              # 추가
                     # 상태 업데이트
                     "analysis_status": "completed",
                     "analyzed_at": datetime.now(timezone.utc).isoformat(),
@@ -148,4 +153,25 @@ async def search_contents(user_id: str, query_embedding: list[float], limit: int
 
     except httpx.HTTPError as e:
         print(f"[database] 검색 오류: {e}")
+        return []
+
+# 마감기한 조회 함수
+async def get_deadlines(user_id: str) -> list[dict]:
+    """마감기한 있는 콘텐츠를 마감일 오름차순으로 반환"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "has_deadline": "eq.true",
+                    "select": "id,title,url,deadline_date,deadline_note,thumbnail_url",
+                    "order": "deadline_date.asc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 마감기한 조회 오류: {e}")
         return []

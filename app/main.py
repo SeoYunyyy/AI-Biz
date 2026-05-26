@@ -26,6 +26,7 @@ app = FastAPI(title="Keepit API")
 class IngestRequest(BaseModel):
     url: str
     user_id: str
+    instruction: str = ""   # 추가 - "생비과제 폴더에 넣어줘" 같은 지시사항
 
 class SearchRequest(BaseModel):
     query: str
@@ -73,7 +74,7 @@ async def ingest(req: IngestRequest):
         metadata = await dispatch(req.url)
 
         # 4. AI 분류
-        analysis = await classify(metadata)
+        analysis = await classify(metadata, user_instruction=req.instruction)
 
         # 5. 임베딩 생성 + embeddings 테이블 저장
         await embed(content_id, metadata, analysis)
@@ -113,3 +114,12 @@ async def search(req: SearchRequest):
 
     results = await search_contents(req.user_id, query_embedding, req.limit)
     return {"results": results}
+
+
+# 마감기한 엔드포인트 추가
+@app.get("/deadlines/{user_id}")
+async def get_deadlines(user_id: str):
+    """마감기한 있는 링크를 마감순으로 반환"""
+    from app.services.database import get_deadlines
+    results = await get_deadlines(user_id)
+    return {"deadlines": results}
