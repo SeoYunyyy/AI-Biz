@@ -184,6 +184,11 @@ document.getElementById('btn-report').addEventListener('click', async () => {
     `)
 })
 
+// 주간 레포트 — 전용 페이지로 이동
+document.getElementById('btn-weekly-report').addEventListener('click', () => {
+    window.location.href = '/weekly-report'
+})
+
 // 닫기 이벤트
 document.getElementById('modal-close').addEventListener('click', closeModal)
 modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
@@ -192,4 +197,4 @@ modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
 submitBtn.addEventListener('click', handleSubmit)
 promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
 
-// URL 입력 시 저장, 자연어 입력 시 검색 / 네비게이션 버튼으로 아카이브·리마인더·월간 레포트 모달 표시
+// URL 입력 시 저장, 자연어 입력 시 검색 / 네비게이션 버튼으로 아카이브·리마인더·월간 레포트·주간 레포트 모달 표시
