@@ -46,7 +46,7 @@ async def save_content(user_id: str, url: str) -> dict | None:
         return None
 
 
-async def update_content(content_id: str, metadata: dict, analysis: dict) -> bool:
+async def update_content(content_id: str, metadata: dict, analysis: dict, collection_id: str | None = None) -> bool:
     """
     2단계: 크롤링 + AI 분석 완료 후 나머지 필드 업데이트
     analysis_status = 'completed'
@@ -79,6 +79,7 @@ async def update_content(content_id: str, metadata: dict, analysis: dict) -> boo
                     # 상태 업데이트
                     "analysis_status": "completed",
                     "analyzed_at": datetime.now(timezone.utc).isoformat(),
+                    "collection_id": collection_id,  # 추가
                 },
             )
             response.raise_for_status()
@@ -174,4 +175,64 @@ async def get_deadlines(user_id: str) -> list[dict]:
             return response.json()
     except httpx.HTTPError as e:
         print(f"[database] 마감기한 조회 오류: {e}")
+        return []
+    
+
+# ── 컬렉션(폴더) ───────────────────────────────────────────────────────────────
+
+async def get_or_create_collection(user_id: str, name: str) -> str | None:
+    """폴더 이름으로 조회, 없으면 생성해서 collection_id 반환"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "name": f"eq.{name}",
+                    "select": "id",
+                    "limit": "1",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data:
+                return data[0]["id"]
+
+            response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={
+                    "user_id": user_id,
+                    "name": name,
+                    "is_user_renamed": True,
+                },
+            )
+            response.raise_for_status()
+            created = response.json()
+            return created[0]["id"] if created else None
+
+    except httpx.HTTPError as e:
+        print(f"[database] 컬렉션 오류: {e}")
+        return None
+
+
+async def get_collections(user_id: str) -> list[dict]:
+    """사용자 폴더 목록 전체 조회"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "select": "id,name,emoji,content_count,created_at",
+                    "order": "created_at.asc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 폴더 목록 조회 오류: {e}")
         return []

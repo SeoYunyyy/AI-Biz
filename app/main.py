@@ -16,6 +16,9 @@ from app.services.database import (
     mark_failed,
     check_duplicate,
     search_contents,
+    get_deadlines,
+    get_or_create_collection, 
+    get_collections,
 )
 
 app = FastAPI(title="Keepit API")
@@ -27,6 +30,7 @@ class IngestRequest(BaseModel):
     url: str
     user_id: str
     instruction: str = ""   # 추가 - "생비과제 폴더에 넣어줘" 같은 지시사항
+    collection_id: str | None = None  # 추가 - 프론트에서 선택한 폴더 ID
 
 class SearchRequest(BaseModel):
     query: str
@@ -76,11 +80,19 @@ async def ingest(req: IngestRequest):
         # 4. AI 분류
         analysis = await classify(metadata, user_instruction=req.instruction)
 
+        # 4-1. 사용자 지정 폴더 처리
+        collection_id = req.collection_id
+        if not collection_id and analysis.get("user_collection"):
+            # 채팅으로 폴더 지정한 경우 자동 생성/연결
+            collection_id = await get_or_create_collection(
+                req.user_id, analysis["user_collection"]
+            )
+
         # 5. 임베딩 생성 + embeddings 테이블 저장
         await embed(content_id, metadata, analysis)
 
         # 6. contents 업데이트 (completed)
-        await update_content(content_id, metadata, analysis)
+        await update_content(content_id, metadata, analysis, collection_id=collection_id)
 
         return {
             "id": content_id,
@@ -124,6 +136,20 @@ async def search(req: SearchRequest):
 @app.get("/deadlines/{user_id}")
 async def get_deadlines(user_id: str):
     """마감기한 있는 링크를 마감순으로 반환"""
-    from app.services.database import get_deadlines
     results = await get_deadlines(user_id)
     return {"deadlines": results}
+
+@app.get("/collections/{user_id}")
+async def get_user_collections(user_id: str):
+    """사용자 폴더 목록 조회 - 프론트 드롭다운용"""
+    results = await get_collections(user_id)
+    return {"collections": results}
+
+
+@app.post("/collections")
+async def create_collection(user_id: str, name: str):
+    """폴더 직접 생성"""
+    collection_id = await get_or_create_collection(user_id, name)
+    if not collection_id:
+        raise HTTPException(status_code=500, detail="폴더 생성 실패")
+    return {"collection_id": collection_id, "name": name}
