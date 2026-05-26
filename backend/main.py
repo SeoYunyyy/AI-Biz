@@ -5,7 +5,7 @@ MyThing FastAPI 백엔드
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import gamification, calendar
+from routers import gamification, calendar, report
 
 app = FastAPI(
     title="MyThing API",
@@ -25,6 +25,7 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(gamification.router)
 app.include_router(calendar.router)
+app.include_router(report.router)
 
 
 @app.get("/health", tags=["health"])
