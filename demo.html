@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyThing — 효주님 기능 데모</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+      background: #f5f0ff;
+      color: #333;
+      min-height: 100vh;
+    }
+
+    /* ── 헤더 ── */
+    header {
+      background: linear-gradient(135deg, #a78bfa, #7c3aed);
+      color: white;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 12px rgba(124,58,237,0.3);
+    }
+    header h1 { font-size: 22px; font-weight: 700; }
+    header p  { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+    .user-badge {
+      margin-left: auto;
+      background: rgba(255,255,255,0.2);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 13px;
+    }
+
+    /* ── 레이아웃 ── */
+    .container {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+      padding: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #7c3aed;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── 캘린더 ── */
+    .cal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .cal-nav button {
+      background: #f3f0ff;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 16px;
+      color: #7c3aed;
+      transition: background 0.15s;
+    }
+    .cal-nav button:hover { background: #e0d9ff; }
+    .cal-nav span { font-weight: 700; font-size: 16px; }
+
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .cal-dow {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #999;
+      padding: 4px 0 8px;
+    }
+    .cal-day {
+      text-align: center;
+      padding: 8px 4px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: default;
+      position: relative;
+      min-height: 42px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .cal-day.has-content {
+      cursor: pointer;
+      font-weight: 700;
+      color: #7c3aed;
+    }
+    .cal-day.has-content:hover { background: #f3f0ff; }
+    .cal-day.selected {
+      background: #7c3aed !important;
+      color: white !important;
+    }
+    .cal-day.today { background: #fdf4ff; }
+    .dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #a78bfa;
+    }
+    .cal-day.selected .dot { background: white; }
+    .count-badge {
+      font-size: 10px;
+      background: #ede9fe;
+      color: #7c3aed;
+      border-radius: 10px;
+      padding: 1px 5px;
+      font-weight: 700;
+    }
+    .cal-day.selected .count-badge { background: rgba(255,255,255,0.25); color: white; }
+    .cal-day.empty { cursor: default; }
+
+    /* ── 오른쪽 컬럼 ── */
+    .right-col { display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── 날짜별 콘텐츠 ── */
+    .daily-empty {
+      text-align: center;
+      color: #bbb;
+      padding: 40px 0;
+      font-size: 14px;
+    }
+    .content-list { display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-y: auto; }
+    .content-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #f0ebff;
+      background: #fdfbff;
+      align-items: flex-start;
+      transition: box-shadow 0.15s;
+    }
+    .content-item:hover { box-shadow: 0 2px 8px rgba(124,58,237,0.1); }
+    .thumb {
+      width: 52px; height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #ede9fe;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .content-info { flex: 1; min-width: 0; }
+    .content-title {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .content-url {
+      font-size: 11px;
+      color: #999;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .content-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+    .tag {
+      font-size: 11px;
+      background: #ede9fe;
+      color: #7c3aed;
+      border-radius: 20px;
+      padding: 2px 8px;
+    }
+    .type-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .type-youtube { background: #fee2e2; color: #dc2626; }
+    .type-blog    { background: #dcfce7; color: #16a34a; }
+    .type-other   { background: #f1f5f9; color: #475569; }
+
+    /* ── 카테고리 진행률 ── */
+    .category-list { display: flex; flex-direction: column; gap: 10px; }
+    .cat-row { display: flex; align-items: center; gap: 10px; }
+    .cat-emoji { font-size: 20px; width: 28px; text-align: center; }
+    .cat-info { flex: 1; }
+    .cat-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .cat-count { font-size: 11px; color: #999; }
+    .progress-bar {
+      height: 6px;
+      background: #ede9fe;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #a78bfa, #7c3aed);
+      border-radius: 10px;
+      transition: width 0.6s ease;
+    }
+    .progress-fill.done { background: linear-gradient(90deg, #34d399, #059669); }
+
+    /* ── 아이템 지급 ── */
+    .item-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+    .item-card {
+      background: linear-gradient(135deg, #fdf4ff, #ede9fe);
+      border: 2px solid #c4b5fd;
+      border-radius: 14px;
+      padding: 14px 18px;
+      text-align: center;
+      min-width: 100px;
+      animation: pop 0.4s ease;
+    }
+    @keyframes pop {
+      0%   { transform: scale(0.8); opacity: 0; }
+      60%  { transform: scale(1.05); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .item-emoji { font-size: 32px; }
+    .item-name  { font-size: 12px; font-weight: 700; color: #7c3aed; margin-top: 6px; }
+    .item-cat   { font-size: 10px; color: #999; margin-top: 2px; }
+    .claim-btn {
+      margin-top: 8px;
+      background: #7c3aed;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .claim-btn:hover { background: #6d28d9; }
+    .item-empty { color: #bbb; font-size: 13px; text-align: center; padding: 16px 0; }
+
+    /* ── 로딩 ── */
+    .loading { text-align: center; color: #a78bfa; padding: 20px; font-size: 13px; }
+
+    /* ── 알림 토스트 ── */
+    #toast {
+      position: fixed;
+      bottom: 30px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #7c3aed;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+      transition: transform 0.3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏠 MyThing</h1>
+    <p>나만의 자료 아카이브 + 캐릭터 방 꾸미기</p>
+  </div>
+  <div class="user-badge">👤 테스트 유저</div>
+</header>
+
+<div class="container">
+
+  <!-- 왼쪽: 캘린더 -->
+  <div>
+    <div class="card">
+      <div class="card-title">📅 캘린더로 돌아보기</div>
+      <div class="cal-nav">
+        <button onclick="changeMonth(-1)">‹</button>
+        <span id="cal-label"></span>
+        <button onclick="changeMonth(1)">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+    </div>
+  </div>
+
+  <!-- 오른쪽 -->
+  <div class="right-col">
+
+    <!-- 날짜별 콘텐츠 -->
+    <div class="card">
+      <div class="card-title">🔗 <span id="daily-title">날짜를 클릭하면 저장한 링크가 보여요</span></div>
+      <div id="daily-contents"><div class="daily-empty">📆 캘린더에서 날짜를 선택해보세요</div></div>
+    </div>
+
+    <!-- 카테고리 진행률 + 미수령 아이템 -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+
+      <div class="card">
+        <div class="card-title">📊 카테고리 진행률</div>
+        <div id="category-list"><div class="loading">불러오는 중...</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎁 받을 수 있는 아이템</div>
+        <div id="pending-items"><div class="loading">불러오는 중...</div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const API   = 'http://localhost:8000';
+  const USER  = '00000000-0000-0000-0000-000000000001'; // 테스트 유저 ID
+
+  let currentYear  = new Date().getFullYear();
+  let currentMonth = new Date().getMonth() + 1;
+  let selectedDay  = null;
+  let calendarData = {};  // { "2026-05-19": 3, ... }
+
+  const TYPE_EMOJI = { youtube: '▶️', blog: '📝', other: '🔗' };
+
+  // ── 초기 로드 ──────────────────────────────────────────
+  async function init() {
+    await Promise.all([
+      loadCalendar(),
+      loadCategories(),
+      loadPendingItems(),
+    ]);
+  }
+
+  // ── 캘린더 ─────────────────────────────────────────────
+  async function loadCalendar() {
+    const res  = await fetch(`${API}/calendar/${USER}/${currentYear}/${currentMonth}`);
+    const data = await res.json();
+
+    calendarData = {};
+    data.days.forEach(d => { calendarData[d.date] = d.count; });
+
+    renderCalendar();
+  }
+
+  function renderCalendar() {
+    const label = document.getElementById('cal-label');
+    label.textContent = `${currentYear}년 ${currentMonth}월`;
+
+    const grid  = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+
+    // 요일 헤더
+    ['일','월','화','수','목','금','토'].forEach(d => {
+      const el = document.createElement('div');
+      el.className = 'cal-dow';
+      el.textContent = d;
+      grid.appendChild(el);
+    });
+
+    const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
+    const lastDate = new Date(currentYear, currentMonth, 0).getDate();
+    const today    = new Date();
+
+    // 빈 칸
+    for (let i = 0; i < firstDay; i++) {
+      const el = document.createElement('div');
+      el.className = 'cal-day empty';
+      grid.appendChild(el);
+    }
+
+    // 날짜
+    for (let d = 1; d <= lastDate; d++) {
+      const dateStr  = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const count    = calendarData[dateStr] || 0;
+      const isToday  = today.getFullYear() === currentYear && today.getMonth()+1 === currentMonth && today.getDate() === d;
+      const isSel    = selectedDay === d;
+
+      const el = document.createElement('div');
+      el.className = `cal-day${count > 0 ? ' has-content' : ''}${isToday ? ' today' : ''}${isSel ? ' selected' : ''}`;
+      el.innerHTML = `<span>${d}</span>`;
+
+      if (count > 0) {
+        el.innerHTML += `<span class="count-badge">${count}</span>`;
+        el.onclick = () => selectDay(d, dateStr);
+      }
+      grid.appendChild(el);
+    }
+  }
+
+  async function selectDay(day, dateStr) {
+    selectedDay = day;
+    renderCalendar();
+
+    const [y, m, d] = dateStr.split('-').map(Number);
+    document.getElementById('daily-title').textContent = `${m}월 ${d}일에 저장한 링크`;
+    document.getElementById('daily-contents').innerHTML = '<div class="loading">불러오는 중...</div>';
+
+    const res  = await fetch(`${API}/calendar/${USER}/${y}/${m}/${d}`);
+    const data = await res.json();
+
+    if (data.contents.length === 0) {
+      document.getElementById('daily-contents').innerHTML = '<div class="daily-empty">저장된 링크가 없어요</div>';
+      return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'content-list';
+
+    data.contents.forEach(c => {
+      const tags   = (c.hashtags || c.topics || []).slice(0, 3);
+      const typeClass = `type-${c.content_type || 'other'}`;
+      const emoji  = TYPE_EMOJI[c.content_type] || '🔗';
+
+      list.innerHTML += `
+        <div class="content-item">
+          <div class="thumb">${emoji}</div>
+          <div class="content-info">
+            <div class="content-title">${c.title || '(제목 없음)'}</div>
+            <div class="content-url">${c.url}</div>
+            <div class="content-tags">
+              <span class="type-badge ${typeClass}">${c.content_type || 'link'}</span>
+              ${tags.map(t => `<span class="tag">#${t}</span>`).join('')}
+            </div>
+          </div>
+        </div>`;
+    });
+
+    document.getElementById('daily-contents').replaceChildren(list);
+  }
+
+  function changeMonth(delta) {
+    currentMonth += delta;
+    if (currentMonth > 12) { currentMonth = 1;  currentYear++; }
+    if (currentMonth < 1)  { currentMonth = 12; currentYear--; }
+    selectedDay = null;
+    document.getElementById('daily-title').textContent = '날짜를 클릭하면 저장한 링크가 보여요';
+    document.getElementById('daily-contents').innerHTML = '<div class="daily-empty">📆 캘린더에서 날짜를 선택해보세요</div>';
+    loadCalendar();
+  }
+
+  // ── 카테고리 진행률 ────────────────────────────────────
+  const CAT_EMOJI = {
+    '카페/음료':'☕','뉴스/사회':'📰','IT/기술':'💻','요리/식품':'🍳',
+    '여행':'🌍','영상/엔터':'📺','음악':'🎵','독서/책':'📚',
+    '패션/뷰티':'👗','운동/건강':'🏋️','교육/학습':'✏️','예술/디자인':'🎨',
+  };
+
+  async function loadCategories() {
+    const res  = await fetch(`${API}/gamification/categories/${USER}`);
+    const data = await res.json();
+    const el   = document.getElementById('category-list');
+
+    if (!data.length) {
+      el.innerHTML = '<div class="item-empty">아직 저장한 링크가 없어요</div>';
+      return;
+    }
+
+    el.innerHTML = '';
+    const list = document.createElement('div');
+    list.className = 'category-list';
+
+    data.forEach(c => {
+      list.innerHTML += `
+        <div class="cat-row">
+          <div class="cat-emoji">${CAT_EMOJI[c.category] || '📌'}</div>
+          <div class="cat-info">
+            <div class="cat-name">
+              <span>${c.category}</span>
+              <span class="cat-count">${c.count}/${c.threshold}</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill${c.completed ? ' done' : ''}" style="width:${c.progress}%"></div>
+            </div>
+          </div>
+        </div>`;
+    });
+
+    el.replaceChildren(list);
+  }
+
+  // ── 미수령 아이템 ──────────────────────────────────────
+  async function loadPendingItems() {
+    const res  = await fetch(`${API}/gamification/items/pending/${USER}`);
+    const data = await res.json();
+    const el   = document.getElementById('pending-items');
+
+    if (!data.length) {
+      el.innerHTML = '<div class="item-empty">카테고리별 5개를<br>모으면 아이템이 생겨요 🎯</div>';
+      return;
+    }
+
+    el.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.className = 'item-grid';
+
+    data.forEach(ui => {
+      const div = document.createElement('div');
+      div.className = 'item-card';
+      div.innerHTML = `
+        <div class="item-emoji">${ui.item.emoji || '🎁'}</div>
+        <div class="item-name">${ui.item.name}</div>
+        <div class="item-cat">${ui.item.category}</div>
+        <button class="claim-btn" onclick="claimItem('${ui.id}', this)">수령하기</button>`;
+      grid.appendChild(div);
+    });
+
+    el.replaceChildren(grid);
+  }
+
+  async function claimItem(userItemId, btn) {
+    btn.disabled = true;
+    btn.textContent = '수령 중...';
+
+    await fetch(`${API}/gamification/items/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: USER, user_item_ids: [userItemId] }),
+    });
+
+    showToast('🎉 아이템을 수령했어요! 방을 꾸며보세요.');
+    btn.closest('.item-card').style.opacity = '0.4';
+    btn.textContent = '수령 완료';
+
+    setTimeout(loadPendingItems, 1000);
+  }
+
+  // ── 토스트 ─────────────────────────────────────────────
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  init();
+</script>
+</body>
+</html>
