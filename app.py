@@ -7,6 +7,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 from flask import Flask, render_template, jsonify, session
+from routes.auth import auth_bp, login_required
 
 from routes.archive import archive_bp
 from routes.search import search_bp
@@ -19,7 +20,19 @@ app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'keep-it-secret-key-2024')
 
+# 개발용 로그인 스킵 — .env의 DEV_SKIP_LOGIN=true 일 때만 동작
+@app.before_request
+def dev_auto_login():
+    if os.getenv('DEV_SKIP_LOGIN') == 'true' and 'user' not in session:
+        session['user'] = {
+            'id':     'dev-user',
+            'email':  'dev@test.com',
+            'name':   '개발자',
+            'avatar': '',
+        }
+
 # Blueprint 등록 (기능별 라우트 연결)
+app.register_blueprint(auth_bp)
 app.register_blueprint(archive_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(reminder_bp)
@@ -36,6 +49,7 @@ def index():
         user=session.get('user'),
         supabase_url=os.getenv('SUPABASE_URL', ''),
         supabase_anon_key=os.getenv('SUPABASE_ANON_KEY', ''),
+        dev_skip_login=(os.getenv('DEV_SKIP_LOGIN') == 'true'),
     )
 
 

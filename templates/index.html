@@ -107,6 +107,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script defer>
       window.addEventListener('load', function () {
+        {% if dev_skip_login %}
+        // 개발 모드: Supabase 인증 체크 생략
+        window.keepitLogout = function () { window.location.href = '/login'; };
+        {% else %}
         if (!window.supabase || !window.__SUPABASE_URL__) return;
 
         const _sb = window.supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON_KEY__);
@@ -136,6 +140,7 @@
           await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
           window.location.href = '/login';
         };
+        {% endif %}
       });
     </script>
   </body>
