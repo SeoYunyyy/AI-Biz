@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from datetime import datetime, timezone
 
 from app.services.embedding import generate_embedding
+from app.services.query_expander import expand_query
 from app.services.database import (
     search_contents,
     get_deadlines,
@@ -83,7 +84,8 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
 async def _handle_search(user_id: str, query: str) -> dict:
-    embedding = await generate_embedding(query)
+    expanded = await expand_query(query)
+    embedding = await generate_embedding(expanded)
     if not embedding:
         return {
             "answer": "검색어 처리 중 문제가 생겼어요. 다시 시도해주세요.",

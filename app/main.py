@@ -11,6 +11,7 @@ from app.services.metadata.dispatcher import extract as dispatch
 from app.services.ai_classifier import classify
 from app.services.embedding import run as embed, generate_embedding
 from app.services.thumbnail_vision import analyze_thumbnail
+from app.services.query_expander import expand_query
 from app.services.chat import process_chat
 from app.services.database import (
     save_content,
@@ -159,7 +160,8 @@ async def search(req: SearchRequest):
     자연어로 저장된 콘텐츠 검색.
     유사도 상위 3개만 반환, 결과 없으면 유도 질문 제공.
     """
-    query_embedding = await generate_embedding(req.query)
+    expanded = await expand_query(req.query)
+    query_embedding = await generate_embedding(expanded)
     if not query_embedding:
         raise HTTPException(status_code=500, detail="검색어 임베딩 실패")
 
