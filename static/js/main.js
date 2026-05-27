@@ -507,9 +507,19 @@ document.getElementById('btn-report').addEventListener('click', async () => {
     `)
 })
 
-// 주간 레포트 — 전용 페이지로 이동
+// 주간 레포트 — 전체화면 오버레이
 document.getElementById('btn-weekly-report').addEventListener('click', () => {
-    window.location.href = '/weekly-report'
+    const overlay = document.createElement('div')
+    overlay.id = 'weekly-report-overlay'
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fdf8f5;'
+    overlay.innerHTML = `
+        <button onclick="document.getElementById('weekly-report-overlay').remove()"
+            style="position:fixed;top:16px;right:20px;z-index:10000;background:#6b3a2a;color:#fdf3ec;border:none;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:700;cursor:pointer;">
+            ✕ 닫기
+        </button>
+        <iframe src="/weekly-report" style="width:100%;height:100%;border:none;display:block;"></iframe>
+    `
+    document.body.appendChild(overlay)
 })
 
 // ── 초기 로드 ──

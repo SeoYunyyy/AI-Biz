@@ -17,28 +17,25 @@ def analyze_content(content: dict, deadline: str = None) -> dict:
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         max_tokens=400,
+        response_format={"type": "json_object"},
         messages=[{
             "role": "user",
-            "content": f"""웹 콘텐츠를 분석해서 아래 JSON 형식으로만 응답해. 설명 없이 JSON만.
+            "content": f"""웹 콘텐츠를 분석해서 JSON으로 응답해.
 
 URL: {content['url']}
 제목: {content['title']}
 내용: {content['text'][:1500]}{deadline_str}
 
-{{
-  "title": "콘텐츠 제목",
-  "category": "대분류 (음악/딥러닝/디자인/카페/요리/여행/개발/영상 등)",
-  "subcategory": "소분류 (재즈/TFT모델/미니멀리즘 등 세분화)",
-  "content_type": "article 또는 music 또는 video 또는 place 또는 recipe 또는 other",
-  "summary": "핵심 내용 2문장 (content_type이 music이면 null)",
-  "tags": ["태그1", "태그2"]
-}}"""
+반환할 JSON 필드:
+- title: 콘텐츠 제목
+- category: 대분류 (음악/딥러닝/디자인/카페/요리/여행/개발/영상 등)
+- subcategory: 소분류 (재즈/TFT모델/미니멀리즘 등 세분화)
+- content_type: article 또는 music 또는 video 또는 place 또는 recipe 또는 other
+- summary: 핵심 내용 2문장 (content_type이 music이면 null)
+- tags: 태그 배열 (2개)"""
         }]
     )
 
-    text = resp.choices[0].message.content.strip()
-    match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```|(\{.*\})', text, re.DOTALL)
-    json_str = match.group(1) or match.group(2) if match else text
-    return json.loads(json_str)
+    return json.loads(resp.choices[0].message.content)
 
 # OpenAI gpt-4o-mini로 URL 콘텐츠를 분석해 카테고리·요약·태그 반환
