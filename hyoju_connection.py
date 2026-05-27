@@ -2,7 +2,7 @@
 """
 hyoju_connection.py
 seoyun 프론트엔드(Flask) ↔ hyoju Supabase 연결 브릿지
-/api/weekly-report, /api/weekly-stats 를 Supabase 데이터로 교체
+/api/hyoju-weekly-report, /api/weekly-stats 를 Supabase 데이터로 교체
 """
 
 from flask import Blueprint, jsonify, request
@@ -39,7 +39,7 @@ def _fetch_week_contents(user_id=None):
     return q.execute().data
 
 
-@hyoju_bp.route('/api/weekly-report')
+@hyoju_bp.route('/api/hyoju-weekly-report')
 def weekly_report():
     user_id  = request.args.get("user_id")
     contents = _fetch_week_contents(user_id)
