@@ -12,6 +12,7 @@ from app.services.database import (
     search_contents,
     get_deadlines,
     get_collections,
+    get_old_contents,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -24,12 +25,14 @@ INTENT_PROMPT = """사용자 메시지를 보고 의도를 분류하세요. 반�
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
 - cleanup  : 오래된·만료된 콘텐츠 정리 ("오래된 거 정리해줘" 등)
+- delete   : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
 - general  : 그 외
 
 응답 형식:
-{"intent": "search", "folder_name": null}
+{"intent": "search", "folder_name": null, "delete_query": null}
 
-folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null"""
+folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null
+delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null"""
 
 
 async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
@@ -230,27 +233,60 @@ async def _handle_cleanup(user_id: str) -> dict:
     deadlines = await get_deadlines(user_id)
     today = datetime.now(timezone.utc).date().isoformat()
     expired = [d for d in deadlines if d.get("deadline_date", "9999") < today]
+    old_contents = await get_old_contents(user_id, days=365)
 
-    if not expired:
-        return {"answer": "만료된 마감기한 콘텐츠가 없어요. 저장 목록이 깔끔하네요!", "results": []}
+    if not expired and not old_contents:
+        return {"answer": "정리할 콘텐츠가 없어요. 저장 목록이 깔끔하네요!", "results": []}
 
-    context = "\n".join([
-        f"- {d.get('title', '')}: {d.get('deadline_date', '')} 만료"
-        for d in expired
-    ])
+    context_parts = []
+    if expired:
+        context_parts.append(f"[ 마감 만료 — {len(expired)}개 ]")
+        context_parts += [f"- {d.get('title', '')}: {d.get('deadline_date', '')} 만료" for d in expired[:5]]
+    if old_contents:
+        context_parts.append(f"\n[ 1년 이상 된 콘텐츠 — {len(old_contents)}개 ]")
+        context_parts += [f"- {c.get('title', '')} ({c.get('saved_at', '')[:10]} 저장)" for c in old_contents[:5]]
+
     answer = await _llm(
         messages=[
             {
                 "role": "system",
-                "content": "마감이 지난 콘텐츠 목록입니다. 사용자에게 정리를 권유하세요. 친근하게. 한국어로.",
+                "content": (
+                    "정리 후보 콘텐츠 목록입니다. 만료된 것과 오래된 것을 구분해서 "
+                    "삭제를 권유하세요. 친근하게. 한국어로. '삭제해줘라고 말하면 삭제해드릴게요'라고 안내하세요."
+                ),
             },
-            {"role": "user", "content": context},
+            {"role": "user", "content": "\n".join(context_parts)},
         ],
         model="gpt-4o",
-        max_tokens=150,
+        max_tokens=200,
     )
 
-    return {"answer": answer, "results": expired, "action": "cleanup_suggested"}
+    return {
+        "answer": answer,
+        "expired": expired[:5],
+        "old_contents": old_contents[:5],
+        "action": "cleanup_suggested",
+    }
+
+
+async def _handle_delete(user_id: str, delete_query: str) -> dict:
+    """삭제 대상 검색 후 확인 요청."""
+    expanded = await expand_query(delete_query)
+    embedding = await generate_embedding(expanded)
+    if not embedding:
+        return {"answer": "삭제할 콘텐츠를 찾지 못했어요.", "results": []}
+
+    results = await search_contents(user_id, embedding, limit=5)
+    if not results:
+        return {"answer": f"'{delete_query}' 관련 콘텐츠를 찾지 못했어요.", "results": []}
+
+    titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
+    return {
+        "answer": f"'{delete_query}' 관련 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n삭제할까요?",
+        "needs_confirmation": True,
+        "pending_delete_ids": [r["id"] for r in results],
+        "results": results,
+    }
 
 
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
@@ -260,6 +296,7 @@ async def process_chat(user_id: str, query: str) -> dict:
     intent_data = await _detect_intent(query)
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
+    delete_query = intent_data.get("delete_query")
 
     if intent == "search":
         result = await _handle_search(user_id, query)
@@ -269,6 +306,8 @@ async def process_chat(user_id: str, query: str) -> dict:
         result = await _handle_folder(user_id, folder_name)
     elif intent == "cleanup":
         result = await _handle_cleanup(user_id)
+    elif intent == "delete" and delete_query:
+        result = await _handle_delete(user_id, delete_query)
     else:
         result = await _handle_search(user_id, query)
 

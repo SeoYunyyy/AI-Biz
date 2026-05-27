@@ -20,9 +20,10 @@ from app.services.database import (
     check_duplicate,
     search_contents,
     get_deadlines,
-    get_or_create_collection, 
+    get_or_create_collection,
     get_collections,
     find_similar_contents,
+    delete_content,
 )
 
 app = FastAPI(title="Keepit API")
@@ -214,6 +215,17 @@ async def create_collection(user_id: str, name: str):
     if not collection_id:
         raise HTTPException(status_code=500, detail="폴더 생성 실패")
     return {"collection_id": collection_id, "name": name}
+
+
+# ── 콘텐츠 삭제 ────────────────────────────────────────────────────────────────
+
+@app.delete("/contents/{content_id}")
+async def remove_content(content_id: str, user_id: str):
+    """콘텐츠 삭제 — 채팅에서 확인 후 프론트가 호출"""
+    success = await delete_content(content_id, user_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="삭제 실패")
+    return {"deleted": True, "content_id": content_id}
 
 
 # ── 채팅 ───────────────────────────────────────────────────────────────────────

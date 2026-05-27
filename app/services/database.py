@@ -266,3 +266,47 @@ async def find_similar_contents(user_id: str, embedding: list[float], threshold:
     except httpx.HTTPError as e:
         print(f"[database] 유사 콘텐츠 검색 오류: {e}")
         return []
+
+
+# ── 삭제 ──────────────────────────────────────────────────────────────────────
+
+async def delete_content(content_id: str, user_id: str) -> bool:
+    """콘텐츠 삭제 (본인 소유 확인 후 삭제)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={
+                    "id": f"eq.{content_id}",
+                    "user_id": f"eq.{user_id}",
+                },
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 삭제 오류: {e}")
+        return False
+
+
+async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
+    """저장한 지 days일 이상 지난 콘텐츠 반환"""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "saved_at": f"lt.{cutoff}",
+                    "select": "id,title,url,saved_at,category",
+                    "order": "saved_at.asc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 오래된 콘텐츠 조회 오류: {e}")
+        return []
