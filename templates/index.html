@@ -24,6 +24,21 @@
         <button id="btn-reminders">리마인더</button>
         <button id="btn-report">월간 레포트</button>
         <button id="btn-weekly-report">주간 레포트</button>
+
+        <div class="nav-divider" aria-hidden="true"></div>
+
+        {% if user %}
+          <div class="nav-user">
+            {% if user.avatar %}
+              <img class="nav-avatar" src="{{ user.avatar }}" alt="{{ user.name or user.email }}" referrerpolicy="no-referrer" />
+            {% else %}
+              <div class="nav-avatar nav-avatar-fallback">{{ (user.name or user.email or '?')[0] | upper }}</div>
+            {% endif %}
+            <span class="nav-username">{{ user.name or user.email }}</span>
+          </div>
+        {% endif %}
+
+        <button class="logout-btn" onclick="window.keepitLogout?.()">로그아웃</button>
       </div>
     </nav>
 

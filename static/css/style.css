@@ -39,7 +39,7 @@ nav {
     letter-spacing: -0.5px;
 }
 
-.nav-btns { display: flex; gap: 12px; }
+.nav-btns { display: flex; align-items: center; gap: 12px; }
 
 .nav-btns button {
     background: rgba(255,255,255,0.12);
@@ -56,6 +56,74 @@ nav {
 .nav-btns button:hover {
     background: rgba(255,255,255,0.22);
     transform: translateY(-1px);
+}
+
+/* 구분선 */
+.nav-divider {
+    width: 1px;
+    height: 22px;
+    background: rgba(255,255,255,0.2);
+    flex-shrink: 0;
+}
+
+/* 유저 정보 */
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px 3px 3px;
+    border-radius: 100px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.18);
+}
+
+.nav-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.nav-avatar-fallback {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.nav-username {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.88);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 로그아웃 버튼 */
+.logout-btn {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    color: rgba(255,255,255,0.65) !important;
+    font-size: 13px !important;
+    padding: 7px 14px !important;
+    transition: background 0.2s, color 0.2s, border-color 0.2s !important;
+}
+
+.logout-btn:hover {
+    background: rgba(220,53,69,0.25) !important;
+    border-color: rgba(220,53,69,0.45) !important;
+    color: #fff !important;
+    transform: none !important;
 }
 
 /* ── 페이지 래퍼 ── */
@@ -1128,6 +1196,8 @@ nav {
 @media (max-width: 768px) {
     nav { padding: 14px 20px; }
     .nav-btns button { padding: 6px 12px; font-size: 13px; }
+    .nav-username { display: none; }
+    .nav-divider { display: none; }
     .hero-title { font-size: 28px; }
     .right-panel.open {
         width: 100vw;

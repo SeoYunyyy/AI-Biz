@@ -1,12 +1,11 @@
 # ── 주간/월간 레포트 — backend services/report.py 완전 포팅 ──
 
-import os
 import json
 import calendar as cal_module
 from collections import Counter
 from datetime import datetime, timedelta, date, timezone
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from database.db import get_db
 from services.analyzer import client
 from services.category_mapper import map_topics_to_category
@@ -14,7 +13,6 @@ from services.category_mapper import map_topics_to_category
 report_bp = Blueprint('report', __name__)
 
 WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']
-USER_ID  = os.getenv('SUPABASE_USER_ID')
 
 
 # ── 유틸 (backend _get_week_range / _get_month_range 동일) ──
@@ -76,15 +74,14 @@ def _calc_estimated_time(content_types: list) -> dict:
 
 # ── DB 조회 ──
 
-def _fetch_contents(start: datetime, end: datetime) -> list:
+def _fetch_contents(start: datetime, end: datetime, user_id: str) -> list:
     db    = get_db()
     query = (db.table('contents')
                .select('*')
                .eq('analysis_status', 'completed')
+               .eq('user_id', user_id)
                .gte('saved_at', start.isoformat())
                .lte('saved_at', end.isoformat()))
-    if USER_ID:
-        query = query.eq('user_id', USER_ID)
     return query.execute().data
 
 
@@ -190,13 +187,17 @@ def _gen_ai_result(year: int, month: int, stats: dict, period: str = "주") -> d
 
 @report_bp.route('/api/weekly-report')
 def weekly_report():
+    user_id = (session.get('user') or {}).get('id', '')
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
+
     today = date.today()
     year  = int(request.args.get('year',  today.year))
     month = int(request.args.get('month', today.month))
     week  = int(request.args.get('week',  (today.day - 1) // 7 + 1))
 
     start, end = _get_week_range(year, month, week)
-    rows       = _fetch_contents(start, end)
+    rows       = _fetch_contents(start, end, user_id)
 
     if not rows:
         return jsonify({'empty': True, 'total': 0,
@@ -215,7 +216,7 @@ def weekly_report():
         last_week  = (cal_module.monthrange(prev_year, prev_month)[1] - 1) // 7 + 1
         prev_start, prev_end = _get_week_range(prev_year, prev_month, last_week)
 
-    prev_rows     = _fetch_contents(prev_start, prev_end)
+    prev_rows     = _fetch_contents(prev_start, prev_end, user_id)
     comparison    = []
     new_discovery = None
     if prev_rows:
@@ -290,12 +291,16 @@ def weekly_report():
 
 @report_bp.route('/api/monthly-report')
 def monthly_report():
+    user_id = (session.get('user') or {}).get('id', '')
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
+
     today = date.today()
     year  = int(request.args.get('year',  today.year))
     month = int(request.args.get('month', today.month))
 
     start, end = _get_month_range(year, month)
-    rows       = _fetch_contents(start, end)
+    rows       = _fetch_contents(start, end, user_id)
 
     if not rows:
         return jsonify({'empty': True, 'message': '이번 달 저장된 콘텐츠가 없어요', 'total': 0})
@@ -306,7 +311,7 @@ def monthly_report():
     prev_month = month - 1 if month > 1 else 12
     prev_year  = year if month > 1 else year - 1
     prev_start, prev_end = _get_month_range(prev_year, prev_month)
-    prev_rows     = _fetch_contents(prev_start, prev_end)
+    prev_rows     = _fetch_contents(prev_start, prev_end, user_id)
     comparison    = []
     new_discovery = None
     if prev_rows:

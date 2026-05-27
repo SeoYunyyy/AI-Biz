@@ -1,32 +1,35 @@
 # ── LLM 대화 및 그룹 생성 명령 처리 ──
 
-import os
 import json
 import re
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from database.db import get_db, row_to_item
 from services.analyzer import client
 
 chat_bp = Blueprint('chat', __name__)
 
-USER_ID = os.getenv('SUPABASE_USER_ID')
 
-
-def _all_items():
-    db    = get_db()
-    query = db.table('contents').select('id, url, title, topics, metadata, description, thumbnail_url').order('saved_at', desc=True)
-    if USER_ID:
-        query = query.eq('user_id', USER_ID)
-    return [row_to_item(r) for r in query.execute().data]
+def _all_items(user_id: str):
+    db   = get_db()
+    rows = (db.table('contents')
+              .select('id, url, title, topics, metadata, description, thumbnail_url')
+              .eq('user_id', user_id)
+              .order('saved_at', desc=True)
+              .execute().data)
+    return [row_to_item(r) for r in rows]
 
 
 @chat_bp.route('/api/chat', methods=['POST'])
 def chat():
+    user_id = (session.get('user') or {}).get('id', '')
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
+
     message = request.json.get('message', '').strip()
     if not message:
         return jsonify({'error': '메시지를 입력해주세요'}), 400
 
-    items = _all_items()
+    items = _all_items(user_id)
     items_summary = '\n'.join(
         f"ID:{i['id']} | {i['category']}/{i['subcategory']} | {i['title']}"
         for i in items
@@ -64,7 +67,7 @@ def chat():
                 item_ids   = cmd.get('item_ids', [])
                 group_name = cmd.get('group_name', '새 그룹')
                 db     = get_db()
-                result = db.table('groups').insert({'name': group_name, 'item_ids': item_ids}).execute()
+                result = db.table('groups').insert({'name': group_name, 'item_ids': item_ids, 'user_id': user_id}).execute()
                 group  = result.data[0] if result.data else {'name': group_name, 'item_ids': item_ids}
                 matched = [i for i in items if i['id'] in item_ids]
                 return jsonify({
@@ -87,4 +90,4 @@ def chat():
 
     return jsonify({'type': 'text', 'message': text})
 
-# OpenAI로 대화를 처리하고, 그룹 생성/검색 명령은 자동으로 실행 후 결과 반환
+# 로그인한 유저의 콘텐츠 기반 대화 처리, 그룹 생성/검색 명령 자동 실행 후 결과 반환

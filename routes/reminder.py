@@ -1,27 +1,27 @@
 # ── 리마인더 (마감기한 3일 이내 자료 알림) ──
 
-import os
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, session
 from datetime import datetime, timedelta
-from database.db import get_db, row_to_item
+from database.db import get_db
 
 reminder_bp = Blueprint('reminder', __name__)
-
-USER_ID = os.getenv('SUPABASE_USER_ID')
 
 
 @reminder_bp.route('/api/reminders')
 def reminders():
+    user_id = (session.get('user') or {}).get('id', '')
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
+
     today = datetime.now().date()
     limit = today + timedelta(days=3)
 
-    db    = get_db()
-    query = db.table('contents').select('id, title, metadata, url, saved_at')
-    if USER_ID:
-        query = query.eq('user_id', USER_ID)
-    rows = query.execute().data
+    db   = get_db()
+    rows = (db.table('contents')
+              .select('id, title, metadata, url, saved_at')
+              .eq('user_id', user_id)
+              .execute().data)
 
-    # metadata->>'deadline' 이 today ~ limit 범위인 항목만 필터링
     result = []
     for row in rows:
         metadata = row.get('metadata') or {}
@@ -43,4 +43,4 @@ def reminders():
     result.sort(key=lambda x: x['deadline'])
     return jsonify(result)
 
-# 오늘부터 3일 이내 마감기한이 있는 저장 자료 목록 반환
+# 로그인한 유저의 오늘~3일 이내 마감기한 저장 자료 목록 반환
