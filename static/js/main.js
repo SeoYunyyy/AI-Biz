@@ -23,12 +23,19 @@ function isURL(str) {
     return /^https?:\/\//i.test(str) || /^www\./i.test(str)
 }
 
-// 입력에서 URL과 마감기한 분리
+// 입력에서 URL, 마감기한, 지시사항 분리
 function parseInput(text) {
     const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
     const deadline = deadlineMatch ? deadlineMatch[1] : null
-    const url = text.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
-    return { url, deadline }
+    let remaining = text.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
+
+    // URL 추출
+    const urlMatch = remaining.match(/https?:\/\/[^\s]+/)
+    const url = urlMatch ? urlMatch[0] : remaining
+    // URL 제거 후 남은 텍스트가 지시사항 (예: "생비과제 폴더에 넣어줘")
+    const instruction = remaining.replace(url, '').trim()
+
+    return { url, deadline, instruction }
 }
 
 // 결과 카드 HTML 생성
@@ -243,11 +250,11 @@ async function sendChat() {
     try {
         if (isURL(text.split(' ')[0])) {
             // URL → 저장
-            const { url, deadline } = parseInput(text)
+            const { url, deadline, instruction } = parseInput(text)
             const res  = await fetch('/api/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, deadline })
+                body: JSON.stringify({ url, deadline, instruction })
             })
             const data = await res.json()
             loadingEl.remove()
@@ -255,7 +262,7 @@ async function sendChat() {
 
             const aiEl = document.createElement('div')
             aiEl.className = 'chat-msg ai'
-            aiEl.innerHTML = buildSavedItemContent(data.item)
+            aiEl.innerHTML = buildSavedItemContent(data.item, data.similar_contents)
             chatMessages.appendChild(aiEl)
             loadTopFolders()
         } else {
@@ -286,20 +293,38 @@ async function sendChat() {
     }
 }
 
-// URL 저장 결과를 채팅 버블로 표시 (썸네일 포함)
-function buildSavedItemContent(item) {
+// URL 저장 결과를 채팅 버블로 표시 (썸네일 + 유사 콘텐츠 포함)
+function buildSavedItemContent(item, similarContents) {
     const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? JSON.parse(item.tags) : [])
     const thumbHTML = item.thumbnail
         ? `<img src="${item.thumbnail}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
         : ''
+
+    const deadlineHTML = item.deadline_note
+        ? `<div style="font-size:11px;color:#E07A30;font-weight:600;margin-bottom:6px">⏰ ${item.deadline_note}</div>`
+        : ''
+
+    const similarHTML = (similarContents && similarContents.length)
+        ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #eee">
+               <div style="font-size:11px;color:#9A7055;margin-bottom:6px">📎 비슷한 저장 콘텐츠</div>
+               ${similarContents.map(s => `
+                   <div style="margin-bottom:4px">
+                       <a href="${s.url}" target="_blank" style="font-size:12px;color:#6B4E3A;text-decoration:none">▸ ${s.title}</a>
+                       <span style="font-size:10px;color:#bbb;margin-left:4px">${Math.round(s.similarity * 100)}% 유사</span>
+                   </div>`).join('')}
+           </div>`
+        : ''
+
     return `
         <div style="font-size:11px;font-weight:700;color:#5A9A60;margin-bottom:8px;letter-spacing:0.3px">✓ 저장 완료</div>
         ${thumbHTML}
         <div style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px;line-height:1.4">${item.title}</div>
-        <div style="font-size:12px;color:#9A7055;margin-bottom:8px">${item.category} / ${item.subcategory}</div>
+        <div style="font-size:12px;color:#9A7055;margin-bottom:6px">${item.category} / ${item.subcategory}</div>
+        ${deadlineHTML}
         ${item.summary ? `<div style="font-size:13px;color:#6B4E3A;line-height:1.55;margin-bottom:8px">${item.summary}</div>` : ''}
         ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
         <a href="${item.url}" target="_blank" class="panel-item-link" style="margin-top:4px;display:inline-block">링크 열기 &rarr;</a>
+        ${similarHTML}
     `
 }
 

@@ -24,9 +24,16 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'keep-it-secret-key-2024')
 # 개발용 로그인 스킵 — .env의 DEV_SKIP_LOGIN=true 일 때만 동작
 @app.before_request
 def dev_auto_login():
-    if os.getenv('DEV_SKIP_LOGIN') == 'true' and 'user' not in session:
+    if os.getenv('DEV_SKIP_LOGIN') != 'true':
+        return
+    dev_id = os.getenv('SUPABASE_USER_ID', '00000000-0000-0000-0000-000000000001')
+    # 세션이 없거나 user_id가 UUID 형식이 아니면 강제 갱신
+    current_id = (session.get('user') or {}).get('id', '')
+    import re
+    is_uuid = bool(re.match(r'^[0-9a-f-]{36}$', current_id, re.I))
+    if not is_uuid:
         session['user'] = {
-            'id':     'dev-user',
+            'id':     dev_id,
             'email':  'dev@test.com',
             'name':   '개발자',
             'avatar': '',

@@ -1,50 +1,59 @@
-# ── 자연어 검색 ──
+# ── 자연어 검색 — 벡터 임베딩 기반 ──
 
+import asyncio
 import os
-import re
-import json
-from flask import Blueprint, request, jsonify
-from database.db import get_db, row_to_item
-from services.analyzer import client
+from flask import Blueprint, request, jsonify, session
+
+from backend.services.embedding import generate_embedding
+from backend.services.database import search_contents
 
 search_bp = Blueprint('search', __name__)
 
-USER_ID = os.getenv('SUPABASE_USER_ID')
+
+def _get_user_id():
+    user = session.get('user', {})
+    return user.get('id') or os.getenv('SUPABASE_USER_ID', '')
 
 
 @search_bp.route('/api/search', methods=['POST'])
 def search():
-    query_text = request.json.get('query', '').strip()
+    query_text = (request.json or {}).get('query', '').strip()
+    if not query_text:
+        return jsonify({'results': [], 'found': False}), 400
 
-    db    = get_db()
-    query = db.table('contents').select('*').order('saved_at', desc=True)
-    if USER_ID:
-        query = query.eq('user_id', USER_ID)
-    rows = query.execute().data
+    user_id = _get_user_id()
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
 
-    if not rows:
-        return jsonify({'results': []})
+    async def _run():
+        embedding = await generate_embedding(query_text)
+        if not embedding:
+            return []
+        return await search_contents(user_id, embedding, limit=5)
 
-    items = [row_to_item(r) for r in rows]
-    summary_list = '\n'.join(
-        f"ID:{i['id']} | {i['category']}/{i['subcategory']} | {i['title']} | {i['summary'] or ''}"
-        for i in items
-    )
+    try:
+        rows = asyncio.run(_run())
+    except Exception as e:
+        return jsonify({'error': f'검색 중 오류: {str(e)}'}), 500
 
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        max_tokens=200,
-        messages=[{
-            "role": "user",
-            "content": f"저장 목록:\n{summary_list}\n\n요청: \"{query_text}\"\n\n관련 항목 ID를 JSON 배열로만 응답. 없으면 []"
-        }]
-    )
+    results = [
+        {
+            "id":          r.get("id", ""),
+            "url":         r.get("url", ""),
+            "title":       r.get("title", ""),
+            "category":    r.get("category", ""),
+            "subcategory": r.get("sub_category", ""),
+            "summary":     r.get("description", ""),
+            "tags":        r.get("hashtags", []),
+            "thumbnail":   r.get("thumbnail_url", ""),
+            "similarity":  round(r.get("similarity", 0), 2),
+        }
+        for r in rows
+    ]
 
-    text  = resp.choices[0].message.content.strip()
-    match = re.search(r'\[.*?\]', text, re.DOTALL)
-    ids   = json.loads(match.group() if match else '[]')
+    return jsonify({
+        "results": results,
+        "found":   len(results) > 0,
+    })
 
-    results = [i for i in items if i['id'] in ids]
-    return jsonify({'results': results})
-
-# 사용자의 자연어 요청을 OpenAI로 해석해 저장된 항목 중 관련 자료 반환
+# 자연어 검색어를 벡터 임베딩으로 변환 후 Supabase 벡터 유사도 검색 수행
