@@ -3,9 +3,27 @@
 (function () {
   'use strict';
 
+  /* ── CDN 실패 시 요소 강제 표시 (폴백) ── */
+  function showAllElements() {
+    const targets = ['.login-nav', '.brand-section', '.brand-eyebrow',
+                     '.brand-title', '.brand-description', '.login-card-wrapper'];
+    targets.forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) { el.style.opacity = '1'; el.style.transform = 'none'; }
+    });
+  }
+
   /* ── 1. Supabase 초기화 ── */
   const SUPABASE_URL      = window.__SUPABASE_URL__;
   const SUPABASE_ANON_KEY = window.__SUPABASE_ANON_KEY__;
+
+  /* Supabase CDN 로딩 실패 시 화면이 검게 남지 않도록 guard */
+  if (!window.supabase) {
+    console.error('[Keepit] Supabase SDK 로딩 실패 — CDN 연결을 확인하세요.');
+    window.addEventListener('load', showAllElements);
+    return;
+  }
+
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   /* ── 2. 이미 로그인된 세션 확인 → 메인으로 이동 ── */
@@ -133,9 +151,13 @@
 
   rafId = requestAnimationFrame(draw);
 
-  /* ── 5. GSAP 시네마틱 페이드인 ── */
+  /* ── 5. GSAP 시네마틱 페이드인 (GSAP 없으면 즉시 표시) ── */
   window.addEventListener('load', () => {
-    if (!window.gsap) return;
+    if (!window.gsap) {
+      /* GSAP CDN 실패 시 요소 즉시 표시 */
+      showAllElements();
+      return;
+    }
 
     const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
 
