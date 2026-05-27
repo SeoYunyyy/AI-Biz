@@ -1,6 +1,6 @@
 # app/services/metadata/dispatcher.py
 
-from backend.services.metadata import youtube, web, news, naver_blog, map, shopping
+from backend.services.metadata import youtube, web, news, naver_blog, map, shopping, naver_sports
 
 
 def _detect_type(url: str) -> str:
@@ -10,6 +10,8 @@ def _detect_type(url: str) -> str:
         return "youtube"
     elif "n.news.naver.com" in url_lower:
         return "naver_news"
+    elif "sports.naver.com" in url_lower:
+        return "naver_sports"
     elif "blog.naver.com" in url_lower or "m.blog.naver.com" in url_lower:
         return "naver_blog"
     elif "naver.me" in url_lower:
@@ -40,6 +42,8 @@ async def extract(url: str) -> dict:
         return await youtube.extract(url)
     elif platform == "naver_news":
         return await news.extract(url)
+    elif platform == "naver_sports":
+        return await naver_sports.extract(url)
     elif platform == "naver_blog":
         return await naver_blog.extract(url)
     elif platform in ("naver_map", "kakao_map"):
