@@ -1,7 +1,7 @@
 # app/services/metadata/naver_sports.py
 # Naver Sports 페이지 메타데이터 추출
-# sports.naver.com은 JS 클라이언트 렌더링 방식이라 본문을 직접 파싱 불가.
-# OG 태그에 의존하고, 유니코드 이스케이프 문자열을 디코딩해서 반환.
+# sports.naver.com은 서버사이드 렌더링이지만 본문이 <p> 대신 <span>/<div>로 구성됨.
+# OG 태그(제목·썸네일) + article.get_text()로 본문 추출.
 
 import httpx
 import re
@@ -23,40 +23,47 @@ async def extract(url: str) -> dict:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
             response = await client.get(url, headers=HEADERS)
             response.raise_for_status()
-            html = response.text
+            # 바이트로 받아서 utf-8 디코딩 (httpx 자동 인코딩 오류 방지)
+            html = response.content.decode("utf-8", errors="replace")
     except httpx.HTTPError as e:
         return _empty_result(url, error=str(e))
 
     soup = BeautifulSoup(html, "html.parser")
 
-    # OG 태그에서 제목·설명·썸네일 추출 (JS 렌더링 전에도 meta 태그는 존재)
+    # OG 태그에서 제목·썸네일 추출
     title = _get_og(soup, "title") or _get_tag_text(soup, "title") or ""
-    description = _get_og(soup, "description") or ""
     thumbnail = _get_og(soup, "image") or ""
     date = _extract_date(html)
 
+    # 본문: Naver Sports는 <p> 없이 <span>/<div>에 내용이 있으므로 article get_text() 사용
+    body = _extract_body(soup)
+
     return {
-        "title": _decode_unicode(_clean(title)),
+        "title": _clean(title),
         "date": date,
-        "summary": _decode_unicode(_clean(description)),
+        "summary": body,
         "category": "스포츠",
         "tags": [],
         "thumbnail": thumbnail,
-        "platform": "naver_sports",
+        "platform": "naver_news",   # Supabase content_type 제약: naver_sports 미허용 → naver_news 사용
         "original_url": url,
     }
 
 
-def _decode_unicode(text: str) -> str:
-    """\\uXXXX 형태의 유니코드 이스케이프를 실제 한글로 변환"""
-    try:
-        return re.sub(
-            r'\\u([0-9a-fA-F]{4})',
-            lambda m: chr(int(m.group(1), 16)),
-            text
-        )
-    except Exception:
-        return text
+def _extract_body(soup: BeautifulSoup) -> str:
+    """Naver Sports 본문 추출: <article> → <p> 없음 → get_text() 사용"""
+    article = (
+        soup.find("article", id="comp_news_article") or
+        soup.find("article", class_=re.compile(r"article", re.I)) or
+        soup.find("div", id="comp_news_article")
+    )
+    if not article:
+        return ""
+    # 광고·스크립트 제거
+    for tag in article.find_all(["script", "style", "figure"]):
+        tag.decompose()
+    text = article.get_text(separator=" ", strip=True)
+    return re.sub(r"\s+", " ", text).strip()[:3500]
 
 
 def _get_og(soup: BeautifulSoup, property: str) -> Optional[str]:
@@ -99,9 +106,9 @@ def _empty_result(url: str, error: str = "") -> dict:
         "category": "스포츠",
         "tags": [],
         "thumbnail": "",
-        "platform": "naver_sports",
+        "platform": "naver_news",
         "original_url": url,
         "error": error,
     }
 
-# OG 태그 기반으로 제목·요약 추출 후 유니코드 이스케이프(\uXXXX) 디코딩하여 한글 복원
+# OG 태그로 제목·썸네일, article.get_text()로 본문 추출 (p 태그 없는 Naver Sports 구조 대응)

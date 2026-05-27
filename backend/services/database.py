@@ -85,10 +85,25 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
                 },
             )
             response.raise_for_status()
+
+            # collection_id가 있으면 해당 컬렉션의 content_count 1 증가
+            if collection_id:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/increment_collection_count",
+                    headers=_headers(),
+                    json={"col_id": collection_id},
+                )
+
             return True
 
     except httpx.HTTPError as e:
+        # 400 상세 원인 확인용 — 응답 바디 출력
+        try:
+            body = e.response.text if hasattr(e, "response") and e.response is not None else "응답 없음"
+        except Exception:
+            body = "응답 바디 파싱 실패"
         print(f"[database] 업데이트 오류: {e}")
+        print(f"[database] 상세: {body}")
         return False
 
 

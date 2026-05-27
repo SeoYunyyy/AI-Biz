@@ -105,10 +105,11 @@ async def _ingest_pipeline(user_id: str, url: str, instruction: str, collection_
 
 @archive_bp.route('/api/save', methods=['POST'])
 def save():
-    data        = request.json or {}
-    raw_input   = data.get('raw_input', '').strip()  # "URL 지시사항" 통합 입력
-    url         = data.get('url', '').strip()
-    instruction = data.get('instruction', '').strip()
+    data          = request.json or {}
+    raw_input     = data.get('raw_input', '').strip()  # "URL 지시사항" 통합 입력
+    url           = data.get('url', '').strip()
+    instruction   = data.get('instruction', '').strip()
+    collection_id = data.get('collection_id') or None   # 프론트에서 선택한 폴더 ID
 
     # raw_input 으로 왔을 때 URL + 지시사항 분리
     if raw_input and not url:
@@ -122,7 +123,7 @@ def save():
         return jsonify({'error': '로그인이 필요합니다'}), 401
 
     try:
-        result = asyncio.run(_ingest_pipeline(user_id, url, instruction))
+        result = asyncio.run(_ingest_pipeline(user_id, url, instruction, collection_id=collection_id))
     except Exception as e:
         return jsonify({'error': f'저장 중 오류: {str(e)}'}), 500
 
