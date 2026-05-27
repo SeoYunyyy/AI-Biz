@@ -98,5 +98,45 @@
     </div>
 
     <script src="/static/js/main.js"></script>
+
+    <!-- Supabase 세션 연동 스크립트 -->
+    <script>
+      window.__SUPABASE_URL__      = {{ supabase_url | tojson }};
+      window.__SUPABASE_ANON_KEY__ = {{ supabase_anon_key | tojson }};
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script defer>
+      window.addEventListener('load', function () {
+        if (!window.supabase || !window.__SUPABASE_URL__) return;
+
+        const _sb = window.supabase.createClient(window.__SUPABASE_URL__, window.__SUPABASE_ANON_KEY__);
+
+        async function initAuth() {
+          const { data: { session } } = await _sb.auth.getSession();
+          if (!session) {
+            window.location.href = '/login';
+            return;
+          }
+          // Flask 세션이 없을 때만 동기화 (새 탭 등)
+          await fetch('/api/auth/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: session.user, access_token: session.access_token }),
+          }).catch(() => {});
+        }
+
+        _sb.auth.onAuthStateChange(function (event) {
+          if (event === 'SIGNED_OUT') window.location.href = '/login';
+        });
+
+        initAuth();
+
+        window.keepitLogout = async function () {
+          await _sb.auth.signOut();
+          await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+          window.location.href = '/login';
+        };
+      });
+    </script>
   </body>
 </html>
