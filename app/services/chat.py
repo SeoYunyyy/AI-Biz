@@ -130,24 +130,35 @@ async def _handle_search(user_id: str, query: str) -> dict:
 
 
 async def _handle_deadline(user_id: str) -> dict:
+    from datetime import timedelta
+
     deadlines = await get_deadlines(user_id)
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(timezone.utc).date()
+    today_str = today.isoformat()
+    week_later = (today + timedelta(days=7)).isoformat()
 
-    upcoming = [d for d in deadlines if d.get("deadline_date", "9999") >= today]
-    expired  = [d for d in deadlines if d.get("deadline_date", "9999") < today]
+    urgent   = [d for d in deadlines if today_str <= d.get("deadline_date", "9999") <= week_later]
+    relaxed  = [d for d in deadlines if d.get("deadline_date", "9999") > week_later]
+    expired  = [d for d in deadlines if d.get("deadline_date", "9999") < today_str]
 
-    if not upcoming and not expired:
+    if not urgent and not relaxed and not expired:
         return {"answer": "마감기한이 있는 콘텐츠가 없어요.", "results": []}
 
     context_parts = []
-    if upcoming:
-        context_parts.append("[ 다가오는 마감 ]")
+    if urgent:
+        context_parts.append("[ 🚨 마감 임박 — 7일 이내 ]")
         context_parts += [
             f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})"
-            for d in upcoming[:5]
+            for d in urgent
+        ]
+    if relaxed:
+        context_parts.append("\n[ 📅 여유 있음 — 7일 초과 ]")
+        context_parts += [
+            f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})"
+            for d in relaxed[:5]
         ]
     if expired:
-        context_parts.append("\n[ 이미 만료된 마감 ]")
+        context_parts.append("\n[ 만료됨 ]")
         context_parts += [
             f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})"
             for d in expired[:3]
@@ -158,8 +169,11 @@ async def _handle_deadline(user_id: str) -> dict:
             {
                 "role": "system",
                 "content": (
-                    "사용자의 마감기한 목록입니다. 임박한 것을 먼저 강조하고, "
-                    "만료된 것은 정리를 권유하세요. 친근하게. 한국어로. 3~4문장."
+                    "사용자의 마감기한 목록입니다. "
+                    "7일 이내 임박한 것은 긴박하게 강조하고, "
+                    "여유 있는 것은 가볍게 언급하고, "
+                    "만료된 것은 정리를 권유하세요. "
+                    "친근하게. 한국어로. 3~4문장."
                 ),
             },
             {"role": "user", "content": "\n".join(context_parts)},
@@ -168,7 +182,12 @@ async def _handle_deadline(user_id: str) -> dict:
         max_tokens=220,
     )
 
-    return {"answer": answer, "results": upcoming[:5], "expired": expired[:3]}
+    return {
+        "answer": answer,
+        "urgent": urgent,
+        "relaxed": relaxed[:5],
+        "expired": expired[:3],
+    }
 
 
 async def _handle_folder(user_id: str, folder_name: str) -> dict:
