@@ -13,6 +13,7 @@ from routes.reminder import reminder_bp
 from hyoju_connection import hyoju_bp
 from routes.group import group_bp
 from routes.chat import chat_bp
+from routes.report import report_bp
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
@@ -24,6 +25,7 @@ app.register_blueprint(reminder_bp)
 app.register_blueprint(hyoju_bp)
 app.register_blueprint(group_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(report_bp)
 
 
 @app.route('/')
