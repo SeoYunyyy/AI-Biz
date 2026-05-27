@@ -114,6 +114,15 @@ async def ingest(req: IngestRequest):
         # 7. contents 업데이트 (completed)
         await update_content(content_id, metadata, analysis, collection_id=collection_id, thumbnail_description=thumbnail_description)
 
+        # 유사 콘텐츠 리마인드 메시지 생성
+        reminder_message = None
+        if similar:
+            top_title = similar[0].get("title", "")
+            if len(similar) == 1:
+                reminder_message = f"'{top_title}'과 비슷한 내용을 저장한 적 있어요."
+            else:
+                reminder_message = f"'{top_title}' 등 {len(similar)}개의 비슷한 내용을 저장한 적 있어요."
+
         return {
             "id": content_id,
             "title": metadata.get("title", ""),
@@ -127,7 +136,8 @@ async def ingest(req: IngestRequest):
             "deadline_note": analysis.get("deadline_note"),
             "sub_category": analysis.get("sub_category", ""),
             "analysis_status": "completed",
-            "similar_contents": [        # 추가
+            "reminder_message": reminder_message,
+            "similar_contents": [
                 {
                     "id": s["id"],
                     "title": s["title"],
