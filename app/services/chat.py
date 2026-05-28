@@ -151,23 +151,8 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             ],
         }
 
-    context = "\n".join([
-        f"- 제목: {r.get('title', '제목 없음')} | 플랫폼: {r.get('content_type', '')} | 요약: {r.get('description', '')}"
-        for r in results
-    ])
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "사용자의 저장된 콘텐츠 중 관련 항목을 찾았습니다. "
-                "2~3문장으로 자연스럽게 안내해주세요. 제목을 언급하고 어떤 내용인지 간단히 설명하세요. 한국어로."
-            ),
-        },
-        *history[-20:],
-        {"role": "user", "content": f"검색어: {query}\n\n찾은 콘텐츠:\n{context}"},
-    ]
-    answer = await _llm(messages, model="gpt-4o", max_tokens=180)
+    count = len(results)
+    answer = f"관련 콘텐츠 {count}개 찾았어요."
 
     return {"answer": answer, "results": results, "follow_up_questions": []}
 
