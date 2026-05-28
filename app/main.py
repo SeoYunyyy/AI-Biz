@@ -50,6 +50,7 @@ class ChatRequest(BaseModel):
     query: str
     user_id: str
     history: list[dict[str, Any]] = []  # [{"role": "user"/"assistant", "content": "..."}]
+    shown_ids: list[str] = []  # 이미 보여준 콘텐츠 ID 목록 (재검색 시 제외용)
 
 
 # ── 헬스체크 ───────────────────────────────────────────────────────────────────
@@ -303,5 +304,5 @@ async def chat(req: ChatRequest):
     - folder  : 유사 폴더 감지 → 확인 요청
     - cleanup : 만료 콘텐츠 정리 안내
     """
-    result = await process_chat(req.user_id, req.query, req.history)
+    result = await process_chat(req.user_id, req.query, req.history, req.shown_ids)
     return result

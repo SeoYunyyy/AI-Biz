@@ -110,7 +110,7 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
 
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
-async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]) -> dict:
+async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]], shown_ids: list[str] = []) -> dict:
     # 이전 대화가 있으면 맥락 반영한 쿼리로 보강
     context_query = await _build_context_query(query, history) if history else query
 
@@ -123,7 +123,9 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    results = await search_contents(user_id, embedding, limit=3)
+    # 이미 본 콘텐츠 제외하기 위해 넉넉하게 요청
+    raw_results = await search_contents(user_id, embedding, limit=10)
+    results = [r for r in raw_results if r.get("id") not in shown_ids][:5]
 
     if not results:
         # 이미 유도 질문을 한 번 했으면 다른 방식으로 안내
@@ -353,7 +355,7 @@ async def _handle_delete(user_id: str, delete_query: str) -> dict:
 
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
-async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = []) -> dict:
+async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = [], shown_ids: list[str] = []) -> dict:
     """의도 파악 후 적절한 핸들러 호출. history로 대화 맥락 유지."""
     intent_data = await _detect_intent(query, history)
     intent = intent_data.get("intent", "general")
@@ -363,7 +365,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     target_folder = intent_data.get("target_folder")
 
     if intent == "search":
-        result = await _handle_search(user_id, query, history)
+        result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":
         result = await _handle_deadline(user_id)
     elif intent == "folder" and folder_name:
@@ -375,7 +377,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query)
     else:
-        result = await _handle_search(user_id, query, history)
+        result = await _handle_search(user_id, query, history, shown_ids)
 
     result["intent"] = intent
     return result
