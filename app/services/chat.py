@@ -67,7 +67,7 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
 async def _detect_intent(query: str, history: list[dict]) -> dict:
     try:
         messages = [{"role": "system", "content": INTENT_PROMPT}]
-        messages += history[-6:]  # 최근 6개 메시지로 맥락 파악
+        messages += history[-20:]  # 최근 6개 메시지로 맥락 파악
         messages += [{"role": "user", "content": query}]
         raw = await _llm(messages, model="gpt-4o-mini", max_tokens=80, json_mode=True)
         return json.loads(raw)
@@ -88,7 +88,7 @@ async def _build_context_query(query: str, history: list[dict]) -> str:
                     "50자 이내. 설명 없이 쿼리만 출력."
                 ),
             },
-            *history[-6:],
+            *history[-20:],
             {"role": "user", "content": query},
         ]
         refined = await _llm(messages, model="gpt-4o-mini", max_tokens=80)
@@ -161,7 +161,7 @@ async def _handle_search(user_id: str, query: str, history: list[dict]) -> dict:
                 "2~3문장으로 자연스럽게 안내해주세요. 제목을 언급하고 어떤 내용인지 간단히 설명하세요. 한국어로."
             ),
         },
-        *history[-4:],
+        *history[-20:],
         {"role": "user", "content": f"검색어: {query}\n\n찾은 콘텐츠:\n{context}"},
     ]
     answer = await _llm(messages, model="gpt-4o", max_tokens=180)
