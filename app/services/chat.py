@@ -159,8 +159,9 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    # threshold 0.45로 올려서 관련 없는 결과 필터링, 이미 본 콘텐츠 제외
-    raw_results = await search_contents(user_id, embedding, limit=10, threshold=0.45)
+    # 첫 검색은 0.35, 재검색(shown_ids 있음)은 0.45로 강화
+    threshold = 0.45 if shown_ids else 0.35
+    raw_results = await search_contents(user_id, embedding, limit=10, threshold=threshold)
     results = [r for r in raw_results if r.get("id") not in shown_ids][:5]
 
     if not results:
