@@ -43,7 +43,7 @@ move_query: 이동 의도일 때 이동할 콘텐츠 키워드 (예: "에릭센 
 target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null"""
 
 
-async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
+async def _llm(messages: list, model: str = "gpt-5-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
     body = {
         "model": model,
         "messages": messages,
@@ -70,7 +70,7 @@ async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
         messages = [{"role": "system", "content": INTENT_PROMPT}]
         messages += history[-20:]  # 최근 6개 메시지로 맥락 파악
         messages += [{"role": "user", "content": query}]
-        raw = await _llm(messages, model="gpt-4o-mini", max_tokens=80, json_mode=True)
+        raw = await _llm(messages, model="gpt-5-mini", max_tokens=80, json_mode=True)
         return json.loads(raw)
     except Exception:
         return {"intent": "general", "folder_name": None}
@@ -97,7 +97,7 @@ async def _filter_results(query: str, results: list[dict]) -> list[dict]:
                 },
                 {"role": "user", "content": f"검색어: {query}\n\n결과:\n{items}"},
             ],
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             max_tokens=200,
             json_mode=False,
         )
@@ -131,7 +131,7 @@ async def _build_context_query(query: str, history: list[dict[str, Any]]) -> str
             *history[-10:],
             {"role": "user", "content": f"원본 쿼리: {query}"},
         ]
-        refined = await _llm(messages, model="gpt-4o-mini", max_tokens=80)
+        refined = await _llm(messages, model="gpt-5-mini", max_tokens=80)
         return refined or query
     except Exception:
         return query

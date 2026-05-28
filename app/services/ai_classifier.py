@@ -77,7 +77,7 @@ async def classify(metadata: dict, user_instruction: str = "") -> dict:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "gpt-4o-mini",
+                    "model": "gpt-5-mini",
                     "response_format": {"type": "json_object"},
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
