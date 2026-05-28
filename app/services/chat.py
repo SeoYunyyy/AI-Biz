@@ -165,6 +165,14 @@ def _is_dissatisfied(query: str, history: list[dict[str, Any]]) -> bool:
         return False
     return any(s in query for s in DISSATISFACTION_SIGNALS)
 
+def _has_extra_context(query: str) -> bool:
+    """불만족 신호 외에 추가 검색 정보가 있는지 (있으면 바로 검색)"""
+    cleaned = query
+    for s in DISSATISFACTION_SIGNALS:
+        cleaned = cleaned.replace(s, "")
+    cleaned = cleaned.strip().replace(" ", "")
+    return len(cleaned) >= 4  # 4글자 이상 남으면 의미 있는 추가 정보로 판단
+
 def _already_asked_followup(history: list[dict[str, Any]]) -> bool:
     """history에서 유도질문을 이미 했는지 확인"""
     return any(
@@ -177,26 +185,29 @@ def _already_asked_followup(history: list[dict[str, Any]]) -> bool:
 async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]], shown_ids: list[str] = []) -> dict:
     already_asked = _already_asked_followup(history)
 
-    # 불만족 표현 + 이미 유도질문도 했으면 → 힌트 요청
-    if _is_dissatisfied(query, history) and already_asked:
-        return {
-            "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
-            "results": [],
-            "follow_up_questions": [],
-        }
-
-    # 불만족 표현 + 유도질문 아직 안 했으면 → 유도질문
-    if _is_dissatisfied(query, history) and not already_asked:
-        return {
-            "answer": "찾으시는 게 없었군요. 조금 더 알려주시면 다시 찾아볼게요!",
-            "results": [],
-            "follow_up_questions": [
-                "유튜브 영상이었나요, 아니면 블로그나 뉴스 글이었나요?",
-                "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
-                "언제쯤 저장하셨는지 기억나시나요?",
-                "제목에 특정 단어가 포함됐었나요?",
-            ],
-        }
+    if _is_dissatisfied(query, history):
+        if _has_extra_context(query):
+            # "없어 남돌 영상인데" 처럼 추가 정보 있으면 → 바로 검색
+            pass
+        elif already_asked:
+            # 유도질문 했는데 또 그냥 없다고만 하면 → 힌트 요청
+            return {
+                "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
+                "results": [],
+                "follow_up_questions": [],
+            }
+        else:
+            # 추가 정보 없이 그냥 없다고만 하면 → 유도질문
+            return {
+                "answer": "찾으시는 게 없었군요. 조금 더 알려주시면 다시 찾아볼게요!",
+                "results": [],
+                "follow_up_questions": [
+                    "유튜브 영상이었나요, 아니면 블로그나 뉴스 글이었나요?",
+                    "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
+                    "언제쯤 저장하셨는지 기억나시나요?",
+                    "제목에 특정 단어가 포함됐었나요?",
+                ],
+            }
 
     # 이전 대화가 있으면 맥락 반영한 쿼리로 보강
     context_query = await _build_context_query(query, history) if history else query
