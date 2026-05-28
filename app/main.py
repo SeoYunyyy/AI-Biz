@@ -48,6 +48,7 @@ class SearchRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     user_id: str
+    history: list[dict] = []  # [{"role": "user"/"assistant", "content": "..."}]
 
 
 # ── 헬스체크 ───────────────────────────────────────────────────────────────────
@@ -301,5 +302,5 @@ async def chat(req: ChatRequest):
     - folder  : 유사 폴더 감지 → 확인 요청
     - cleanup : 만료 콘텐츠 정리 안내
     """
-    result = await process_chat(req.user_id, req.query)
+    result = await process_chat(req.user_id, req.query, req.history)
     return result

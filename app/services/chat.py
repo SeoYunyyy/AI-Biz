@@ -20,10 +20,10 @@ from app.services.database import (
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
-INTENT_PROMPT = """사용자 메시지를 보고 의도를 분류하세요. 반드시 JSON만 응답.
+INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분류하세요. 반드시 JSON만 응답.
 
 의도 종류:
-- search   : 저장한 콘텐츠를 찾거나 검색하는 요청
+- search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
 - move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘" 등)
@@ -64,24 +64,40 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
     return response.json()["choices"][0]["message"]["content"].strip()
 
 
-async def _detect_intent(query: str) -> dict:
+async def _detect_intent(query: str, history: list[dict]) -> dict:
     try:
-        raw = await _llm(
-            messages=[
-                {"role": "system", "content": INTENT_PROMPT},
-                {"role": "user", "content": query},
-            ],
-            model="gpt-4o-mini",
-            max_tokens=80,
-            json_mode=True,
-        )
+        messages = [{"role": "system", "content": INTENT_PROMPT}]
+        messages += history[-6:]  # 최근 6개 메시지로 맥락 파악
+        messages += [{"role": "user", "content": query}]
+        raw = await _llm(messages, model="gpt-4o-mini", max_tokens=80, json_mode=True)
         return json.loads(raw)
     except Exception:
         return {"intent": "general", "folder_name": None}
 
 
+async def _build_context_query(query: str, history: list[dict]) -> str:
+    """이전 대화 맥락을 반영한 통합 검색 쿼리 생성"""
+    if not history:
+        return query
+    try:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "이전 대화를 참고해서 사용자가 찾으려는 콘텐츠를 하나의 검색 쿼리로 만드세요. "
+                    "50자 이내. 설명 없이 쿼리만 출력."
+                ),
+            },
+            *history[-6:],
+            {"role": "user", "content": query},
+        ]
+        refined = await _llm(messages, model="gpt-4o-mini", max_tokens=80)
+        return refined or query
+    except Exception:
+        return query
+
+
 def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> str | None:
-    """공백 제거 후 유사도 비교. threshold 이상인 가장 유사한 폴더명 반환."""
     name_norm = name.replace(" ", "").lower()
     best_ratio, best_match = 0.0, None
     for c in candidates:
@@ -93,8 +109,11 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
 
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
-async def _handle_search(user_id: str, query: str) -> dict:
-    expanded = await expand_query(query)
+async def _handle_search(user_id: str, query: str, history: list[dict]) -> dict:
+    # 이전 대화가 있으면 맥락 반영한 쿼리로 보강
+    context_query = await _build_context_query(query, history) if history else query
+
+    expanded = await expand_query(context_query)
     embedding = await generate_embedding(expanded)
     if not embedding:
         return {
@@ -106,6 +125,18 @@ async def _handle_search(user_id: str, query: str) -> dict:
     results = await search_contents(user_id, embedding, limit=3)
 
     if not results:
+        # 이미 유도 질문을 한 번 했으면 다른 방식으로 안내
+        already_asked = any(
+            "유튜브" in m.get("content", "") or "기억나시나요" in m.get("content", "")
+            for m in history
+            if m.get("role") == "assistant"
+        )
+        if already_asked:
+            return {
+                "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
+                "results": [],
+                "follow_up_questions": [],
+            }
         return {
             "answer": "저장된 콘텐츠 중에서 찾지 못했어요. 아래 질문으로 범위를 좁혀볼게요.",
             "results": [],
@@ -121,20 +152,19 @@ async def _handle_search(user_id: str, query: str) -> dict:
         f"- 제목: {r.get('title', '제목 없음')} | 플랫폼: {r.get('content_type', '')} | 요약: {r.get('description', '')}"
         for r in results
     ])
-    answer = await _llm(
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "사용자의 저장된 콘텐츠 중 관련 항목을 찾았습니다. "
-                    "2~3문장으로 자연스럽게 안내해주세요. 제목을 언급하고 어떤 내용인지 간단히 설명하세요. 한국어로."
-                ),
-            },
-            {"role": "user", "content": f"검색어: {query}\n\n찾은 콘텐츠:\n{context}"},
-        ],
-        model="gpt-4o",
-        max_tokens=180,
-    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "사용자의 저장된 콘텐츠 중 관련 항목을 찾았습니다. "
+                "2~3문장으로 자연스럽게 안내해주세요. 제목을 언급하고 어떤 내용인지 간단히 설명하세요. 한국어로."
+            ),
+        },
+        *history[-4:],
+        {"role": "user", "content": f"검색어: {query}\n\n찾은 콘텐츠:\n{context}"},
+    ]
+    answer = await _llm(messages, model="gpt-4o", max_tokens=180)
 
     return {"answer": answer, "results": results, "follow_up_questions": []}
 
@@ -201,10 +231,8 @@ async def _handle_deadline(user_id: str) -> dict:
 
 
 async def _handle_folder(user_id: str, folder_name: str) -> dict:
-    """유사 폴더 감지 → 확인 요청. 없으면 새로 만들겠다고 안내."""
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
-
     matched = _fuzzy_match(folder_name, existing_names)
 
     if matched and matched != folder_name:
@@ -277,7 +305,6 @@ async def _handle_cleanup(user_id: str) -> dict:
 
 
 async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
-    """콘텐츠를 다른 폴더로 이동 — 후보 검색 후 확인 요청."""
     expanded = await expand_query(move_query)
     embedding = await generate_embedding(expanded)
     if not embedding:
@@ -305,7 +332,6 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dic
 
 
 async def _handle_delete(user_id: str, delete_query: str) -> dict:
-    """삭제 대상 검색 후 확인 요청."""
     expanded = await expand_query(delete_query)
     embedding = await generate_embedding(expanded)
     if not embedding:
@@ -326,9 +352,9 @@ async def _handle_delete(user_id: str, delete_query: str) -> dict:
 
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
-async def process_chat(user_id: str, query: str) -> dict:
-    """의도 파악 후 적절한 핸들러 호출."""
-    intent_data = await _detect_intent(query)
+async def process_chat(user_id: str, query: str, history: list[dict] = []) -> dict:
+    """의도 파악 후 적절한 핸들러 호출. history로 대화 맥락 유지."""
+    intent_data = await _detect_intent(query, history)
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
     delete_query = intent_data.get("delete_query")
@@ -336,7 +362,7 @@ async def process_chat(user_id: str, query: str) -> dict:
     target_folder = intent_data.get("target_folder")
 
     if intent == "search":
-        result = await _handle_search(user_id, query)
+        result = await _handle_search(user_id, query, history)
     elif intent == "deadline":
         result = await _handle_deadline(user_id)
     elif intent == "folder" and folder_name:
@@ -348,7 +374,7 @@ async def process_chat(user_id: str, query: str) -> dict:
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query)
     else:
-        result = await _handle_search(user_id, query)
+        result = await _handle_search(user_id, query, history)
 
     result["intent"] = intent
     return result
