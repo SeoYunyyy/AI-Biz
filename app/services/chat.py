@@ -221,8 +221,8 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    # 첫 검색은 0.3, 재검색(shown_ids 있음)은 0.4로 강화
-    threshold = 0.4 if shown_ids else 0.3
+    # shown_ids 있어도 threshold는 동일하게 유지 (dedup은 shown_ids 필터로 처리)
+    threshold = 0.3
     raw_results = await search_contents(user_id, embedding, limit=10, threshold=threshold)
     candidates = [r for r in raw_results if r.get("id") not in shown_ids]
 
@@ -231,7 +231,7 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
     results = candidates[:5]
 
     if not results:
-        if already_asked:
+        if already_asked or _has_extra_context(query):
             return {
                 "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
                 "results": [],
