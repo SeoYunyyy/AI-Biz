@@ -39,7 +39,7 @@ def row_to_item(row: dict) -> dict:
         'title':        row.get('title', ''),
         'category':     category,
         'subcategory':  topics[0] if topics else '-',
-        'summary':      row.get('description', ''),
+        'summary':      row.get('detailed_summary') or row.get('description', ''),
         'content_type': row.get('content_type', 'other'),
         'tags':         row.get('hashtags') or [],
         'thumbnail':    row.get('thumbnail_url', ''),

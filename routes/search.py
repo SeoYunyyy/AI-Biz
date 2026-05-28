@@ -43,7 +43,7 @@ def search():
             "title":       r.get("title", ""),
             "category":    r.get("category", ""),
             "subcategory": r.get("sub_category", ""),
-            "summary":     r.get("description", ""),
+            "summary":     r.get("one_line_summary") or r.get("description", ""),
             "tags":        r.get("hashtags", []),
             "thumbnail":   r.get("thumbnail_url", ""),
             "similarity":  round(r.get("similarity", 0), 2),
