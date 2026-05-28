@@ -110,7 +110,43 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
 
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
+DISSATISFACTION_SIGNALS = ["없", "아니", "못 찾", "모르겠", "그거 말고", "다른 거", "없는데", "아닌데", "틀렸"]
+
+def _is_dissatisfied(query: str, history: list[dict[str, Any]]) -> bool:
+    """이전 결과에 불만족 표현하는지 감지"""
+    if not history:
+        return False
+    return any(s in query for s in DISSATISFACTION_SIGNALS)
+
+
 async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]], shown_ids: list[str] = []) -> dict:
+    already_asked = any(
+        "기억나시나요" in m.get("content", "") or "유튜브 영상이었나요" in m.get("content", "")
+        for m in history
+        if m.get("role") == "assistant"
+    )
+
+    # 불만족 표현 + 이미 유도질문도 했으면 → 힌트 요청
+    if _is_dissatisfied(query, history) and already_asked:
+        return {
+            "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
+            "results": [],
+            "follow_up_questions": [],
+        }
+
+    # 불만족 표현 + 유도질문 아직 안 했으면 → 유도질문
+    if _is_dissatisfied(query, history) and not already_asked:
+        return {
+            "answer": "찾으시는 게 없었군요. 조금 더 알려주시면 다시 찾아볼게요!",
+            "results": [],
+            "follow_up_questions": [
+                "유튜브 영상이었나요, 아니면 블로그나 뉴스 글이었나요?",
+                "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
+                "언제쯤 저장하셨는지 기억나시나요?",
+                "제목에 특정 단어가 포함됐었나요?",
+            ],
+        }
+
     # 이전 대화가 있으면 맥락 반영한 쿼리로 보강
     context_query = await _build_context_query(query, history) if history else query
 
@@ -123,17 +159,11 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    # 이미 본 콘텐츠 제외하기 위해 넉넉하게 요청
-    raw_results = await search_contents(user_id, embedding, limit=10)
+    # threshold 0.45로 올려서 관련 없는 결과 필터링, 이미 본 콘텐츠 제외
+    raw_results = await search_contents(user_id, embedding, limit=10, threshold=0.45)
     results = [r for r in raw_results if r.get("id") not in shown_ids][:5]
 
     if not results:
-        # 이미 유도 질문을 한 번 했으면 다른 방식으로 안내
-        already_asked = any(
-            "유튜브" in m.get("content", "") or "기억나시나요" in m.get("content", "")
-            for m in history
-            if m.get("role") == "assistant"
-        )
         if already_asked:
             return {
                 "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
