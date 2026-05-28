@@ -76,6 +76,42 @@ async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
         return {"intent": "general", "folder_name": None}
 
 
+async def _filter_results(query: str, results: list[dict]) -> list[dict]:
+    """LLM으로 검색 결과 중 의도와 맞지 않는 항목 제거"""
+    if not results:
+        return results
+    try:
+        items = "\n".join([
+            f"- id:{r['id']} | 제목:{r.get('title','')} | 태그:{','.join(r.get('topics', []))}"
+            for r in results
+        ])
+        raw = await _llm(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "사용자 검색 의도와 맞지 않는 결과를 걸러내세요. "
+                        "아티스트 성별, 장르, 콘텐츠 유형 등 상식으로 판단하세요. "
+                        "관련 있는 결과의 id만 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
+                    ),
+                },
+                {"role": "user", "content": f"검색어: {query}\n\n결과:\n{items}"},
+            ],
+            model="gpt-4o-mini",
+            max_tokens=200,
+            json_mode=False,
+        )
+        import re as _re
+        match = _re.search(r'\[.*?\]', raw, _re.DOTALL)
+        if not match:
+            return results
+        valid_ids = json.loads(match.group())
+        filtered = [r for r in results if r["id"] in valid_ids]
+        return filtered if filtered else results
+    except Exception:
+        return results
+
+
 async def _build_context_query(query: str, history: list[dict[str, Any]]) -> str:
     """이전 대화 맥락을 반영한 통합 검색 쿼리 생성"""
     if not history:
@@ -162,7 +198,11 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
     # 첫 검색은 0.35, 재검색(shown_ids 있음)은 0.45로 강화
     threshold = 0.45 if shown_ids else 0.35
     raw_results = await search_contents(user_id, embedding, limit=10, threshold=threshold)
-    results = [r for r in raw_results if r.get("id") not in shown_ids][:5]
+    candidates = [r for r in raw_results if r.get("id") not in shown_ids]
+
+    # LLM으로 의도와 안 맞는 결과 필터링
+    candidates = await _filter_results(context_query, candidates)
+    results = candidates[:5]
 
     if not results:
         if already_asked:
