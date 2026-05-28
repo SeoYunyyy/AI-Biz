@@ -60,7 +60,7 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
                     # 메타데이터 추출 결과
                     "content_type": metadata.get("platform", "other"),
                     "title": metadata.get("title", ""),
-                    "description": metadata.get("summary", ""),
+                    "description": metadata.get("summary") or analysis.get("detailed_summary", ""),
                     "thumbnail_url": metadata.get("thumbnail", ""),
                     "author": metadata.get("author", ""),
                     "metadata": {
@@ -68,20 +68,23 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
                         "original_url": metadata.get("original_url", ""),
                     },
                     # AI 분석 결과
+                    "one_line_summary": analysis.get("one_line_summary", ""),
+                    "detailed_summary": analysis.get("detailed_summary", ""),
+                    "save_purpose": analysis.get("save_purpose", ""),
                     "topics": analysis.get("tags", []),
                     "hashtags": [f"#{t}" for t in analysis.get("tags", [])],
                     "intent": [analysis.get("save_purpose", "")],
-                    "category": analysis.get("category", "기타/알쓸신잡"),      # 추가
-                    "sub_category": analysis.get("sub_category", ""),           # 추가
-                    "has_deadline": analysis.get("has_deadline", False),         # 추가
-                    "deadline_date": analysis.get("deadline_date"),              # 추가
-                    "deadline_note": analysis.get("deadline_note"),              # 추가
+                    "category": analysis.get("category", "기타/알쓸신잡"),
+                    "sub_category": analysis.get("sub_category", ""),
+                    "has_deadline": analysis.get("has_deadline", False),
+                    "deadline_date": analysis.get("deadline_date"),
+                    "deadline_note": analysis.get("deadline_note"),
                     # 썸네일 Vision 분석 결과
                     "thumbnail_description": thumbnail_description or None,
                     # 상태 업데이트
                     "analysis_status": "completed",
                     "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                    "collection_id": collection_id,
+                    "collection_id": collection_id if collection_id and collection_id != "null" else None,
                 },
             )
             response.raise_for_status()
@@ -89,6 +92,10 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
 
     except httpx.HTTPError as e:
         print(f"[database] 업데이트 오류: {e}")
+        try:
+            print(f"[database] Supabase 응답: {e.response.text}")
+        except Exception:
+            pass
         return False
 
 
@@ -286,6 +293,73 @@ async def delete_content(content_id: str, user_id: str) -> bool:
             return True
     except httpx.HTTPError as e:
         print(f"[database] 삭제 오류: {e}")
+        return False
+
+
+async def move_content_collection(content_id: str, user_id: str, collection_id: str | None) -> bool:
+    """콘텐츠의 폴더(collection_id) 변경"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={
+                    "id": f"eq.{content_id}",
+                    "user_id": f"eq.{user_id}",
+                },
+                json={"collection_id": collection_id},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 폴더 이동 오류: {e}")
+        return False
+
+
+async def get_all_contents_for_reclassify(user_id: str) -> list[dict]:
+    """재분류용 전체 콘텐츠 조회"""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,content_type,description,url,metadata",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 전체 조회 오류: {e}")
+        return []
+
+
+async def update_ai_fields(content_id: str, analysis: dict) -> bool:
+    """AI 분류 결과 필드만 업데이트 (재분류용)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents?id=eq.{content_id}",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                json={
+                    "category": analysis.get("category", "기타/알쓸신잡"),
+                    "sub_category": analysis.get("sub_category", ""),
+                    "one_line_summary": analysis.get("one_line_summary", ""),
+                    "detailed_summary": analysis.get("detailed_summary", ""),
+                    "save_purpose": analysis.get("save_purpose", ""),
+                    "topics": analysis.get("tags", []),
+                    "hashtags": [f"#{t}" for t in analysis.get("tags", [])],
+                    "has_deadline": analysis.get("has_deadline", False),
+                    "deadline_date": analysis.get("deadline_date"),
+                    "deadline_note": analysis.get("deadline_note"),
+                },
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] AI 필드 업데이트 오류: {e}")
         return False
 
 

@@ -13,6 +13,8 @@ from app.services.database import (
     get_deadlines,
     get_collections,
     get_old_contents,
+    get_or_create_collection,
+    move_content_collection,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -24,6 +26,7 @@ INTENT_PROMPT = """사용자 메시지를 보고 의도를 분류하세요. 반�
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
+- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘" 등)
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
              ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐",
               "쌓인 거 뭐 있어", "안 보는 거 뭐야", "오래된 거 알려줘" 등)
@@ -31,10 +34,12 @@ INTENT_PROMPT = """사용자 메시지를 보고 의도를 분류하세요. 반�
 - general  : 그 외
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null}
 
 folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null
-delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null"""
+delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
+move_query: 이동 의도일 때 이동할 콘텐츠 키워드 (예: "에릭센 기사"), 없으면 null
+target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null"""
 
 
 async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
@@ -271,6 +276,34 @@ async def _handle_cleanup(user_id: str) -> dict:
     }
 
 
+async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
+    """콘텐츠를 다른 폴더로 이동 — 후보 검색 후 확인 요청."""
+    expanded = await expand_query(move_query)
+    embedding = await generate_embedding(expanded)
+    if not embedding:
+        return {"answer": "이동할 콘텐츠를 찾지 못했어요.", "results": []}
+
+    results = await search_contents(user_id, embedding, limit=5)
+    if not results:
+        return {"answer": f"'{move_query}' 관련 콘텐츠를 찾지 못했어요.", "results": []}
+
+    collections = await get_collections(user_id)
+    existing_names = [c["name"] for c in collections]
+    matched_folder = _fuzzy_match(target_folder, existing_names) or target_folder
+
+    titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
+    return {
+        "answer": (
+            f"'{move_query}' 관련 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n"
+            f"'{matched_folder}' 폴더로 이동할까요?"
+        ),
+        "needs_confirmation": True,
+        "pending_move_ids": [r["id"] for r in results],
+        "target_folder": matched_folder,
+        "results": results,
+    }
+
+
 async def _handle_delete(user_id: str, delete_query: str) -> dict:
     """삭제 대상 검색 후 확인 요청."""
     expanded = await expand_query(delete_query)
@@ -299,6 +332,8 @@ async def process_chat(user_id: str, query: str) -> dict:
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
     delete_query = intent_data.get("delete_query")
+    move_query = intent_data.get("move_query")
+    target_folder = intent_data.get("target_folder")
 
     if intent == "search":
         result = await _handle_search(user_id, query)
@@ -308,6 +343,8 @@ async def process_chat(user_id: str, query: str) -> dict:
         result = await _handle_folder(user_id, folder_name)
     elif intent == "cleanup":
         result = await _handle_cleanup(user_id)
+    elif intent == "move" and move_query and target_folder:
+        result = await _handle_move(user_id, move_query, target_folder)
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query)
     else:

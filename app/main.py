@@ -24,6 +24,9 @@ from app.services.database import (
     get_collections,
     find_similar_contents,
     delete_content,
+    get_all_contents_for_reclassify,
+    update_ai_fields,
+    move_content_collection,
 )
 
 app = FastAPI(title="Keepit API")
@@ -95,6 +98,8 @@ async def ingest(req: IngestRequest):
 
         # 5. AI 분류
         analysis = await classify(metadata, user_instruction=req.instruction)
+        if req.instruction:
+            analysis["save_purpose"] = req.instruction
 
         # 5-1. 사용자 지정 폴더 처리
         collection_id = req.collection_id
@@ -217,7 +222,7 @@ async def create_collection(user_id: str, name: str):
     return {"collection_id": collection_id, "name": name}
 
 
-# ── 콘텐츠 삭제 ────────────────────────────────────────────────────────────────
+# ── 콘텐츠 삭제 / 이동 ─────────────────────────────────────────────────────────
 
 @app.delete("/contents/{content_id}")
 async def remove_content(content_id: str, user_id: str):
@@ -226,6 +231,61 @@ async def remove_content(content_id: str, user_id: str):
     if not success:
         raise HTTPException(status_code=500, detail="삭제 실패")
     return {"deleted": True, "content_id": content_id}
+
+
+class MoveRequest(BaseModel):
+    user_id: str
+    content_ids: list[str]
+    target_folder: str
+
+
+@app.post("/contents/move")
+async def move_contents(req: MoveRequest):
+    """콘텐츠 폴더 이동 — 채팅에서 확인 후 프론트가 호출"""
+    collection_id = await get_or_create_collection(req.user_id, req.target_folder)
+    if not collection_id:
+        raise HTTPException(status_code=500, detail="폴더 생성 실패")
+
+    results = []
+    for content_id in req.content_ids:
+        success = await move_content_collection(content_id, req.user_id, collection_id)
+        results.append({"content_id": content_id, "moved": success})
+
+    return {"target_folder": req.target_folder, "results": results}
+
+
+# ── 재분류 ─────────────────────────────────────────────────────────────────────
+
+@app.post("/admin/reclassify/{user_id}")
+async def reclassify_all(user_id: str):
+    """
+    기존 저장 콘텐츠 전체를 AI로 재분류.
+    category, sub_category, 요약, 태그 등 AI 필드만 업데이트.
+    """
+    contents = await get_all_contents_for_reclassify(user_id)
+    if not contents:
+        return {"updated": 0, "message": "재분류할 콘텐츠가 없어요."}
+
+    updated, failed = 0, 0
+    for c in contents:
+        try:
+            metadata = {
+                "title": c.get("title", ""),
+                "platform": c.get("content_type", "web"),
+                "summary": c.get("description", ""),
+                "original_url": c.get("url", ""),
+            }
+            analysis = await classify(metadata)
+            success = await update_ai_fields(c["id"], analysis)
+            if success:
+                updated += 1
+            else:
+                failed += 1
+        except Exception as e:
+            print(f"[reclassify] {c.get('id')} 실패: {e}")
+            failed += 1
+
+    return {"updated": updated, "failed": failed, "total": len(contents)}
 
 
 # ── 채팅 ───────────────────────────────────────────────────────────────────────
