@@ -5,6 +5,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Any
 from contextlib import asynccontextmanager
 
 from app.services.metadata.dispatcher import extract as dispatch
@@ -48,7 +49,7 @@ class SearchRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     user_id: str
-    history: list[dict] = []  # [{"role": "user"/"assistant", "content": "..."}]
+    history: list[dict[str, Any]] = []  # [{"role": "user"/"assistant", "content": "..."}]
 
 
 # ── 헬스체크 ───────────────────────────────────────────────────────────────────

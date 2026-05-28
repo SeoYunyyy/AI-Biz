@@ -5,6 +5,7 @@ import httpx
 import json
 from difflib import SequenceMatcher
 from datetime import datetime, timezone
+from typing import Any
 
 from app.services.embedding import generate_embedding
 from app.services.query_expander import expand_query
@@ -64,7 +65,7 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
     return response.json()["choices"][0]["message"]["content"].strip()
 
 
-async def _detect_intent(query: str, history: list[dict]) -> dict:
+async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
     try:
         messages = [{"role": "system", "content": INTENT_PROMPT}]
         messages += history[-20:]  # 최근 6개 메시지로 맥락 파악
@@ -75,7 +76,7 @@ async def _detect_intent(query: str, history: list[dict]) -> dict:
         return {"intent": "general", "folder_name": None}
 
 
-async def _build_context_query(query: str, history: list[dict]) -> str:
+async def _build_context_query(query: str, history: list[dict[str, Any]]) -> str:
     """이전 대화 맥락을 반영한 통합 검색 쿼리 생성"""
     if not history:
         return query
@@ -109,7 +110,7 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
 
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
-async def _handle_search(user_id: str, query: str, history: list[dict]) -> dict:
+async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]) -> dict:
     # 이전 대화가 있으면 맥락 반영한 쿼리로 보강
     context_query = await _build_context_query(query, history) if history else query
 
@@ -352,7 +353,7 @@ async def _handle_delete(user_id: str, delete_query: str) -> dict:
 
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
-async def process_chat(user_id: str, query: str, history: list[dict] = []) -> dict:
+async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = []) -> dict:
     """의도 파악 후 적절한 핸들러 호출. history로 대화 맥락 유지."""
     intent_data = await _detect_intent(query, history)
     intent = intent_data.get("intent", "general")
