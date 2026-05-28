@@ -221,7 +221,7 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    threshold = 0.25
+    threshold = 0.3
     raw_results = await search_contents(user_id, embedding, limit=15, threshold=threshold)
     candidates = [r for r in raw_results if r.get("id") not in shown_ids]
     results = candidates[:5]
