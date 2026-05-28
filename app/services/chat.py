@@ -113,7 +113,8 @@ async def _filter_results(query: str, results: list[dict]) -> list[dict]:
 
 
 async def _build_context_query(query: str, history: list[dict[str, Any]]) -> str:
-    """이전 대화 맥락을 반영한 통합 검색 쿼리 생성"""
+    """이전 대화 맥락을 반영한 통합 검색 쿼리 생성.
+    원본 쿼리의 핵심 키워드(아티스트명, 곡명 등)는 반드시 유지하고, 대화 맥락의 추가 정보만 보완한다."""
     if not history:
         return query
     try:
@@ -122,11 +123,13 @@ async def _build_context_query(query: str, history: list[dict[str, Any]]) -> str
                 "role": "system",
                 "content": (
                     "이전 대화를 참고해서 사용자가 찾으려는 콘텐츠를 하나의 검색 쿼리로 만드세요. "
+                    "규칙: 원본 쿼리의 아티스트명·곡명·고유명사는 반드시 그대로 유지하세요. "
+                    "대화에서 추가된 정보(콘텐츠 유형, 시기 등)만 덧붙이세요. "
                     "50자 이내. 설명 없이 쿼리만 출력."
                 ),
             },
-            *history[-20:],
-            {"role": "user", "content": query},
+            *history[-10:],
+            {"role": "user", "content": f"원본 쿼리: {query}"},
         ]
         refined = await _llm(messages, model="gpt-4o-mini", max_tokens=80)
         return refined or query
@@ -207,8 +210,8 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    # 첫 검색은 0.3, 재검색(shown_ids 있음)은 0.4로 강화
-    threshold = 0.4 if shown_ids else 0.3
+    # 첫 검색은 0.35, 재검색(shown_ids 있음)은 0.45로 강화
+    threshold = 0.45 if shown_ids else 0.35
     raw_results = await search_contents(user_id, embedding, limit=10, threshold=threshold)
     candidates = [r for r in raw_results if r.get("id") not in shown_ids]
     results = candidates[:5]
