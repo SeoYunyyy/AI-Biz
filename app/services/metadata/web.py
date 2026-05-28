@@ -17,12 +17,30 @@ HEADERS = {
 }
 
 
+async def _fetch_with_playwright(url: str) -> str:
+    """JS 렌더링이 필요한 페이지를 Playwright로 가져오기"""
+    from playwright.async_api import async_playwright
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.set_extra_http_headers({"Accept-Language": "ko-KR,ko;q=0.9"})
+            await page.goto(url, wait_until="networkidle", timeout=15000)
+            html = await page.content()
+            await browser.close()
+            return html
+    except Exception as e:
+        print(f"[web] Playwright 실패: {e}")
+        return ""
+
+
 async def extract(url: str) -> dict:
     """
     일반 웹/뉴스 URL에서 메타데이터 추출.
-    1차: OpenGraph 태그
-    폴백: <title> + meta description
+    1차: httpx (빠름)
+    폴백: Playwright (JS 렌더링 필요한 사이트)
     """
+    html = ""
     try:
         async with httpx.AsyncClient(
             follow_redirects=True, timeout=10.0
@@ -34,6 +52,14 @@ async def extract(url: str) -> dict:
         return _empty_result(url, error=str(e))
 
     soup = BeautifulSoup(html, "html.parser")
+    body_text = _extract_body(soup)
+
+    # 본문이 너무 짧으면 Playwright로 재시도
+    if len(body_text) < 200:
+        pw_html = await _fetch_with_playwright(url)
+        if pw_html:
+            html = pw_html
+            soup = BeautifulSoup(html, "html.parser")
 
     title = _get_og(soup, "title") or _get_tag_text(soup, "title")
     description = _get_og(soup, "description") or _get_meta(soup, "description")
