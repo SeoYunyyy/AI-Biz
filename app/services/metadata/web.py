@@ -43,19 +43,49 @@ async def extract(url: str) -> dict:
     # 본문 첫 200자 추출 (article > p 우선)
     body_text = _extract_body(soup)
 
+    platform = "news" if _is_news(soup, body_text) else "web"
+
     return {
         "title": _clean(title),
         "date": _normalize_date(date),
         "summary": _build_summary(description, body_text),
-        "category": "웹",
+        "category": "웹" if platform == "web" else "뉴스",
         "tags": [],
         "thumbnail": thumbnail or "",
-        "platform": "web",
+        "platform": platform,
         "original_url": url,
     }
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
+
+def _is_news(soup: BeautifulSoup, body_text: str) -> bool:
+    """
+    기사 여부 판단. 아래 중 하나라도 해당되면 news로 분류.
+    1. og:type = "article"
+    2. article:author 메타태그 존재
+    3. 본문에 "OOO기자" 패턴
+    4. 본문에 "기사원문" 텍스트
+    """
+    og_type = soup.find("meta", property="og:type")
+    if og_type and og_type.get("content", "").lower() == "article":
+        return True
+
+    article_author = (
+        soup.find("meta", property="article:author") or
+        soup.find("meta", attrs={"name": "article:author"})
+    )
+    if article_author:
+        return True
+
+    if re.search(r"[\w가-힣]+\s*기자", body_text):
+        return True
+
+    if "기사원문" in body_text:
+        return True
+
+    return False
+
 
 def _get_og(soup: BeautifulSoup, property: str) -> Optional[str]:
     """<meta property="og:X"> 또는 <meta name="og:X"> 에서 content 추출"""
