@@ -60,7 +60,7 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
                     # 메타데이터 추출 결과
                     "content_type": metadata.get("platform", "other"),
                     "title": metadata.get("title", ""),
-                    "description": metadata.get("summary", ""),
+                    "description": metadata.get("summary") or analysis.get("detailed_summary", ""),
                     "thumbnail_url": metadata.get("thumbnail", ""),
                     "author": metadata.get("author", ""),
                     "metadata": {
@@ -68,42 +68,34 @@ async def update_content(content_id: str, metadata: dict, analysis: dict, collec
                         "original_url": metadata.get("original_url", ""),
                     },
                     # AI 분석 결과
+                    "one_line_summary": analysis.get("one_line_summary", ""),
+                    "detailed_summary": analysis.get("detailed_summary", ""),
+                    "save_purpose": analysis.get("save_purpose", ""),
                     "topics": analysis.get("tags", []),
                     "hashtags": [f"#{t}" for t in analysis.get("tags", [])],
                     "intent": [analysis.get("save_purpose", "")],
-                    "category": analysis.get("category", "기타/알쓸신잡"),      # 추가
-                    "sub_category": analysis.get("sub_category", ""),           # 추가
-                    "has_deadline": analysis.get("has_deadline", False),         # 추가
-                    "deadline_date": analysis.get("deadline_date"),              # 추가
-                    "deadline_note": analysis.get("deadline_note"),              # 추가
+                    "category": analysis.get("category", "기타/알쓸신잡"),
+                    "sub_category": analysis.get("sub_category", ""),
+                    "has_deadline": analysis.get("has_deadline", False),
+                    "deadline_date": analysis.get("deadline_date"),
+                    "deadline_note": analysis.get("deadline_note"),
                     # 썸네일 Vision 분석 결과
                     "thumbnail_description": thumbnail_description or None,
                     # 상태 업데이트
                     "analysis_status": "completed",
                     "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                    "collection_id": collection_id,
+                    "collection_id": collection_id if collection_id and collection_id != "null" else None,
                 },
             )
             response.raise_for_status()
-
-            # collection_id가 있으면 해당 컬렉션의 content_count 1 증가
-            if collection_id:
-                await client.post(
-                    f"{SUPABASE_URL}/rest/v1/rpc/increment_collection_count",
-                    headers=_headers(),
-                    json={"col_id": collection_id},
-                )
-
             return True
 
     except httpx.HTTPError as e:
-        # 400 상세 원인 확인용 — 응답 바디 출력
-        try:
-            body = e.response.text if hasattr(e, "response") and e.response is not None else "응답 없음"
-        except Exception:
-            body = "응답 바디 파싱 실패"
         print(f"[database] 업데이트 오류: {e}")
-        print(f"[database] 상세: {body}")
+        try:
+            print(f"[database] Supabase 응답: {e.response.text}")
+        except Exception:
+            pass
         return False
 
 
@@ -150,70 +142,27 @@ async def check_duplicate(user_id: str, url: str) -> dict | None:
 
 # ── 검색 ──────────────────────────────────────────────────────────────────────
 
-import json as _json
-import math as _math
-
-def _cosine_sim(a: list[float], b: list[float]) -> float:
-    """코사인 유사도 직접 계산"""
-    dot = sum(x * y for x, y in zip(a, b))
-    na  = _math.sqrt(sum(x * x for x in a))
-    nb  = _math.sqrt(sum(x * x for x in b))
-    return dot / (na * nb) if na * nb else 0.0
-
-
 async def search_contents(user_id: str, query_embedding: list[float], limit: int = 3, threshold: float = 0.3) -> list[dict]:
     """
-    벡터 유사도 검색 — Python에서 직접 코사인 유사도 계산.
-    Supabase RPC의 하드코딩 threshold(0.5)를 우회해 더 낮은 threshold 지원.
+    벡터 유사도 검색 (schema.sql의 match_user_contents RPC 호출)
+    threshold 이상인 결과만 반환, 상위 limit개 제한
     """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # 1. 유저 콘텐츠 전체 조회
-            r_contents = await client.get(
-                f"{SUPABASE_URL}/rest/v1/contents",
+            response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/match_user_contents",
                 headers=_headers(),
-                params={
-                    "user_id": f"eq.{user_id}",
-                    "analysis_status": "eq.completed",
-                    "select": "id,url,title,content_type,description,thumbnail_url,category,sub_category,hashtags,has_deadline,deadline_date,deadline_note",
+                json={
+                    "query_embedding": query_embedding,
+                    "user_id_param": user_id,
+                    "match_count": limit * 3,  # threshold 필터링 후 limit개 남도록 넉넉히 요청
                 },
             )
-            r_contents.raise_for_status()
-            contents = {c["id"]: c for c in r_contents.json()}
+            response.raise_for_status()
+            results = response.json()
 
-            if not contents:
-                return []
-
-            # 2. 해당 콘텐츠들의 임베딩 조회
-            ids_filter = ",".join(f'"{cid}"' for cid in contents.keys())
-            r_emb = await client.get(
-                f"{SUPABASE_URL}/rest/v1/embeddings",
-                headers=_headers(),
-                params={
-                    "content_id": f"in.({ids_filter})",
-                    "select": "content_id,embedding",
-                },
-            )
-            r_emb.raise_for_status()
-            emb_rows = r_emb.json()
-
-        # 3. Python에서 코사인 유사도 계산
-        scored = []
-        for row in emb_rows:
-            stored = row.get("embedding")
-            if isinstance(stored, str):
-                stored = _json.loads(stored)
-            if not stored:
-                continue
-            sim = _cosine_sim(query_embedding, stored)
-            if sim >= threshold:
-                content = contents.get(row["content_id"], {})
-                content["similarity"] = sim
-                scored.append(content)
-
-        # 유사도 내림차순 정렬 후 상위 limit개 반환
-        scored.sort(key=lambda x: x["similarity"], reverse=True)
-        return scored[:limit]
+        filtered = [r for r in results if r.get("similarity", 0) >= threshold]
+        return filtered[:limit]
 
     except httpx.HTTPError as e:
         print(f"[database] 검색 오류: {e}")
@@ -323,4 +272,115 @@ async def find_similar_contents(user_id: str, embedding: list[float], threshold:
 
     except httpx.HTTPError as e:
         print(f"[database] 유사 콘텐츠 검색 오류: {e}")
+        return []
+
+
+# ── 삭제 ──────────────────────────────────────────────────────────────────────
+
+async def delete_content(content_id: str, user_id: str) -> bool:
+    """콘텐츠 삭제 (본인 소유 확인 후 삭제)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={
+                    "id": f"eq.{content_id}",
+                    "user_id": f"eq.{user_id}",
+                },
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 삭제 오류: {e}")
+        return False
+
+
+async def move_content_collection(content_id: str, user_id: str, collection_id: str | None) -> bool:
+    """콘텐츠의 폴더(collection_id) 변경"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={
+                    "id": f"eq.{content_id}",
+                    "user_id": f"eq.{user_id}",
+                },
+                json={"collection_id": collection_id},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 폴더 이동 오류: {e}")
+        return False
+
+
+async def get_all_contents_for_reclassify(user_id: str) -> list[dict]:
+    """재분류용 전체 콘텐츠 조회"""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,content_type,description,url,metadata",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 전체 조회 오류: {e}")
+        return []
+
+
+async def update_ai_fields(content_id: str, analysis: dict) -> bool:
+    """AI 분류 결과 필드만 업데이트 (재분류용)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents?id=eq.{content_id}",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                json={
+                    "category": analysis.get("category", "기타/알쓸신잡"),
+                    "sub_category": analysis.get("sub_category", ""),
+                    "one_line_summary": analysis.get("one_line_summary", ""),
+                    "detailed_summary": analysis.get("detailed_summary", ""),
+                    "save_purpose": analysis.get("save_purpose", ""),
+                    "topics": analysis.get("tags", []),
+                    "hashtags": [f"#{t}" for t in analysis.get("tags", [])],
+                    "has_deadline": analysis.get("has_deadline", False),
+                    "deadline_date": analysis.get("deadline_date"),
+                    "deadline_note": analysis.get("deadline_note"),
+                },
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] AI 필드 업데이트 오류: {e}")
+        return False
+
+
+async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
+    """저장한 지 days일 이상 지난 콘텐츠 반환"""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "saved_at": f"lt.{cutoff}",
+                    "select": "id,title,url,saved_at,category",
+                    "order": "saved_at.asc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 오래된 콘텐츠 조회 오류: {e}")
         return []

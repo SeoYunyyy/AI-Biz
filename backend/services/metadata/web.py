@@ -17,12 +17,30 @@ HEADERS = {
 }
 
 
+async def _fetch_with_playwright(url: str) -> str:
+    """JS 렌더링이 필요한 페이지를 Playwright로 가져오기"""
+    from playwright.async_api import async_playwright
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.set_extra_http_headers({"Accept-Language": "ko-KR,ko;q=0.9"})
+            await page.goto(url, wait_until="networkidle", timeout=15000)
+            html = await page.content()
+            await browser.close()
+            return html
+    except Exception as e:
+        print(f"[web] Playwright 실패: {e}")
+        return ""
+
+
 async def extract(url: str) -> dict:
     """
     일반 웹/뉴스 URL에서 메타데이터 추출.
-    1차: OpenGraph 태그
-    폴백: <title> + meta description
+    1차: httpx (빠름)
+    폴백: Playwright (JS 렌더링 필요한 사이트)
     """
+    html = ""
     try:
         async with httpx.AsyncClient(
             follow_redirects=True, timeout=10.0
@@ -34,6 +52,14 @@ async def extract(url: str) -> dict:
         return _empty_result(url, error=str(e))
 
     soup = BeautifulSoup(html, "html.parser")
+    body_text = _extract_body(soup)
+
+    # 본문이 너무 짧으면 Playwright로 재시도
+    if len(body_text) < 200:
+        pw_html = await _fetch_with_playwright(url)
+        if pw_html:
+            html = pw_html
+            soup = BeautifulSoup(html, "html.parser")
 
     title = _get_og(soup, "title") or _get_tag_text(soup, "title")
     description = _get_og(soup, "description") or _get_meta(soup, "description")
@@ -43,19 +69,49 @@ async def extract(url: str) -> dict:
     # 본문 첫 200자 추출 (article > p 우선)
     body_text = _extract_body(soup)
 
+    platform = "news" if _is_news(soup, body_text) else "web"
+
     return {
         "title": _clean(title),
         "date": _normalize_date(date),
         "summary": _build_summary(description, body_text),
-        "category": "웹",
+        "category": "웹" if platform == "web" else "뉴스",
         "tags": [],
         "thumbnail": thumbnail or "",
-        "platform": "web",
+        "platform": platform,
         "original_url": url,
     }
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
+
+def _is_news(soup: BeautifulSoup, body_text: str) -> bool:
+    """
+    기사 여부 판단. 아래 중 하나라도 해당되면 news로 분류.
+    1. og:type = "article"
+    2. article:author 메타태그 존재
+    3. 본문에 "OOO기자" 패턴
+    4. 본문에 "기사원문" 텍스트
+    """
+    og_type = soup.find("meta", property="og:type")
+    if og_type and og_type.get("content", "").lower() == "article":
+        return True
+
+    article_author = (
+        soup.find("meta", property="article:author") or
+        soup.find("meta", attrs={"name": "article:author"})
+    )
+    if article_author:
+        return True
+
+    if re.search(r"[\w가-힣]+\s*기자", body_text):
+        return True
+
+    if "기사원문" in body_text:
+        return True
+
+    return False
+
 
 def _get_og(soup: BeautifulSoup, property: str) -> Optional[str]:
     """<meta property="og:X"> 또는 <meta name="og:X"> 에서 content 추출"""
