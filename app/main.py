@@ -51,6 +51,7 @@ class ChatRequest(BaseModel):
     user_id: str
     history: list[dict[str, Any]] = []  # [{"role": "user"/"assistant", "content": "..."}]
     shown_ids: list[str] = []  # 이미 보여준 콘텐츠 ID 목록 (재검색 시 제외용)
+    content_id: str | None = None  # 마감기한 수정 등 특정 콘텐츠 대상 작업 시
 
 
 # ── 헬스체크 ───────────────────────────────────────────────────────────────────
@@ -132,6 +133,14 @@ async def ingest(req: IngestRequest):
             else:
                 reminder_message = f"'{top_title}' 등 {len(similar)}개의 비슷한 내용을 저장한 적 있어요."
 
+        has_deadline = analysis.get("has_deadline", False)
+        deadline_note = analysis.get("deadline_note")
+        deadline_date = analysis.get("deadline_date")
+        deadline_confirmation = None
+        if has_deadline and deadline_date:
+            note_text = deadline_note or deadline_date
+            deadline_confirmation = f"마감기한을 발견했어요! '{note_text}'으로 저장할게요. 다르면 말해주세요."
+
         return {
             "id": content_id,
             "title": metadata.get("title", ""),
@@ -140,11 +149,12 @@ async def ingest(req: IngestRequest):
             "category": analysis.get("category", ""),
             "one_line_summary": analysis.get("one_line_summary", ""),
             "tags": analysis.get("tags", []),
-            "has_deadline": analysis.get("has_deadline", False),
-            "deadline_date": analysis.get("deadline_date"),
-            "deadline_note": analysis.get("deadline_note"),
+            "has_deadline": has_deadline,
+            "deadline_date": deadline_date,
+            "deadline_note": deadline_note,
             "sub_category": analysis.get("sub_category", ""),
             "analysis_status": "completed",
+            "deadline_confirmation": deadline_confirmation,
             "reminder_message": reminder_message,
             "similar_contents": [
                 {
@@ -304,5 +314,5 @@ async def chat(req: ChatRequest):
     - folder  : 유사 폴더 감지 → 확인 요청
     - cleanup : 만료 콘텐츠 정리 안내
     """
-    result = await process_chat(req.user_id, req.query, req.history, req.shown_ids)
+    result = await process_chat(req.user_id, req.query, req.history, req.shown_ids, req.content_id)
     return result

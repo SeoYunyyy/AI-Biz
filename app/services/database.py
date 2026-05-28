@@ -384,3 +384,27 @@ async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
     except httpx.HTTPError as e:
         print(f"[database] 오래된 콘텐츠 조회 오류: {e}")
         return []
+
+
+async def update_deadline(content_id: str, user_id: str, has_deadline: bool, deadline_date: str | None, deadline_note: str | None) -> bool:
+    """마감기한 수정 (채팅에서 사용자가 정정할 때)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={
+                    "id": f"eq.{content_id}",
+                    "user_id": f"eq.{user_id}",
+                },
+                json={
+                    "has_deadline": has_deadline,
+                    "deadline_date": deadline_date,
+                    "deadline_note": deadline_note,
+                },
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 마감기한 수정 오류: {e}")
+        return False

@@ -16,6 +16,7 @@ from app.services.database import (
     get_old_contents,
     get_or_create_collection,
     move_content_collection,
+    update_deadline,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -31,8 +32,9 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
              ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐",
               "쌓인 거 뭐 있어", "안 보는 거 뭐야", "오래된 거 알려줘" 등)
-- delete   : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
-- general  : 그 외
+- delete         : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
+- deadline_edit  : 방금 저장한 콘텐츠의 마감기한 정정 ("마감 없어", "마감이 7월이야", "날짜 틀렸어" 등)
+- general        : 그 외
 
 응답 형식:
 {"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null}
@@ -40,7 +42,10 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null
 delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드 (예: "에릭센 기사"), 없으면 null
-target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null"""
+target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null
+deadline_edit_type: deadline_edit 의도일 때 "remove"(마감 없음) 또는 "update"(날짜 변경), 없으면 null
+deadline_edit_date: deadline_edit + update일 때 언급된 날짜 YYYY-MM-DD, 없으면 null
+deadline_edit_note: deadline_edit + update일 때 마감 설명 (예: "신청 마감 7/15"), 없으면 null"""
 
 
 async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
@@ -431,6 +436,23 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dic
     }
 
 
+async def _handle_deadline_edit(user_id: str, content_id: str, edit_type: str, deadline_date: str | None, deadline_note: str | None) -> dict:
+    if edit_type == "remove":
+        success = await update_deadline(content_id, user_id, False, None, None)
+        if success:
+            return {"answer": "마감기한을 삭제했어요.", "results": []}
+        return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
+
+    if edit_type == "update" and deadline_date:
+        note = deadline_note or f"마감 {deadline_date[5:]}"
+        success = await update_deadline(content_id, user_id, True, deadline_date, note)
+        if success:
+            return {"answer": f"마감기한을 '{note}'으로 수정했어요.", "results": []}
+        return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
+
+    return {"answer": "마감일을 어떻게 바꿔드릴까요? '마감 없어' 또는 '7월 15일이야'처럼 말해주세요.", "results": []}
+
+
 async def _handle_delete(user_id: str, delete_query: str) -> dict:
     expanded = await expand_query(delete_query)
     embedding = await generate_embedding(expanded)
@@ -452,7 +474,7 @@ async def _handle_delete(user_id: str, delete_query: str) -> dict:
 
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
-async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = [], shown_ids: list[str] = []) -> dict:
+async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = [], shown_ids: list[str] = [], content_id: str | None = None) -> dict:
     """의도 파악 후 적절한 핸들러 호출. history로 대화 맥락 유지."""
     intent_data = await _detect_intent(query, history)
     intent = intent_data.get("intent", "general")
@@ -460,8 +482,13 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     delete_query = intent_data.get("delete_query")
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
+    deadline_edit_type = intent_data.get("deadline_edit_type")
+    deadline_edit_date = intent_data.get("deadline_edit_date")
+    deadline_edit_note = intent_data.get("deadline_edit_note")
 
-    if intent == "search":
+    if intent == "deadline_edit" and content_id:
+        result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+    elif intent == "search":
         result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":
         result = await _handle_deadline(user_id)
