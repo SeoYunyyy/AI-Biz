@@ -110,7 +110,8 @@ def _build_prompt(metadata: dict, user_instruction: str = "") -> str:
 
     return f"""
 다음 링크를 분석해서 JSON으로 응답해주세요.
-오늘 날짜: {today} (년도 미표기 날짜는 반드시 {current_year}년 기준으로 처리)
+오늘 날짜: {today}
+※ 오늘 날짜는 년도 추론 전용입니다. 콘텐츠에 마감일이 명시되지 않으면 deadline_date는 반드시 null로 할 것. 오늘 날짜를 deadline으로 쓰지 말 것.
 
 [링크 정보]
 제목: {metadata.get('title', '없음')}
