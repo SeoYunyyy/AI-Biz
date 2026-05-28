@@ -222,12 +222,16 @@
     // 성공이면 페이지가 Google로 리다이렉트됨 → 로딩 상태 그대로 유지
   });
 
-  /* ── 8. 캔버스 골든 블롭 배경 ── */
+  /* ── 8. 캔버스 배경 — 3레이어 시네마틱 앰비언트 ── */
   const canvas = document.getElementById('bg-canvas');
   const ctx    = canvas.getContext('2d');
   let W, H;
-  const mouse = { x: 0, y: 0 };
-  let mx = 0, my = 0;
+  const mouse = { x: -9999, y: -9999 };
+
+  // 레이어별 마우스 보간값 (느림→빠름 순)
+  const lerpX = [0, 0, 0];
+  const lerpY = [0, 0, 0];
+  const lerpSpeed = [0.028, 0.058, 0.110];
 
   function resize() {
     W = canvas.width  = window.innerWidth;
@@ -237,51 +241,112 @@
   window.addEventListener('resize', resize);
   window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
 
-  const blobs = [
-    { cx: 0.75, cy: 0.3,  r: 0.38, color: [180, 120, 30],  speed: 0.00018, phase: 0 },
-    { cx: 0.55, cy: 0.65, r: 0.28, color: [140, 90,  15],  speed: 0.00025, phase: 2.1 },
-    { cx: 0.85, cy: 0.75, r: 0.22, color: [220, 170, 60],  speed: 0.0002,  phase: 4.3 },
-    { cx: 0.65, cy: 0.15, r: 0.18, color: [100, 65,  10],  speed: 0.0003,  phase: 1.0 },
-    { cx: 0.4,  cy: 0.5,  r: 0.15, color: [200, 150, 50],  speed: 0.00022, phase: 3.5 },
+  // ── 레이어 0: 원거리 앰비언트 (광범위·어두운 에스프레소 톤) ──
+  const layer0 = [
+    { cx: 0.72, cy: 0.27, r: 0.52, color: [152, 96, 20],  speed: 0.00010, phase: 0.0, alpha: 0.62, px: 0.08 },
+    { cx: 0.46, cy: 0.68, r: 0.44, color: [ 92, 55, 10],  speed: 0.00014, phase: 2.7, alpha: 0.52, px: 0.06 },
+    { cx: 0.88, cy: 0.50, r: 0.36, color: [168, 115, 35], speed: 0.00012, phase: 5.0, alpha: 0.58, px: 0.07 },
+    { cx: 0.26, cy: 0.20, r: 0.30, color: [ 72, 40,  6],  speed: 0.00018, phase: 1.2, alpha: 0.42, px: 0.05 },
   ];
+
+  // ── 레이어 1: 중간 글로우 (골드·브론즈 톤) ──
+  const layer1 = [
+    { cx: 0.68, cy: 0.33, r: 0.25, color: [212, 158, 50], speed: 0.00026, phase: 0.4, alpha: 0.90, px: 0.16 },
+    { cx: 0.78, cy: 0.57, r: 0.21, color: [192, 132, 36], speed: 0.00030, phase: 3.0, alpha: 0.85, px: 0.18 },
+    { cx: 0.53, cy: 0.45, r: 0.17, color: [232, 182, 72], speed: 0.00033, phase: 1.6, alpha: 0.78, px: 0.20 },
+    { cx: 0.39, cy: 0.59, r: 0.13, color: [152, 102, 26], speed: 0.00037, phase: 4.3, alpha: 0.72, px: 0.13 },
+    { cx: 0.91, cy: 0.17, r: 0.12, color: [182, 135, 46], speed: 0.00041, phase: 1.9, alpha: 0.65, px: 0.22 },
+  ];
+
+  // ── 레이어 2: 핀포인트 하이라이트 (작고 밝음, 강한 패럴랙스) ──
+  const layer2 = [
+    { cx: 0.70, cy: 0.28, r: 0.068, color: [250, 215, 95], speed: 0.00056, phase: 0.2, alpha: 1.0, px: 0.32 },
+    { cx: 0.73, cy: 0.43, r: 0.052, color: [230, 185, 76], speed: 0.00066, phase: 2.3, alpha: 1.0, px: 0.38 },
+    { cx: 0.60, cy: 0.23, r: 0.042, color: [240, 202, 88], speed: 0.00050, phase: 3.8, alpha: 0.92, px: 0.29 },
+  ];
+
+  function drawBlob(b, ts, ix, iy) {
+    const t      = ts * b.speed + b.phase;
+    const orgX   = Math.sin(t * 1.3) * 0.07 + Math.cos(t * 0.72) * 0.03;
+    const orgY   = Math.cos(t * 1.1) * 0.05 + Math.sin(t * 0.88) * 0.03;
+    const x      = (b.cx + orgX + ix * b.px) * W;
+    const y      = (b.cy + orgY + iy * b.px) * H;
+    const pulse  = 0.90 + Math.sin(t * 0.78 + b.phase) * 0.10;
+    const r      = b.r * Math.min(W, H) * pulse;
+    const [R, G, B] = b.color;
+    const ratioX = 1 + Math.sin(t * 0.84) * 0.20;
+    const ratioY = 1 + Math.cos(t * 1.14) * 0.20;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(t * 0.22);
+    ctx.scale(ratioX, ratioY);
+
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    grd.addColorStop(0,    `rgba(${R},${G},${B},${0.30 * b.alpha})`);
+    grd.addColorStop(0.38, `rgba(${R},${G},${B},${0.13 * b.alpha})`);
+    grd.addColorStop(0.72, `rgba(${R},${G},${B},${0.04 * b.alpha})`);
+    grd.addColorStop(1,    `rgba(${R},${G},${B},0)`);
+
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+    ctx.restore();
+  }
 
   function draw(ts) {
     ctx.clearRect(0, 0, W, H);
-    mx += ((mouse.x / W - 0.5) * 0.05 - mx) * 0.04;
-    my += ((mouse.y / H - 0.5) * 0.05 - my) * 0.04;
 
+    // 마우스 노말라이즈 & 레이어별 보간
+    const nx = mouse.x / W - 0.5;
+    const ny = mouse.y / H - 0.5;
+    for (let i = 0; i < 3; i++) {
+      lerpX[i] += (nx - lerpX[i]) * lerpSpeed[i];
+      lerpY[i] += (ny - lerpY[i]) * lerpSpeed[i];
+    }
+
+    // 베이스 배경
     ctx.fillStyle = '#0A0A0A';
     ctx.fillRect(0, 0, W, H);
 
-    blobs.forEach(b => {
-      const t = ts * b.speed + b.phase;
-      const x = (b.cx + Math.sin(t * 1.3) * 0.08 + mx) * W;
-      const y = (b.cy + Math.cos(t * 1.1) * 0.06 + my) * H;
-      const r = b.r * Math.min(W, H) * (0.9 + Math.sin(t * 0.7) * 0.1);
-      const [red, grn, blu] = b.color;
+    // 레이어 0 — 원거리 앰비언트
+    layer0.forEach(b => drawBlob(b, ts, lerpX[0], lerpY[0]));
 
-      const grd = ctx.createRadialGradient(x, y, 0, x, y, r);
-      grd.addColorStop(0,   `rgba(${red},${grn},${blu},0.28)`);
-      grd.addColorStop(0.5, `rgba(${red},${grn},${blu},0.10)`);
-      grd.addColorStop(1,   `rgba(${red},${grn},${blu},0)`);
+    // 메인 블룸 — 중앙 우측, 천천히 호흡
+    const bt = ts * 0.000092;
+    const bx = (0.65 + Math.sin(bt * 1.1) * 0.052 + lerpX[0] * 0.55) * W;
+    const by = (0.38 + Math.cos(bt * 0.88) * 0.042 + lerpY[0] * 0.55) * H;
+    const br = Math.min(W, H) * (0.60 + Math.sin(bt * 1.35) * 0.032);
+    const bloom = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    bloom.addColorStop(0,    'rgba(172,112,30,0.14)');
+    bloom.addColorStop(0.28, 'rgba(130,82,16,0.08)');
+    bloom.addColorStop(0.60, 'rgba(72,42,8,0.03)');
+    bloom.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = bloom;
+    ctx.fillRect(0, 0, W, H);
 
-      ctx.beginPath();
-      ctx.ellipse(x, y,
-        r * (1 + Math.sin(t * 0.9) * 0.15),
-        r * (1 + Math.cos(t * 1.2) * 0.15),
-        t * 0.3, 0, Math.PI * 2);
-      ctx.fillStyle = grd;
-      ctx.fill();
-    });
+    // 레이어 1 — 중간 글로우
+    layer1.forEach(b => drawBlob(b, ts, lerpX[1], lerpY[1]));
 
-    const ag = ctx.createRadialGradient(
-      (0.65 + mx) * W, (0.4 + my) * H, 0,
-      (0.65 + mx) * W, (0.4 + my) * H, Math.min(W, H) * 0.55
-    );
-    ag.addColorStop(0,   'rgba(160,100,20,0.08)');
-    ag.addColorStop(0.6, 'rgba(80,50,10,0.04)');
-    ag.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.fillStyle = ag;
+    // 레이어 2 — 핀포인트 하이라이트
+    layer2.forEach(b => drawBlob(b, ts, lerpX[2], lerpY[2]));
+
+    // 커서 글로우 — 마우스 위치에 따라 즉각 반응
+    if (mouse.x > 0) {
+      const cg = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, Math.min(W, H) * 0.13);
+      cg.addColorStop(0,   'rgba(208,158,48,0.11)');
+      cg.addColorStop(0.5, 'rgba(148,98,22,0.04)');
+      cg.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.fillStyle = cg;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // 비네트 — 가장자리 어둠
+    const vg = ctx.createRadialGradient(W * 0.5, H * 0.44, Math.min(W, H) * 0.22, W * 0.5, H * 0.44, Math.min(W, H) * 0.98);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.72)');
+    ctx.fillStyle = vg;
     ctx.fillRect(0, 0, W, H);
 
     requestAnimationFrame(draw);
