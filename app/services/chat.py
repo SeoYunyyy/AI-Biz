@@ -269,9 +269,9 @@ async def _handle_deadline(user_id: str) -> dict:
     today_str = today.isoformat()
     week_later = (today + timedelta(days=7)).isoformat()
 
-    urgent   = [d for d in deadlines if today_str <= d.get("deadline_date", "9999") <= week_later]
-    relaxed  = [d for d in deadlines if d.get("deadline_date", "9999") > week_later]
-    expired  = [d for d in deadlines if d.get("deadline_date", "9999") < today_str]
+    urgent   = [d for d in deadlines if today_str <= (d.get("deadline_date") or "9999") <= week_later]
+    relaxed  = [d for d in deadlines if (d.get("deadline_date") or "9999") > week_later]
+    expired  = [d for d in deadlines if (d.get("deadline_date") or "9999") < today_str]
 
     if not urgent and not relaxed and not expired:
         return {"answer": "마감기한이 있는 콘텐츠가 없어요.", "results": []}
@@ -359,7 +359,7 @@ async def _handle_folder(user_id: str, folder_name: str) -> dict:
 async def _handle_cleanup(user_id: str) -> dict:
     deadlines = await get_deadlines(user_id)
     today = datetime.now(timezone.utc).date().isoformat()
-    expired = [d for d in deadlines if d.get("deadline_date", "9999") < today]
+    expired = [d for d in deadlines if (d.get("deadline_date") or "9999") < today]
     old_contents = await get_old_contents(user_id, days=365)
 
     if not expired and not old_contents:
