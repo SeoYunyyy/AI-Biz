@@ -77,7 +77,7 @@ async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
 
 
 async def _filter_results(query: str, results: list[dict]) -> list[dict]:
-    """LLM으로 검색 결과 중 명백히 무관한 항목만 제거"""
+    """LLM으로 장르·분야가 명백히 다른 항목만 제거 (같은 분야 내 세부 차이는 유지)"""
     if not results:
         return results
     try:
@@ -90,9 +90,13 @@ async def _filter_results(query: str, results: list[dict]) -> list[dict]:
                 {
                     "role": "system",
                     "content": (
-                        "검색 결과에서 명백히 무관한 항목만 제거하세요. "
-                        "한국어 줄임말이나 영어 표기 등 표현이 다를 수 있으므로, 확실하지 않으면 포함시키세요. "
-                        "관련 있을 가능성이 있는 결과의 id를 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
+                        "검색어와 장르/분야가 명백히 다른 콘텐츠만 제거하세요.\n"
+                        "규칙:\n"
+                        "- 케이팝·아이돌 검색 → 재즈, 클래식, 팝, 뉴스 등 다른 장르 제거\n"
+                        "- 재즈 검색 → 케이팝, 뉴스 등 제거\n"
+                        "- 같은 장르 내 아티스트·성별·그룹 차이는 제거하지 말 것\n"
+                        "- 불확실하면 포함 유지\n"
+                        "관련 있는 결과의 id만 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
                     ),
                 },
                 {"role": "user", "content": f"검색어: {query}\n\n결과:\n{items}"},
@@ -224,7 +228,8 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
     threshold = 0.3
     raw_results = await search_contents(user_id, embedding, limit=15, threshold=threshold)
     candidates = [r for r in raw_results if r.get("id") not in shown_ids]
-    results = candidates[:5]
+    filtered = await _filter_results(expanded, candidates[:10])
+    results = filtered[:5]
 
     if not results:
         if already_asked or _has_extra_context(query):
