@@ -43,7 +43,7 @@ def save():
         'title':           analysis.get('title', ''),
         'description':     analysis.get('summary'),
         'thumbnail_url':   content.get('thumbnail', ''),
-        'content_type':    analysis.get('content_type', 'other'),
+        'content_type':    content.get('platform', 'web'),
         'topics':          [subcategory] if subcategory else [],
         'hashtags':        analysis.get('tags', []),
         'analysis_status': 'completed',

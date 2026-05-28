@@ -29,8 +29,7 @@ URL: {content['url']}
   "title": "콘텐츠 제목",
   "category": "대분류 (음악/딥러닝/디자인/카페/요리/여행/개발/영상 등)",
   "subcategory": "소분류 (재즈/TFT모델/미니멀리즘 등 세분화)",
-  "content_type": "article 또는 music 또는 video 또는 place 또는 recipe 또는 other",
-  "summary": "핵심 내용 2문장 (content_type이 music이면 null)",
+  "summary": "핵심 내용 2문장",
   "tags": ["태그1", "태그2"]
 }}"""
         }]
@@ -39,6 +38,8 @@ URL: {content['url']}
     text = resp.choices[0].message.content.strip()
     match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```|(\{.*\})', text, re.DOTALL)
     json_str = match.group(1) or match.group(2) if match else text
-    return json.loads(json_str)
+    result = json.loads(json_str)
+
+    return result
 
 # OpenAI gpt-4o-mini로 URL 콘텐츠를 분석해 카테고리·요약·태그 반환
