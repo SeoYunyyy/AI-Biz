@@ -37,7 +37,7 @@ async def analyze_thumbnail(thumbnail_url: str, title: str) -> str:
                                 "type": "image_url",
                                 "image_url": {
                                     "url": thumbnail_url,
-                                    "detail": "low",
+                                    "detail": "auto",
                                 },
                             },
                             {
