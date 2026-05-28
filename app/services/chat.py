@@ -252,16 +252,19 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
     top_similarity = results[0].get("similarity", 0) if results else 0
 
     if top_similarity >= 0.85:
-        # 매우 정확한 결과 → 1개만 보여주고 확인 요청
         return {
             "answer": "이거 맞나요?",
             "results": results[:1],
-            "follow_up_questions": ["맞아요", "아니요, 다른 거예요"],
+            "follow_up_questions": ["맞아요", "아니요, 다른 거예요 — 제목이나 내용 키워드를 더 알려주시면 다시 찾아볼게요!"],
         }
 
     count = len(results)
-    answer = f"관련 콘텐츠 {count}개 찾았어요."
-    follow_up = ["이 중에 없으면 '없어'라고 해주세요."] if count >= 3 else []
+    if count == 1:
+        answer = "이거 맞나요?"
+        follow_up = ["맞아요", "아니요, 다른 거예요 — 제목이나 내용 키워드를 더 알려주시면 다시 찾아볼게요!"]
+    else:
+        answer = f"관련 콘텐츠 {count}개 찾았어요. 찾으시는 거 있나요?"
+        follow_up = ["이 중에 없으면 제목이나 내용 키워드를 더 알려주세요!"]
 
     return {"answer": answer, "results": results, "follow_up_questions": follow_up}
 
