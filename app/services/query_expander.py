@@ -43,7 +43,7 @@ async def expand_query(query: str) -> str:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "gpt-5-mini",
+                    "model": "gpt-4o-mini",
                     "messages": [
                         {"role": "system", "content": EXPAND_PROMPT},
                         {"role": "user", "content": f'검색 쿼리: "{query}"'},
