@@ -215,10 +215,10 @@ async def _handle_search(user_id: str, query: str, history: list[dict], shown_id
             {
                 "role": "system",
                 "content": (
-                    "저장된 콘텐츠 후보를 찾았습니다. "
-                    "가능성 높은 순서로 자연스럽게 소개해주세요. "
-                    "각 항목을 간략히 설명하세요. "
-                    "한국어로. 2~3문장."
+                    "아래 제공된 후보 목록에 있는 것만 소개하세요. "
+                    "목록에 없는 콘텐츠는 절대 언급하지 마세요. "
+                    "번호는 목록 그대로(1, 2, 3) 사용하세요. "
+                    "각 항목을 한 줄씩 간략히 소개하세요. 한국어로."
                 ),
             },
             {"role": "user", "content": f"검색어: {query}\n\n후보:\n{context}"},
@@ -258,7 +258,12 @@ async def _handle_refine(user_id: str, query: str, history: list[dict], shown_id
         messages=[
             {
                 "role": "system",
-                "content": "이전과 다른 후보를 찾았습니다. 자연스럽게 소개하세요. 한국어로. 2~3문장.",
+                "content": (
+                    "아래 제공된 새 후보 목록에 있는 것만 소개하세요. "
+                    "목록에 없는 콘텐츠는 절대 언급하지 마세요. "
+                    "번호는 1번부터 시작해서 목록 순서 그대로 사용하세요. "
+                    "각 항목을 한 줄씩 간략히 소개하세요. 한국어로."
+                ),
             },
             {"role": "user", "content": context},
         ],
