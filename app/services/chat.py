@@ -77,7 +77,7 @@ async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
 
 
 async def _filter_results(query: str, results: list[dict]) -> list[dict]:
-    """LLM으로 검색 결과 중 의도와 맞지 않는 항목 제거"""
+    """LLM으로 검색 결과 중 명백히 무관한 항목만 제거"""
     if not results:
         return results
     try:
@@ -90,9 +90,9 @@ async def _filter_results(query: str, results: list[dict]) -> list[dict]:
                 {
                     "role": "system",
                     "content": (
-                        "사용자 검색 의도와 맞지 않는 결과를 걸러내세요. "
-                        "아티스트 성별, 장르, 콘텐츠 유형 등 상식으로 판단하세요. "
-                        "관련 있는 결과의 id만 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
+                        "검색 결과에서 명백히 무관한 항목만 제거하세요. "
+                        "한국어 줄임말이나 영어 표기 등 표현이 다를 수 있으므로, 확실하지 않으면 포함시키세요. "
+                        "관련 있을 가능성이 있는 결과의 id를 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
                     ),
                 },
                 {"role": "user", "content": f"검색어: {query}\n\n결과:\n{items}"},
@@ -148,19 +148,31 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
 
 DISSATISFACTION_SIGNALS = ["없", "아니", "못 찾", "모르겠", "그거 말고", "다른 거", "없는데", "아닌데", "틀렸"]
 
+# assistant answer 텍스트에서 유도질문을 이미 했음을 나타내는 마커
+_FOLLOWUP_ASKED_MARKERS = [
+    "아래 질문으로 범위를 좁혀볼게요",
+    "조금 더 알려주시면 다시 찾아볼게요",
+    "기억나시나요",
+    "유튜브 영상이었나요",
+]
+
 def _is_dissatisfied(query: str, history: list[dict[str, Any]]) -> bool:
     """이전 결과에 불만족 표현하는지 감지"""
     if not history:
         return False
     return any(s in query for s in DISSATISFACTION_SIGNALS)
 
-
-async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]], shown_ids: list[str] = []) -> dict:
-    already_asked = any(
-        "기억나시나요" in m.get("content", "") or "유튜브 영상이었나요" in m.get("content", "")
+def _already_asked_followup(history: list[dict[str, Any]]) -> bool:
+    """history에서 유도질문을 이미 했는지 확인"""
+    return any(
+        any(marker in m.get("content", "") for marker in _FOLLOWUP_ASKED_MARKERS)
         for m in history
         if m.get("role") == "assistant"
     )
+
+
+async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]], shown_ids: list[str] = []) -> dict:
+    already_asked = _already_asked_followup(history)
 
     # 불만족 표현 + 이미 유도질문도 했으면 → 힌트 요청
     if _is_dissatisfied(query, history) and already_asked:
