@@ -207,13 +207,10 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
             "follow_up_questions": [],
         }
 
-    # 첫 검색은 0.35, 재검색(shown_ids 있음)은 0.45로 강화
-    threshold = 0.45 if shown_ids else 0.35
+    # 첫 검색은 0.3, 재검색(shown_ids 있음)은 0.4로 강화
+    threshold = 0.4 if shown_ids else 0.3
     raw_results = await search_contents(user_id, embedding, limit=10, threshold=threshold)
     candidates = [r for r in raw_results if r.get("id") not in shown_ids]
-
-    # LLM으로 의도와 안 맞는 결과 필터링
-    candidates = await _filter_results(context_query, candidates)
     results = candidates[:5]
 
     if not results:
