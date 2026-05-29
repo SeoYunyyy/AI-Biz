@@ -129,10 +129,12 @@
         async function initAuth() {
           const { data: { session } } = await _sb.auth.getSession();
           if (!session) {
+            // Supabase 세션 없음 → Flask 세션도 정리 후 로그인으로 (루프 방지)
+            await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
             window.location.href = '/login';
             return;
           }
-          // Flask 세션이 없을 때만 동기화 (새 탭 등)
+          // Flask 세션 동기화
           await fetch('/api/auth/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

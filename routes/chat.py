@@ -10,7 +10,7 @@ import os
 
 from database.db import (
     search_contents, get_deadlines, get_collections,
-    get_old_contents, update_deadline, row_to_item,
+    get_old_contents, update_deadline, row_to_item, get_db,
 )
 from services.embedding import generate_embedding
 from services.query_expander import expand_query
@@ -21,27 +21,35 @@ client  = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분류하세요. 반드시 JSON만 응답.
 
 의도 종류:
-- search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
-- deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
-- folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
-- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘" 등)
-- cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
-             ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐",
-              "쌓인 거 뭐 있어", "안 보는 거 뭐야", "오래된 거 알려줘" 등)
-- delete         : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
-- deadline_edit  : 방금 저장한 콘텐츠의 마감기한 정정 ("마감 없어", "마감이 7월이야", "날짜 틀렸어" 등)
-- general        : 그 외
+- search        : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
+- deadline      : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
+- folder        : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
+- move          : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘" 등)
+- cleanup       : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
+                  ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐", "쌓인 거 뭐 있어" 등)
+- delete        : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
+- create_group  : 특정 주제 콘텐츠를 묶어 그룹 만들기
+                  ("딥러닝 관련 묶어줘", "IT 콘텐츠 그룹으로 만들어줘", "OO 주제 모아줘" 등)
+- delete_group  : 그룹 삭제 요청 ("OO 그룹 삭제해줘", "그룹 지워줘" 등)
+- summarize     : 특정 그룹·검색결과·콘텐츠의 내용을 요약해달라는 요청
+                  ("이 그룹 요약해줘", "방금 묶은 거 요약해", "블로그 내용 요약해", "이 콘텐츠들 정리해줘" 등)
+- deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정 ("마감 없어", "마감이 7월이야", "날짜 틀렸어" 등)
+- general       : 그 외
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null, "group_query": null, "group_name": null, "delete_group_name": null, "summarize_target": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
 
 folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null
-delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
-move_query: 이동 의도일 때 이동할 콘텐츠 키워드 (예: "에릭센 기사"), 없으면 null
-target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null
-deadline_edit_type: deadline_edit 의도일 때 "remove"(마감 없음) 또는 "update"(날짜 변경), 없으면 null
-deadline_edit_date: deadline_edit + update일 때 언급된 날짜 YYYY-MM-DD, 없으면 null
-deadline_edit_note: deadline_edit + update일 때 마감 설명 (예: "신청 마감 7/15"), 없으면 null"""
+delete_query: 콘텐츠 삭제 의도일 때 삭제 대상 키워드, 없으면 null
+move_query: 이동 의도일 때 이동할 콘텐츠 키워드, 없으면 null
+target_folder: 이동 의도일 때 목적지 폴더명, 없으면 null
+group_query: create_group 의도일 때 묶을 콘텐츠 검색 키워드 (예: "딥러닝"), 없으면 null
+group_name: create_group 의도일 때 생성할 그룹 이름 (없으면 group_query 사용), 없으면 null
+delete_group_name: delete_group 의도일 때 삭제할 그룹 이름, 없으면 null
+summarize_target: summarize 의도일 때 요약할 대상 그룹명 또는 주제 (예: "서비스 기획", "방금 만든 그룹"), 없으면 null
+deadline_edit_type: deadline_edit 의도일 때 "remove" 또는 "update", 없으면 null
+deadline_edit_date: deadline_edit + update일 때 날짜 YYYY-MM-DD, 없으면 null
+deadline_edit_note: deadline_edit + update일 때 마감 설명, 없으면 null"""
 
 DISSATISFACTION_SIGNALS = ["없", "아니", "못 찾", "모르겠", "그거 말고", "다른 거", "없는데", "아닌데", "틀렸"]
 _FOLLOWUP_ASKED_MARKERS = [
@@ -376,6 +384,189 @@ def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
     }
 
 
+def _handle_create_group(user_id: str, group_query: str, group_name: str | None) -> dict:
+    """검색으로 관련 콘텐츠를 찾아 그룹으로 생성"""
+    expanded  = expand_query(group_query)
+    embedding = generate_embedding(expanded)
+    if not embedding:
+        return {"answer": "관련 콘텐츠를 찾지 못했어요.", "results": []}
+
+    # threshold 0.45: 그룹 생성은 검색보다 더 엄격하게 (느슨한 유사도 제외)
+    raw_results = search_contents(user_id, embedding, limit=15, threshold=0.4)
+    # LLM 장르 필터로 명백히 다른 주제 제거
+    results = _filter_results(expanded, raw_results)
+    if not results:
+        return {"answer": f"'{group_query}' 관련 저장된 콘텐츠가 없어요.", "results": []}
+
+    item_ids   = [r["id"] for r in results]
+    final_name = group_name or group_query
+
+    try:
+        db     = get_db()
+        result = db.table('groups').insert({
+            'name':     final_name,
+            'item_ids': item_ids,
+            'user_id':  user_id,
+        }).execute()
+        group = result.data[0] if result.data else {'name': final_name, 'item_ids': item_ids}
+    except Exception as e:
+        return {"answer": f"그룹 생성 중 오류가 발생했어요: {e}", "results": []}
+
+    titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results[:5]])
+    return {
+        "answer": f"'{final_name}' 그룹을 만들었어요! {len(results)}개 콘텐츠가 포함됐어요:\n{titles}",
+        "type":   "create_group",
+        "group":  group,
+        "results": results,
+    }
+
+
+def _handle_summarize(user_id: str, summarize_target: str | None, history: list) -> dict:
+    """그룹 또는 최근 검색 결과를 LLM으로 요약"""
+    db = get_db()
+
+    # 1. 대화 맥락에서 가장 최근에 언급된 그룹 이름 추출
+    target_name = summarize_target
+
+    # summarize_target이 "방금", "이 그룹" 같은 추상적 표현이면 히스토리에서 그룹명 추론
+    vague_targets = {"방금", "이", "이거", "그거", "그룹", "위에", "이그룹", "방금거", "이그룹"}
+    if not target_name or target_name.replace(" ", "") in vague_targets:
+        # 히스토리에서 create_group 응답 찾기
+        for msg in reversed(history):
+            if msg.get("role") == "assistant":
+                content = msg.get("content", "")
+                import re as _re
+                m = _re.search(r"'([^']+)' 그룹을 만들었어요", content)
+                if m:
+                    target_name = m.group(1)
+                    break
+
+    if not target_name:
+        return {"answer": "어떤 그룹의 내용을 요약해드릴까요? 그룹 이름을 알려주세요.", "results": []}
+
+    # 2. 그룹 조회
+    try:
+        rows = db.table('groups').select('*').eq('user_id', user_id).execute().data
+    except Exception:
+        return {"answer": "그룹 목록을 불러오지 못했어요.", "results": []}
+
+    existing_names = [r["name"] for r in rows]
+    matched_name   = _fuzzy_match(target_name, existing_names) or target_name
+    group_row      = next((r for r in rows if r["name"] == matched_name), None)
+
+    if not group_row:
+        return {"answer": f"'{target_name}' 그룹을 찾지 못했어요. 정확한 그룹 이름을 알려주세요.", "results": []}
+
+    # 3. 그룹 내 아이템 조회
+    import json as _json
+    item_ids = group_row.get("item_ids") or []
+    if isinstance(item_ids, str):
+        item_ids = _json.loads(item_ids)
+
+    items = []
+    for iid in item_ids:
+        res = db.table('contents').select('title,one_line_summary,detailed_summary,description,url,content_type').eq('id', iid).execute()
+        if res.data:
+            items.append(res.data[0])
+
+    if not items:
+        return {"answer": f"'{matched_name}' 그룹에 콘텐츠가 없어요.", "results": []}
+
+    # 4. LLM으로 전체 요약
+    context = "\n\n".join([
+        f"[{i+1}] {it.get('title','')}\n"
+        f"요약: {it.get('one_line_summary') or it.get('description','')[:300]}"
+        for i, it in enumerate(items)
+    ])
+
+    answer = _llm(
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    f"'{matched_name}' 그룹에 포함된 콘텐츠들입니다. "
+                    "각 콘텐츠의 핵심을 파악하고, 전체를 하나의 흐름으로 통합 요약해주세요. "
+                    "공통 주제, 주요 인사이트, 활용 포인트를 포함해서 3~5문장으로. 친근한 한국어로."
+                ),
+            },
+            {"role": "user", "content": context},
+        ],
+        model="gpt-4o",
+        max_tokens=400,
+    )
+
+    return {
+        "answer": f"**{matched_name}** 그룹 요약 ({len(items)}개 콘텐츠)\n\n{answer}",
+        "results": [],
+    }
+
+
+def _handle_with_context(message: str, history: list, context: dict) -> dict:
+    """
+    activeContext(그룹·검색결과)를 system prompt에 주입해서
+    GPT가 자유롭게 사용자 의도를 추론·응답.
+    요약, 분석, 비교, 추천 등 구조화하기 어려운 요청 전부 처리.
+    """
+    ctx_type  = context.get('type')
+    ctx_group = context.get('group') or {}
+    ctx_items = context.get('items') or []
+
+    if not ctx_type or not ctx_items:
+        return {"answer": "현재 선택된 콘텐츠가 없어요. 먼저 그룹을 만들거나 검색을 해보세요.", "results": []}
+
+    # context 설명 빌드
+    if ctx_type == 'group':
+        ctx_desc = f"사용자는 현재 '{ctx_group.get('name', '')}' 그룹을 보고 있습니다."
+    else:
+        ctx_desc = "사용자는 현재 아래 검색 결과를 보고 있습니다."
+
+    items_text = "\n".join([
+        f"{i+1}. {it.get('title', '')} — {it.get('summary', '')[:150]}"
+        for i, it in enumerate(ctx_items)
+    ])
+
+    system_prompt = (
+        f"{ctx_desc}\n\n"
+        f"포함 콘텐츠:\n{items_text}\n\n"
+        "사용자가 '이 그룹', '이거', '방금 것', '이 콘텐츠들'이라고 하면 위 목록을 의미합니다.\n"
+        "요약, 비교, 분석, 추천 등 사용자가 원하는 것을 자유롭게 응답하세요. "
+        "친근한 한국어로, 명확하고 유용하게."
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    messages += history[-10:]
+    messages += [{"role": "user", "content": message}]
+
+    answer = _llm(messages, model="gpt-4o", max_tokens=600)
+    return {"answer": answer, "results": []}
+
+
+def _handle_delete_group(user_id: str, group_name: str) -> dict:
+    """그룹 이름으로 검색 후 삭제"""
+    try:
+        db   = get_db()
+        rows = db.table('groups').select('id,name').eq('user_id', user_id).execute().data
+    except Exception:
+        return {"answer": "그룹 목록을 불러오지 못했어요.", "results": []}
+
+    if not rows:
+        return {"answer": "생성된 그룹이 없어요.", "results": []}
+
+    existing_names = [r["name"] for r in rows]
+    matched_name   = _fuzzy_match(group_name, existing_names) or group_name
+    matched_group  = next((r for r in rows if r["name"] == matched_name), None)
+
+    if not matched_group:
+        return {"answer": f"'{group_name}' 그룹을 찾지 못했어요.", "results": []}
+
+    return {
+        "answer": f"'{matched_name}' 그룹을 삭제할까요?",
+        "needs_confirmation": True,
+        "pending_delete_group_id": matched_group["id"],
+        "results": [],
+    }
+
+
 def _handle_deadline_edit(user_id: str, content_id: str, edit_type: str, deadline_date: str | None, deadline_note: str | None) -> dict:
     if edit_type == "remove":
         success = update_deadline(content_id, user_id, False, None, None)
@@ -434,23 +625,39 @@ def chat():
     message    = (data.get('message') or '').strip()
     history    = data.get('history', [])
     shown_ids  = data.get('shown_ids', [])
-    content_id = data.get('content_id')  # 마감기한 수정 등 특정 콘텐츠 대상 작업 시
+    content_id = data.get('content_id')
+    context    = data.get('context', {})  # 프론트에서 전달된 activeContext
 
     if not message:
         return jsonify({'error': '메시지를 입력해주세요'}), 400
 
-    intent_data        = _detect_intent(message, history)
-    intent             = intent_data.get('intent', 'general')
-    folder_name        = intent_data.get('folder_name')
-    delete_query       = intent_data.get('delete_query')
-    move_query         = intent_data.get('move_query')
-    target_folder      = intent_data.get('target_folder')
-    deadline_edit_type = intent_data.get('deadline_edit_type')
-    deadline_edit_date = intent_data.get('deadline_edit_date')
-    deadline_edit_note = intent_data.get('deadline_edit_note')
+    intent_data             = _detect_intent(message, history)
+    intent                  = intent_data.get('intent', 'general')
+    folder_name             = intent_data.get('folder_name')
+    delete_query            = intent_data.get('delete_query')
+    move_query              = intent_data.get('move_query')
+    target_folder           = intent_data.get('target_folder')
+    group_query             = intent_data.get('group_query')
+    group_name              = intent_data.get('group_name')
+    delete_group_name       = intent_data.get('delete_group_name')
+    summarize_target        = intent_data.get('summarize_target')
+    deadline_edit_type      = intent_data.get('deadline_edit_type')
+    deadline_edit_date      = intent_data.get('deadline_edit_date')
+    deadline_edit_note      = intent_data.get('deadline_edit_note')
+
+    has_context = bool(context.get('type') and context.get('items'))
 
     if intent == 'deadline_edit' and content_id:
         result = _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+    elif intent == 'create_group' and group_query:
+        result = _handle_create_group(user_id, group_query, group_name)
+    elif intent == 'delete_group' and delete_group_name:
+        result = _handle_delete_group(user_id, delete_group_name)
+    elif intent in ('summarize', 'general') and has_context:
+        # context가 있으면 GPT가 자유롭게 추론 (요약·분석·비교 등 전부 처리)
+        result = _handle_with_context(message, history, context)
+    elif intent == 'summarize':
+        result = _handle_summarize(user_id, summarize_target, history)
     elif intent == 'search':
         result = _handle_search(user_id, message, history, shown_ids)
     elif intent == 'deadline':
@@ -463,6 +670,9 @@ def chat():
         result = _handle_move(user_id, move_query, target_folder)
     elif intent == 'delete' and delete_query:
         result = _handle_delete(user_id, delete_query)
+    elif has_context:
+        # 의도 불명확 + context 있음 → context 기반 자유 응답
+        result = _handle_with_context(message, history, context)
     else:
         result = _handle_search(user_id, message, history, shown_ids)
 

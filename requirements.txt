@@ -5,3 +5,8 @@ beautifulsoup4
 python-dotenv
 lxml
 supabase
+# FastAPI 백엔드(main.py) — game_test에서 이식한 비동기 스택
+fastapi
+uvicorn[standard]
+httpx
+jinja2

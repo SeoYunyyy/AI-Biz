@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import main; print\\('  OK  title=', main.app.title, ' routes=', len\\(main.app.routes\\)\\)\")"
+    ]
+  }
+}

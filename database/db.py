@@ -253,6 +253,16 @@ def move_content_collection(content_id: str, user_id: str, collection_id: str | 
         return False
 
 
+def delete_content(content_id: str, user_id: str) -> bool:
+    """콘텐츠 삭제 (본인 소유 확인 후)"""
+    try:
+        _client.table('contents').delete().eq('id', content_id).eq('user_id', user_id).execute()
+        return True
+    except Exception as e:
+        print(f"[database] 콘텐츠 삭제 오류: {e}")
+        return False
+
+
 def update_deadline(content_id: str, user_id: str, has_deadline: bool, deadline_date: str | None, deadline_note: str | None) -> bool:
     """마감기한 수정 (채팅에서 사용자가 정정할 때)"""
     try:

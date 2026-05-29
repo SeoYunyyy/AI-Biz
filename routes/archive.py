@@ -7,6 +7,7 @@ from database.db import (
     mark_failed, find_similar_contents,
     get_or_create_collection,
     get_all_contents_for_reclassify, update_ai_fields,
+    delete_content,
 )
 from services.metadata.dispatcher import extract as dispatch
 from services.analyzer import analyze_content
@@ -194,6 +195,18 @@ def items():
     ]
 
     return jsonify({'items': result})
+
+@archive_bp.route('/api/contents/<content_id>', methods=['DELETE'])
+def remove_content(content_id):
+    user_id = _uid()
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
+
+    success = delete_content(content_id, user_id)
+    if not success:
+        return jsonify({'error': '삭제 실패'}), 500
+    return jsonify({'success': True, 'deleted_id': content_id})
+
 
 @archive_bp.route('/admin/reclassify/<user_id>', methods=['POST'])
 def reclassify_all(user_id: str):

@@ -184,6 +184,34 @@ nav {
     text-overflow: ellipsis;
 }
 
+.group-delete-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    color: #C0A090;
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s, color 0.2s;
+    flex-shrink: 0;
+}
+.group-sidebar-item:hover .group-delete-btn { opacity: 1; }
+.group-delete-btn:hover { color: #C0392B; }
+
+.delete-item-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+.archive-item-card:hover .delete-item-btn,
+.panel-item-card:hover .delete-item-btn { opacity: 1; }
+
 .group-sidebar-count {
     font-size: 11px;
     color: #9A7055;

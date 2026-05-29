@@ -18,6 +18,18 @@ let editStoreSeq = 0
 let editGroupId   = null
 let editGroupItems = []
 
+// 채팅 전역 상태 (접어도 유지)
+let chatHistory    = []   // [{role, content}] — API 전송용
+let chatDomMsgs    = []   // [{role, html}]    — DOM 재빌드용
+let chatPanelOpen  = false
+
+// 현재 활성 컨텍스트 — LLM이 "지금 사용자가 뭘 보고 있는지" 알게 함
+let activeContext  = {
+    type:  null,    // 'group' | 'search' | null
+    group: null,    // {id, name}
+    items: [],      // 현재 컨텍스트의 아이템 목록
+}
+
 // URL 여부 판별
 function isURL(str) {
     return /^https?:\/\//i.test(str) || /^www\./i.test(str)
@@ -156,9 +168,10 @@ async function loadGroups() {
         }
         leftSidebar.classList.add('open')
         groupList.innerHTML = data.groups.map(g => `
-            <div class="group-sidebar-item" onclick="openGroupPanel(${g.id})">
+            <div class="group-sidebar-item" onclick="openGroupPanel('${g.id}')">
                 <span class="group-sidebar-name">${g.name}</span>
-                <span class="group-sidebar-count">${g.item_ids.length}개</span>
+                <span class="group-sidebar-count">${(g.item_ids || []).length}개</span>
+                <button class="group-delete-btn" onclick="event.stopPropagation();deleteGroup('${g.id}')" title="그룹 삭제">✕</button>
             </div>
         `).join('')
     } catch (e) {
@@ -181,11 +194,14 @@ async function openGroupPanel(groupId) {
                 ? `<img src="${item.thumbnail}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
                 : ''
             return `
-                <div class="panel-item-card">
+                <div class="panel-item-card" id="card-${item.id}">
                     ${thumbHTML}
                     <p class="panel-item-title">${item.title}</p>
                     ${item.summary ? `<p class="panel-item-summary">${item.summary}</p>` : ''}
-                    <a href="${item.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+                        <a href="${item.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
+                        <button class="delete-item-btn" onclick="deleteContent('${item.id}', this)" title="삭제">🗑</button>
+                    </div>
                 </div>
             `
         }).join('')
@@ -194,15 +210,25 @@ async function openGroupPanel(groupId) {
     }
 }
 
-// ── AI 채팅 패널 열기 (전체화면) ──
+// ── 채팅 패널 열기 (접었다 폈다 — 히스토리 유지) ──
 function openChatPanel(initialText = '') {
+    chatPanelOpen = true
+
+    // 기존 메시지 HTML 재빌드
+    const existingMsgs = chatDomMsgs.map(m =>
+        `<div class="chat-msg ${m.role}">${m.isHtml ? m.content : escHtml(m.content)}</div>`
+    ).join('')
+    const greet = chatDomMsgs.length === 0
+        ? '<div class="chat-msg ai">안녕하세요! URL을 붙여넣으면 저장하고, 그 외 메시지는 AI와 대화할 수 있어요.</div>'
+        : ''
+
     openRightPanel('AI 어시스턴트', `
         <div class="chat-container">
             <div class="chat-messages" id="chat-messages">
-                <div class="chat-msg ai">안녕하세요! URL을 붙여넣으면 저장하고, 그 외 메시지는 AI와 대화할 수 있어요.</div>
+                ${greet}${existingMsgs}
             </div>
             <div class="chat-input-wrap">
-                <input type="text" id="chat-input" class="chat-input" placeholder="URL 붙여넣기 또는 메시지 입력 (마감: 2026-06-01 형식으로 마감 추가 가능)" />
+                <input type="text" id="chat-input" class="chat-input" placeholder="URL 붙여넣기 또는 메시지 입력" />
                 <button id="chat-send" class="chat-send-btn">&#8594;</button>
             </div>
         </div>
@@ -214,10 +240,18 @@ function openChatPanel(initialText = '') {
     chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat() })
     chatInput.focus()
 
+    // 스크롤 맨 아래
+    const msgs = document.getElementById('chat-messages')
+    if (msgs) msgs.scrollTop = msgs.scrollHeight
+
     if (initialText) {
         chatInput.value = initialText
         setTimeout(sendChat, 60)
     }
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
 // ── 채팅 메시지 전송 (URL 붙여넣기 → 저장 / 텍스트 → AI 대화) ──
@@ -230,7 +264,10 @@ async function sendChat() {
     const text = chatInput.value.trim()
     if (!text) return
 
+    // 사용자 메시지 DOM + 히스토리 기록
     appendMsg(chatMessages, 'user', text)
+    chatDomMsgs.push({ role: 'user', content: text, isHtml: false })
+    chatHistory.push({ role: 'user', content: text })
     chatInput.value = ''
     chatSend.disabled = true
 
@@ -241,45 +278,95 @@ async function sendChat() {
     chatMessages.scrollTop = chatMessages.scrollHeight
 
     try {
-        if (isURL(text.split(' ')[0])) {
-            // URL → 저장
-            const { url, deadline } = parseInput(text)
-            const res  = await fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, deadline })
-            })
-            const data = await res.json()
-            loadingEl.remove()
-            if (!res.ok || data.error) throw new Error(data.error || '저장 실패')
+        // 텍스트에서 URL 모두 추출
+        const urlMatches = text.match(/https?:\/\/[^\s]+/g) || []
+        const firstWordUrl = isURL(text.split(' ')[0])
 
-            const aiEl = document.createElement('div')
-            aiEl.className = 'chat-msg ai'
-            aiEl.innerHTML = buildSavedItemContent(data.item)
-            chatMessages.appendChild(aiEl)
+        if (firstWordUrl && urlMatches.length > 0) {
+            // URL 저장 — 여러 개면 순차 처리
+            loadingEl.remove()
+            for (const url of urlMatches) {
+                const saveLoading = document.createElement('div')
+                saveLoading.className = 'chat-loading'
+                saveLoading.textContent = '···'
+                chatMessages.appendChild(saveLoading)
+
+                const res  = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                })
+                const data = await res.json()
+                saveLoading.remove()
+
+                if (!res.ok || data.error) {
+                    appendMsg(chatMessages, 'ai', `오류: ${data.error || '저장 실패'}`)
+                    chatDomMsgs.push({ role: 'assistant', content: `오류: ${data.error || '저장 실패'}`, isHtml: false })
+                } else {
+                    const aiEl = document.createElement('div')
+                    aiEl.className = 'chat-msg ai'
+                    const html = buildSavedItemContent(data.item)
+                    aiEl.innerHTML = html
+                    chatMessages.appendChild(aiEl)
+                    chatDomMsgs.push({ role: 'assistant', content: html, isHtml: true })
+                    chatHistory.push({ role: 'assistant', content: `'${data.item?.title || url}' 저장 완료` })
+                }
+                chatMessages.scrollTop = chatMessages.scrollHeight
+            }
             loadTopFolders()
         } else {
-            // 텍스트 → AI 대화
+            // 텍스트 → AI 대화 (히스토리 포함)
             const res  = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify({
+                    message: text,
+                    history: chatHistory.slice(-20),
+                    context: activeContext,   // 현재 활성 컨텍스트 전달
+                })
             })
             const data = await res.json()
             loadingEl.remove()
 
             const aiEl = document.createElement('div')
             aiEl.className = 'chat-msg ai'
-            aiEl.innerHTML = buildAIContent(data)
+            const html = buildAIContent(data)
+            aiEl.innerHTML = html
             chatMessages.appendChild(aiEl)
 
+            // 어시스턴트 응답 히스토리 기록
+            const answerText = data.message || data.answer || ''
+            chatDomMsgs.push({ role: 'assistant', content: html, isHtml: true })
+            chatHistory.push({ role: 'assistant', content: answerText })
+
             if (data.type === 'create_group' && data.group) {
+                // activeContext에 그룹 정보 저장 → 이후 "이 그룹 요약해줘" 등에서 활용
+                activeContext = {
+                    type:  'group',
+                    group: { id: data.group.id, name: data.group.name },
+                    items: (data.items || []).map(i => ({ id: i.id, title: i.title, summary: i.summary || i.one_line_summary || '' })),
+                }
+                // 히스토리에도 context 주입 (LLM이 다음 턴에 기억)
+                chatHistory.push({
+                    role: 'system',
+                    content: `현재 활성 그룹: "${data.group.name}"\n포함 콘텐츠:\n${activeContext.items.map((it, i) => `${i+1}. ${it.title}`).join('\n')}`,
+                })
                 await loadGroups()
+            }
+
+            // 검색 결과가 있으면 activeContext 업데이트
+            if (data.items && data.items.length && data.intent === 'search') {
+                activeContext = {
+                    type:  'search',
+                    group: null,
+                    items: data.items.map(i => ({ id: i.id, title: i.title, summary: i.summary || i.one_line_summary || '' })),
+                }
             }
         }
     } catch (e) {
         loadingEl.remove()
         appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
+        chatDomMsgs.push({ role: 'assistant', content: `오류: ${e.message}`, isHtml: false })
     } finally {
         chatSend.disabled = false
         chatMessages.scrollTop = chatMessages.scrollHeight
@@ -403,6 +490,28 @@ groupEditModal.addEventListener('click', e => {
     if (e.target === groupEditModal) groupEditModal.classList.remove('open')
 })
 
+// ── 그룹 삭제 ──
+window.deleteGroup = async function(groupId) {
+    if (!confirm('이 그룹을 삭제할까요?')) return
+    const res = await fetch(`/api/groups/${groupId}`, { method: 'DELETE' })
+    if (res.ok) {
+        await loadGroups()
+    } else {
+        alert('그룹 삭제에 실패했어요.')
+    }
+}
+
+// ── 콘텐츠 삭제 ──
+window.deleteContent = async function(contentId, cardEl) {
+    if (!confirm('이 콘텐츠를 삭제할까요?')) return
+    const res = await fetch(`/api/contents/${contentId}`, { method: 'DELETE' })
+    if (res.ok) {
+        cardEl?.closest('.archive-item-card, .panel-item-card')?.remove()
+    } else {
+        alert('삭제에 실패했어요.')
+    }
+}
+
 // ── 메인 submit 핸들러 → 채팅 패널로 통합 ──
 function handleSubmit() {
     const text = promptInput.value.trim()
@@ -441,13 +550,16 @@ async function showArchiveItems(category, subcategory) {
             const tags = Array.isArray(item.tags) ? item.tags : []
             const date = item.created_at ? item.created_at.slice(0, 10) : ''
             return `
-                <div class="archive-item-card">
+                <div class="archive-item-card" id="card-${item.id}">
                     ${item.content_type !== 'music' && item.summary ? `<p class="archive-item-summary">${item.summary}</p>` : ''}
                     <p class="archive-item-title">${item.title}</p>
                     ${tags.length ? `<div class="archive-item-tags">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
                         <span class="archive-item-meta">${date}</span>
-                        <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
+                            <button class="delete-item-btn" onclick="deleteContent('${item.id}', this)" title="삭제">🗑</button>
+                        </div>
                     </div>
                 </div>
             `

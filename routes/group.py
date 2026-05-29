@@ -86,4 +86,14 @@ def get_group_items(group_id):
 
     return jsonify({'group': group, 'items': items})
 
-# 로그인한 유저의 그룹 목록 조회, 생성, 수정, 그룹 내 아이템 조회 라우트
+@group_bp.route('/api/groups/<group_id>', methods=['DELETE'])
+def delete_group(group_id):
+    user_id = _uid()
+    if not user_id:
+        return jsonify({'error': '로그인이 필요합니다'}), 401
+
+    db = get_db()
+    db.table('groups').delete().eq('id', group_id).eq('user_id', user_id).execute()
+    return jsonify({'success': True, 'deleted_id': group_id})
+
+# 로그인한 유저의 그룹 목록 조회, 생성, 수정, 삭제, 그룹 내 아이템 조회 라우트
