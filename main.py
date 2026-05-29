@@ -1,107 +1,118 @@
-# Keepit FastAPI 서버 진입점
+# ── Keepit 통합 서버 진입점 ──
+
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 from dotenv import load_dotenv
 load_dotenv()
 
 import os
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Any
 
-from keepit.services.metadata.dispatcher import extract as dispatch
-from keepit.services.ai_classifier import classify
-from keepit.services.embedding import run as embed, generate_embedding, build_embed_text
-from keepit.services.thumbnail_vision import analyze_thumbnail
-from keepit.services.query_expander import expand_query
-from keepit.services.chat import process_chat
-from keepit.services.database import (
+from app.services.metadata.dispatcher import extract as dispatch
+from app.services.ai_classifier import classify
+from app.services.embedding import run as embed, generate_embedding, build_embed_text
+from app.services.thumbnail_vision import analyze_thumbnail
+from app.services.query_expander import expand_query
+from app.services.chat import process_chat
+from app.services.database import (
     save_content, update_content, mark_failed, check_duplicate,
     search_contents, get_deadlines, get_or_create_collection, get_collections,
     find_similar_contents, delete_content, get_all_contents_for_reclassify,
-    update_ai_fields, move_content_collection, get_old_contents,
-    get_groups, create_group, update_group, delete_group, get_group_items,
+    update_ai_fields, move_content_collection,
+    rename_collection, delete_collection, delete_contents_by_subcategory,
 )
+from app.routes.archive import router as archive_router
+from app.routes.report import router as report_router
+from app.routes.auth import router as auth_router, current_user
 
 app = FastAPI(title="Keepit API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+app.include_router(archive_router)
+app.include_router(report_router)
+app.include_router(auth_router)
 
-# ── 페이지 ────────────────────────────────────────────────────────────────────
 
-@app.get("/")
+# ── 페이지 라우트 ──────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "user": None,
+    # 미로그인 시 로그인 페이지로 (기존 Flask @login_required 동작 유지)
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse(request, "index.html", {
+        "user": user,
         "supabase_url": os.getenv("SUPABASE_URL", ""),
         "supabase_anon_key": os.getenv("SUPABASE_ANON_KEY", ""),
     })
 
-@app.get("/login")
-async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {
-        "request": request,
-        "supabase_url": os.getenv("SUPABASE_URL", ""),
-        "supabase_anon_key": os.getenv("SUPABASE_ANON_KEY", ""),
-    })
 
-@app.get("/weekly-report")
+@app.get("/weekly-report", response_class=HTMLResponse)
 async def weekly_report_page(request: Request):
-    return templates.TemplateResponse("report_weekly.html", {"request": request})
-
-@app.get("/favicon.ico")
-async def favicon():
-    return Response(status_code=204)
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "service": "Keepit API"}
+    return templates.TemplateResponse(request, "report_weekly.html")
 
 
-# ── 요청 모델 ─────────────────────────────────────────────────────────────────
+# ── 요청 모델 ──────────────────────────────────────────────────────────────────
+
+DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001"
+
 
 class IngestRequest(BaseModel):
     url: str
-    user_id: str
+    user_id: str = DEFAULT_USER_ID
     instruction: str = ""
     collection_id: str | None = None
 
+
 class SearchRequest(BaseModel):
     query: str
-    user_id: str
+    user_id: str = DEFAULT_USER_ID
     limit: int = 5
 
+
 class ChatRequest(BaseModel):
-    query: str = ""
-    message: str = ""        # 프론트 호환 (message → query)
-    user_id: str
-    history: list[dict[str, Any]] = []
+    query: str
+    user_id: str = DEFAULT_USER_ID
+    history: list[dict] = []
     shown_ids: list[str] = []
-    content_id: str | None = None
-    context: dict = {}       # activeContext (그룹/검색 상태)
+
 
 class MoveRequest(BaseModel):
     user_id: str
     content_ids: list[str]
     target_folder: str
 
-class GroupCreateRequest(BaseModel):
-    user_id: str
-    name: str
-    item_ids: list[str] = []
 
-class GroupUpdateRequest(BaseModel):
-    user_id: str
-    name: str
-    item_ids: list[str] = []
+# ── 헬스체크 ───────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "Keepit API"}
 
 
 # ── URL 저장 파이프라인 ────────────────────────────────────────────────────────
 
-async def _ingest_logic(req: IngestRequest):
+@app.post("/ingest")
+async def ingest(req: IngestRequest):
     existing = await check_duplicate(req.user_id, req.url)
     if existing:
         return {"duplicate": True, "content": existing}
@@ -114,26 +125,33 @@ async def _ingest_logic(req: IngestRequest):
 
     try:
         metadata = await dispatch(req.url)
+
         thumbnail_description = await analyze_thumbnail(
-            metadata.get("thumbnail", ""), metadata.get("title", ""),
+            metadata.get("thumbnail", ""),
+            metadata.get("title", ""),
         )
+
         analysis = await classify(metadata, user_instruction=req.instruction)
         if req.instruction:
             analysis["save_purpose"] = req.instruction
 
         collection_id = req.collection_id
         if not collection_id and analysis.get("user_collection"):
-            collection_id = await get_or_create_collection(req.user_id, analysis["user_collection"])
+            collection_id = await get_or_create_collection(
+                req.user_id, analysis["user_collection"]
+            )
 
         await embed(content_id, metadata, analysis, thumbnail_description)
 
         embed_text = build_embed_text(metadata, analysis, thumbnail_description)
-        embedding  = await generate_embedding(embed_text)
-        similar    = await find_similar_contents(req.user_id, embedding) if embedding else []
+        embedding = await generate_embedding(embed_text)
+        similar = await find_similar_contents(req.user_id, embedding) if embedding else []
 
-        await update_content(content_id, metadata, analysis,
-                             collection_id=collection_id,
-                             thumbnail_description=thumbnail_description)
+        await update_content(
+            content_id, metadata, analysis,
+            collection_id=collection_id,
+            thumbnail_description=thumbnail_description,
+        )
 
         reminder_message = None
         if similar:
@@ -144,140 +162,80 @@ async def _ingest_logic(req: IngestRequest):
                 else f"'{top_title}' 등 {len(similar)}개의 비슷한 내용을 저장한 적 있어요."
             )
 
-        has_deadline   = analysis.get("has_deadline", False)
-        deadline_date  = analysis.get("deadline_date")
-        deadline_note  = analysis.get("deadline_note")
-        deadline_confirmation = None
-        if has_deadline and deadline_date:
-            note_text = deadline_note or deadline_date
-            deadline_confirmation = f"마감기한을 발견했어요! '{note_text}'으로 저장할게요. 다르면 말해주세요."
-
         return {
             "id": content_id,
+            "url": req.url,
             "title": metadata.get("title", ""),
             "thumbnail": metadata.get("thumbnail", ""),
             "platform": metadata.get("platform", ""),
             "category": analysis.get("category", ""),
+            "sub_category": analysis.get("sub_category", ""),
             "one_line_summary": analysis.get("one_line_summary", ""),
             "tags": analysis.get("tags", []),
-            "has_deadline": has_deadline,
-            "deadline_date": deadline_date,
-            "deadline_note": deadline_note,
-            "sub_category": analysis.get("sub_category", ""),
+            "has_deadline": analysis.get("has_deadline", False),
+            "deadline_date": analysis.get("deadline_date"),
+            "deadline_note": analysis.get("deadline_note"),
             "analysis_status": "completed",
-            "deadline_confirmation": deadline_confirmation,
             "reminder_message": reminder_message,
             "similar_contents": [
-                {"id": s["id"], "title": s["title"], "url": s["url"],
-                 "similarity": round(s["similarity"], 2), "one_line_summary": s.get("one_line_summary", "")}
+                {
+                    "id": s["id"],
+                    "title": s["title"],
+                    "url": s["url"],
+                    "similarity": round(s["similarity"], 2),
+                    "one_line_summary": s.get("one_line_summary", ""),
+                }
                 for s in similar
             ],
-            # 프론트 호환 래퍼
-            "item": {
-                "id": content_id, "url": req.url,
-                "title": metadata.get("title", ""),
-                "category": analysis.get("category", ""),
-                "subcategory": analysis.get("sub_category", ""),
-                "summary": analysis.get("one_line_summary", ""),
-                "content_type": metadata.get("platform", "web"),
-                "tags": analysis.get("tags", []),
-                "thumbnail": metadata.get("thumbnail", ""),
-                "deadline": deadline_date, "created_at": "",
-            },
         }
+
     except Exception as e:
         await mark_failed(content_id)
         raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)}")
 
 
-@app.post("/ingest")
-async def ingest(req: IngestRequest):
-    return await _ingest_logic(req)
+# ── 검색 ───────────────────────────────────────────────────────────────────────
 
-@app.post("/api/save")          # 프론트 호환 alias
-async def api_save(req: IngestRequest):
-    return await _ingest_logic(req)
-
-
-# ── 검색 ─────────────────────────────────────────────────────────────────────
-
-SEARCH_FOLLOWUPS = [
-    "혹시 유튜브 영상이었나요, 아니면 블로그/뉴스 글이었나요?",
-    "어떤 주제였는지 조금 더 기억나시나요? (예: 요리, 여행, IT 등)",
-    "언제쯤 저장하셨는지 기억나시나요?",
-    "제목에 특정 단어가 포함됐었나요?",
-]
-
-async def _search_logic(req: SearchRequest):
+@app.post("/search")
+async def search(req: SearchRequest):
     expanded = await expand_query(req.query)
     query_embedding = await generate_embedding(expanded)
     if not query_embedding:
         raise HTTPException(status_code=500, detail="검색어 임베딩 실패")
-    results = await search_contents(req.user_id, query_embedding, limit=req.limit)
+
+    results = await search_contents(req.user_id, query_embedding, limit=3)
+
     if not results:
-        return {"results": [], "found": False,
-                "message": "저장된 콘텐츠 중 찾지 못했어요.",
-                "follow_up_questions": SEARCH_FOLLOWUPS}
+        return {
+            "results": [],
+            "found": False,
+            "message": "저장된 콘텐츠 중 찾지 못했어요.",
+            "follow_up_questions": [
+                "유튜브 영상이었나요, 아니면 블로그/뉴스 글이었나요?",
+                "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
+                "언제쯤 저장하셨는지 기억나시나요?",
+                "제목에 특정 단어가 포함됐었나요?",
+            ],
+        }
+
     return {"results": results, "found": True, "message": None, "follow_up_questions": []}
 
-@app.post("/search")
-async def search(req: SearchRequest):
-    return await _search_logic(req)
 
-@app.post("/api/search")        # 프론트 호환 alias
-async def api_search(req: SearchRequest):
-    return await _search_logic(req)
-
-
-# ── 채팅 ─────────────────────────────────────────────────────────────────────
-
-async def _chat_logic(req: ChatRequest):
-    query = req.query or req.message   # 프론트는 message, game_test는 query
-    result = await process_chat(req.user_id, query, req.history, req.shown_ids, req.content_id)
-    # 프론트 호환: answer → message, results → items
-    result["message"] = result.get("answer", "")
-    result["items"]   = result.get("results", [])
-    return result
-
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    return await _chat_logic(req)
-
-@app.post("/api/chat")          # 프론트 호환 alias
-async def api_chat(req: ChatRequest):
-    return await _chat_logic(req)
-
-
-# ── 마감기한 ─────────────────────────────────────────────────────────────────
+# ── 마감기한 ───────────────────────────────────────────────────────────────────
 
 @app.get("/deadlines/{user_id}")
 async def list_deadlines(user_id: str):
     results = await get_deadlines(user_id)
     return {"deadlines": results}
 
-@app.get("/api/reminders")
-async def api_reminders(user_id: str):
-    from datetime import date, timedelta
-    deadlines = await get_deadlines(user_id)
-    today = date.today()
-    limit = (today + timedelta(days=3)).isoformat()
-    today_str = today.isoformat()
-    reminders = [
-        {"id": d["id"], "title": d.get("title", ""),
-         "deadline": d.get("deadline_date", ""), "url": d.get("url", ""),
-         "category": d.get("category", "")}
-        for d in deadlines
-        if today_str <= (d.get("deadline_date") or "9999") <= limit
-    ]
-    return reminders
 
-
-# ── 컬렉션(폴더) ─────────────────────────────────────────────────────────────
+# ── 컬렉션 ─────────────────────────────────────────────────────────────────────
 
 @app.get("/collections/{user_id}")
-async def get_user_collections(user_id: str):
+async def list_collections(user_id: str):
     results = await get_collections(user_id)
     return {"collections": results}
+
 
 @app.post("/collections")
 async def create_collection(user_id: str, name: str):
@@ -287,7 +245,38 @@ async def create_collection(user_id: str, name: str):
     return {"collection_id": collection_id, "name": name}
 
 
-# ── 콘텐츠 삭제/이동 ─────────────────────────────────────────────────────────
+class CollectionRenameRequest(BaseModel):
+    user_id: str = DEFAULT_USER_ID
+    name: str
+
+
+@app.patch("/collections/{collection_id}")
+async def rename_collection_endpoint(collection_id: str, req: CollectionRenameRequest):
+    success = await rename_collection(collection_id, req.user_id, req.name)
+    if not success:
+        raise HTTPException(status_code=500, detail="폴더 이름 변경 실패")
+    return {"renamed": True, "collection_id": collection_id, "name": req.name}
+
+
+@app.delete("/collections/{collection_id}")
+async def delete_collection_endpoint(collection_id: str, user_id: str = DEFAULT_USER_ID):
+    # 폴더만 삭제하고 콘텐츠는 미분류(collection_id=null)로 보관
+    success = await delete_collection(collection_id, user_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="폴더 삭제 실패")
+    return {"deleted": True, "collection_id": collection_id}
+
+
+@app.delete("/collections/{collection_id}/items/{content_id}")
+async def remove_item_from_collection(collection_id: str, content_id: str, user_id: str = DEFAULT_USER_ID):
+    # 콘텐츠를 폴더에서 빼기 (콘텐츠 자체는 보존, collection_id=null)
+    success = await move_content_collection(content_id, user_id, None)
+    if not success:
+        raise HTTPException(status_code=500, detail="폴더에서 빼기 실패")
+    return {"removed": True, "content_id": content_id}
+
+
+# ── 콘텐츠 삭제 / 이동 ─────────────────────────────────────────────────────────
 
 @app.delete("/contents/{content_id}")
 async def remove_content(content_id: str, user_id: str):
@@ -296,129 +285,47 @@ async def remove_content(content_id: str, user_id: str):
         raise HTTPException(status_code=500, detail="삭제 실패")
     return {"deleted": True, "content_id": content_id}
 
-@app.delete("/api/contents/{content_id}")   # 프론트 호환 alias
-async def api_remove_content(content_id: str, user_id: str):
-    return await remove_content(content_id, user_id)
+
+@app.delete("/api/subcategory")
+async def delete_subcategory(category: str, subcategory: str, user_id: str = DEFAULT_USER_ID):
+    # 해당 대분류/중분류에 속한 콘텐츠 전체 영구 삭제
+    success = await delete_contents_by_subcategory(user_id, category, subcategory)
+    if not success:
+        raise HTTPException(status_code=500, detail="중분류 삭제 실패")
+    return {"deleted": True, "category": category, "subcategory": subcategory}
+
 
 @app.post("/contents/move")
 async def move_contents(req: MoveRequest):
     collection_id = await get_or_create_collection(req.user_id, req.target_folder)
     if not collection_id:
         raise HTTPException(status_code=500, detail="폴더 생성 실패")
+
     results = []
-    for cid in req.content_ids:
-        success = await move_content_collection(cid, req.user_id, collection_id)
-        results.append({"content_id": cid, "moved": success})
+    for content_id in req.content_ids:
+        success = await move_content_collection(content_id, req.user_id, collection_id)
+        results.append({"content_id": content_id, "moved": success})
+
     return {"target_folder": req.target_folder, "results": results}
 
 
-# ── 그룹 ─────────────────────────────────────────────────────────────────────
-
-@app.get("/api/groups")
-async def api_get_groups(user_id: str):
-    return {"groups": await get_groups(user_id)}
-
-@app.post("/api/groups")
-async def api_create_group(req: GroupCreateRequest):
-    group = await create_group(req.user_id, req.name, req.item_ids)
-    if not group:
-        raise HTTPException(status_code=500, detail="그룹 생성 실패")
-    return {"success": True, "group": group}
-
-@app.put("/api/groups/{group_id}")
-async def api_update_group(group_id: str, req: GroupUpdateRequest):
-    success = await update_group(group_id, req.user_id, req.name, req.item_ids)
-    return {"success": success}
-
-@app.delete("/api/groups/{group_id}")
-async def api_delete_group(group_id: str, user_id: str):
-    success = await delete_group(group_id, user_id)
-    return {"success": success, "deleted_id": group_id}
-
-@app.get("/api/groups/{group_id}/items")
-async def api_get_group_items(group_id: str, user_id: str):
-    return await get_group_items(group_id, user_id)
-
-
-# ── 카테고리 / 아이템 (아카이브용) ───────────────────────────────────────────
-
-@app.get("/api/categories")
-async def api_categories(user_id: str):
-    """contents 테이블에서 category/sub_category 집계"""
-    import httpx, os as _os
-    SUPABASE_URL = _os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY = _os.getenv("SUPABASE_SERVICE_ROLE_KEY") or _os.getenv("SUPABASE_SERVICE_KEY", "")
-    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.get(
-                f"{SUPABASE_URL}/rest/v1/contents",
-                headers=headers,
-                params={"user_id": f"eq.{user_id}",
-                        "select": "category,sub_category",
-                        "analysis_status": "eq.completed"},
-            )
-            rows = res.json()
-    except Exception:
-        return {}
-    cats: dict = {}
-    for r in rows:
-        cat = r.get("category") or "기타"
-        sub = r.get("sub_category") or "-"
-        cats.setdefault(cat, {})
-        cats[cat][sub] = cats[cat].get(sub, 0) + 1
-    return {
-        cat: [{"name": s, "count": c} for s, c in sorted(subs.items(), key=lambda x: -x[1])]
-        for cat, subs in cats.items()
-    }
-
-@app.get("/api/items")
-async def api_items(user_id: str, category: str = "", subcategory: str = ""):
-    import httpx, os as _os
-    SUPABASE_URL = _os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY = _os.getenv("SUPABASE_SERVICE_ROLE_KEY") or _os.getenv("SUPABASE_SERVICE_KEY", "")
-    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.get(
-                f"{SUPABASE_URL}/rest/v1/contents",
-                headers=headers,
-                params={"user_id": f"eq.{user_id}",
-                        "category": f"eq.{category}",
-                        "sub_category": f"eq.{subcategory}",
-                        "analysis_status": "eq.completed",
-                        "select": "*",
-                        "order": "saved_at.desc"},
-            )
-            rows = res.json()
-    except Exception:
-        return {"items": []}
-    items = [
-        {"id": r.get("id"), "url": r.get("url"), "title": r.get("title"),
-         "category": r.get("category", ""), "subcategory": r.get("sub_category", ""),
-         "summary": r.get("one_line_summary") or r.get("description", ""),
-         "content_type": r.get("content_type", "web"),
-         "tags": r.get("topics") or [],
-         "thumbnail": r.get("thumbnail_url", ""),
-         "deadline": r.get("deadline_date"),
-         "created_at": r.get("saved_at", "")}
-        for r in rows
-    ]
-    return {"items": items}
-
-
-# ── 재분류 ───────────────────────────────────────────────────────────────────
+# ── 재분류 ─────────────────────────────────────────────────────────────────────
 
 @app.post("/admin/reclassify/{user_id}")
 async def reclassify_all(user_id: str):
     contents = await get_all_contents_for_reclassify(user_id)
     if not contents:
         return {"updated": 0, "message": "재분류할 콘텐츠가 없어요."}
+
     updated, failed = 0, 0
     for c in contents:
         try:
-            metadata = {"title": c.get("title", ""), "platform": c.get("content_type", "web"),
-                        "summary": c.get("description", ""), "original_url": c.get("url", "")}
+            metadata = {
+                "title": c.get("title", ""),
+                "platform": c.get("content_type", "web"),
+                "summary": c.get("description", ""),
+                "original_url": c.get("url", ""),
+            }
             analysis = await classify(metadata)
             if await update_ai_fields(c["id"], analysis):
                 updated += 1
@@ -427,4 +334,23 @@ async def reclassify_all(user_id: str):
         except Exception as e:
             print(f"[reclassify] {c.get('id')} 실패: {e}")
             failed += 1
+
     return {"updated": updated, "failed": failed, "total": len(contents)}
+
+
+# ── 채팅 ───────────────────────────────────────────────────────────────────────
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    result = await process_chat(req.user_id, req.query, history=req.history, shown_ids=req.shown_ids)
+    return result
+
+
+@app.exception_handler(Exception)
+async def handle_exception(request: Request, exc: Exception):
+    return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=5000, reload=True)

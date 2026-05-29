@@ -39,7 +39,7 @@ nav {
     letter-spacing: -0.5px;
 }
 
-.nav-btns { display: flex; align-items: center; gap: 12px; }
+.nav-btns { display: flex; gap: 12px; }
 
 .nav-btns button {
     background: rgba(255,255,255,0.12);
@@ -56,74 +56,6 @@ nav {
 .nav-btns button:hover {
     background: rgba(255,255,255,0.22);
     transform: translateY(-1px);
-}
-
-/* 구분선 */
-.nav-divider {
-    width: 1px;
-    height: 22px;
-    background: rgba(255,255,255,0.2);
-    flex-shrink: 0;
-}
-
-/* 유저 정보 */
-.nav-user {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 3px 10px 3px 3px;
-    border-radius: 100px;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.18);
-}
-
-.nav-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0;
-}
-
-.nav-avatar-fallback {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.25);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    color: #fff;
-    flex-shrink: 0;
-}
-
-.nav-username {
-    font-size: 13px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.88);
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* 로그아웃 버튼 */
-.logout-btn {
-    background: rgba(255,255,255,0.07) !important;
-    border: 1px solid rgba(255,255,255,0.18) !important;
-    color: rgba(255,255,255,0.65) !important;
-    font-size: 13px !important;
-    padding: 7px 14px !important;
-    transition: background 0.2s, color 0.2s, border-color 0.2s !important;
-}
-
-.logout-btn:hover {
-    background: rgba(220,53,69,0.25) !important;
-    border-color: rgba(220,53,69,0.45) !important;
-    color: #fff !important;
-    transform: none !important;
 }
 
 /* ── 페이지 래퍼 ── */
@@ -183,34 +115,6 @@ nav {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
-.group-delete-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 11px;
-    color: #C0A090;
-    padding: 2px 4px;
-    border-radius: 4px;
-    opacity: 0;
-    transition: opacity 0.2s, color 0.2s;
-    flex-shrink: 0;
-}
-.group-sidebar-item:hover .group-delete-btn { opacity: 1; }
-.group-delete-btn:hover { color: #C0392B; }
-
-.delete-item-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    opacity: 0.4;
-    transition: opacity 0.2s;
-}
-.archive-item-card:hover .delete-item-btn,
-.panel-item-card:hover .delete-item-btn { opacity: 1; }
 
 .group-sidebar-count {
     font-size: 11px;
@@ -1344,3 +1248,212 @@ nav {
     font-size: 15px;
     padding: 32px 0;
 }
+
+/* ── 로그인 nav (구분선 / 유저 정보 / 로그아웃) ── */
+.nav-divider {
+    width: 1px;
+    height: 22px;
+    background: rgba(255,255,255,0.2);
+    flex-shrink: 0;
+}
+
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px 3px 3px;
+    border-radius: 100px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.18);
+}
+
+.nav-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.nav-avatar-fallback {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.nav-username {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.88);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.logout-btn {
+    background: rgba(255,255,255,0.07) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    color: rgba(255,255,255,0.65) !important;
+    font-size: 13px !important;
+    padding: 7px 14px !important;
+    transition: background 0.2s, color 0.2s, border-color 0.2s !important;
+}
+
+.logout-btn:hover {
+    background: rgba(220,53,69,0.25) !important;
+    border-color: rgba(220,53,69,0.45) !important;
+    color: #fff !important;
+    transform: none !important;
+}
+/* 위 규칙들은 기존 로그인 프론트엔드의 nav 스타일을 그대로 이식한 것 */
+
+/* ── 컬렉션 관리 (이름 변경 / 폴더 삭제 / 폴더에서 빼기) ── */
+.collection-manage {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #F0E4D6;
+}
+
+.collection-rename-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 180px;
+}
+
+.collection-rename-input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #2C1A0E;
+    border: 1px solid #E0D2C0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.collection-rename-input:focus { outline: none; border-color: #5A3002; }
+
+.manage-btn {
+    background: #F4EBE0;
+    border: 1px solid #E0D2C0;
+    color: #5A3002;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.manage-btn:hover { background: #EADBC9; }
+
+.manage-btn.danger {
+    background: rgba(220,53,69,0.08);
+    border-color: rgba(220,53,69,0.3);
+    color: #C0392B;
+}
+
+.manage-btn.danger:hover { background: rgba(220,53,69,0.18); }
+
+.panel-item-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.item-remove-btn {
+    background: none;
+    border: 1px solid #E0D2C0;
+    color: #9A7055;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.item-remove-btn:hover { background: #F4EBE0; color: #5A3002; }
+
+/* ── 폴더 생성 답장의 '그룹 수정하기' 버튼 ── */
+.folder-edit-row { margin-top: 10px; }
+
+.folder-edit-btn {
+    background: #5A3002;
+    border: none;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.folder-edit-btn:hover { background: #7A4515; }
+
+/* ── 아카이브 중분류 삭제 버튼 ── */
+.sub-right { display: inline-flex; align-items: center; gap: 8px; }
+
+.sub-del-btn {
+    background: none;
+    border: none;
+    font-size: 14px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s, background 0.15s;
+}
+
+.sub-del-btn:hover { opacity: 1; background: rgba(220,53,69,0.12); }
+
+/* ── 아카이브 콘텐츠 카드 썸네일 / 삭제 버튼 ── */
+.archive-item-thumb {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.archive-item-btns { display: inline-flex; align-items: center; gap: 12px; }
+
+.archive-del-btn {
+    background: none;
+    border: 1px solid rgba(220,53,69,0.3);
+    color: #C0392B;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.archive-del-btn:hover { background: rgba(220,53,69,0.12); }

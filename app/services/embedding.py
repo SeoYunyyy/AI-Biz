@@ -8,8 +8,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY_HERE")
 OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings"
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "YOUR_SUPABASE_URL_HERE")
-# .env가 SUPABASE_SERVICE_KEY를 쓰므로 둘 다 호환되게 통일
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY", "YOUR_SUPABASE_KEY_HERE")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "YOUR_SUPABASE_KEY_HERE")
 
 
 async def generate_embedding(text: str) -> list[float]:
@@ -101,7 +100,7 @@ async def run(content_id: str, metadata: dict, analysis: dict, thumbnail_descrip
     메타데이터 + AI 분석 결과 받아서 임베딩 생성 후 저장.
 
     사용 예:
-        from keepit.services.embedding import run as embed
+        from app.services.embedding import run as embed
         success = await embed(content_id, metadata, analysis, thumbnail_description)
     """
     embed_text = build_embed_text(metadata, analysis, thumbnail_description)

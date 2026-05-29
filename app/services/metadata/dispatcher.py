@@ -1,6 +1,6 @@
-# URL 종류 판단 후 적절한 추출기 선택
+# app/services/metadata/dispatcher.py
 
-from services.metadata import youtube, web, news, naver_blog, map, shopping
+from app.services.metadata import youtube, web, news, naver_blog, map, shopping
 
 
 def _detect_type(url: str) -> str:
@@ -32,21 +32,21 @@ def _detect_type(url: str) -> str:
         return "web"
 
 
-def extract(url: str) -> dict:
+async def extract(url: str) -> dict:
     """URL 종류 판단 후 적절한 추출기 실행"""
     platform = _detect_type(url)
 
     if platform == "youtube":
-        return youtube.extract(url)
+        return await youtube.extract(url)
     elif platform == "naver_news":
-        return news.extract(url)
+        return await news.extract(url)
     elif platform == "naver_blog":
-        return naver_blog.extract(url)
+        return await naver_blog.extract(url)
     elif platform in ("naver_map", "kakao_map"):
-        return map.extract(url)
+        return await map.extract(url)
     elif platform == "shopping":
-        return shopping.extract(url)
+        return await shopping.extract(url)
     elif platform == "news":
-        return news.extract(url)
+        return await news.extract(url)
     else:
-        return web.extract(url)
+        return await web.extract(url)

@@ -5,8 +5,7 @@ import os
 from datetime import datetime, timezone
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "YOUR_SUPABASE_URL_HERE")
-# .env가 SUPABASE_SERVICE_KEY를 쓰므로 둘 다 호환되게 통일
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY", "YOUR_SUPABASE_KEY_HERE")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "YOUR_SUPABASE_KEY_HERE")
 
 
 def _headers() -> dict:
@@ -250,6 +249,47 @@ async def get_collections(user_id: str) -> list[dict]:
         print(f"[database] 폴더 목록 조회 오류: {e}")
         return []
     
+async def rename_collection(collection_id: str, user_id: str, name: str) -> bool:
+    """컬렉션(폴더) 이름 변경 (본인 소유 확인)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{collection_id}", "user_id": f"eq.{user_id}"},
+                json={"name": name, "is_user_renamed": True},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 컬렉션 이름 변경 오류: {e}")
+        return False
+
+
+async def delete_collection(collection_id: str, user_id: str) -> bool:
+    """컬렉션(폴더) 삭제 — 안의 콘텐츠는 보관(collection_id=null)하고 폴더만 제거"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # 1) 이 폴더에 속한 콘텐츠를 미분류(null)로 전환
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"collection_id": f"eq.{collection_id}", "user_id": f"eq.{user_id}"},
+                json={"collection_id": None},
+            )
+            # 2) 폴더 행 삭제
+            response = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{collection_id}", "user_id": f"eq.{user_id}"},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 컬렉션 삭제 오류: {e}")
+        return False
+
+
 async def find_similar_contents(user_id: str, embedding: list[float], threshold: float = 0.5, limit: int = 3) -> list[dict]:
     """
     새로 저장하려는 콘텐츠와 유사한 기존 콘텐츠 검색
@@ -294,6 +334,27 @@ async def delete_content(content_id: str, user_id: str) -> bool:
             return True
     except httpx.HTTPError as e:
         print(f"[database] 삭제 오류: {e}")
+        return False
+
+
+async def delete_contents_by_subcategory(user_id: str, category: str, subcategory: str) -> bool:
+    """특정 대분류/중분류에 속한 콘텐츠 전체 영구 삭제 (중분류 삭제용)"""
+    try:
+        params = {
+            "user_id": f"eq.{user_id}",
+            "category": f"eq.{category}",
+            "sub_category": f"eq.{subcategory}",
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params=params,
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 중분류 일괄 삭제 오류: {e}")
         return False
 
 
@@ -385,152 +446,3 @@ async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
     except httpx.HTTPError as e:
         print(f"[database] 오래된 콘텐츠 조회 오류: {e}")
         return []
-
-
-async def update_deadline(content_id: str, user_id: str, has_deadline: bool, deadline_date: str | None, deadline_note: str | None) -> bool:
-    """마감기한 수정 (채팅에서 사용자가 정정할 때)"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/contents",
-                headers={**_headers(), "Prefer": "return=minimal"},
-                params={
-                    "id": f"eq.{content_id}",
-                    "user_id": f"eq.{user_id}",
-                },
-                json={
-                    "has_deadline": has_deadline,
-                    "deadline_date": deadline_date,
-                    "deadline_note": deadline_note,
-                },
-            )
-            response.raise_for_status()
-            return True
-    except httpx.HTTPError as e:
-        print(f"[database] 마감기한 수정 오류: {e}")
-        return False
-
-
-# ── 그룹(사용자 묶음) ───────────────────────────────────────────────────────────
-
-def _row_to_item(row: dict) -> dict:
-    """contents row → 프론트 item 형식 변환 (main.py /api/items와 동일 스키마)"""
-    return {
-        "id": row.get("id"),
-        "url": row.get("url"),
-        "title": row.get("title"),
-        "category": row.get("category", ""),
-        "subcategory": row.get("sub_category", ""),
-        "summary": row.get("one_line_summary") or row.get("description", ""),
-        "content_type": row.get("content_type", "web"),
-        "tags": row.get("topics") or [],
-        "thumbnail": row.get("thumbnail_url", ""),
-        "deadline": row.get("deadline_date"),
-        "created_at": row.get("saved_at", ""),
-    }
-
-
-async def get_groups(user_id: str) -> list[dict]:
-    """사용자 그룹 목록 (최신순)"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/groups",
-                headers=_headers(),
-                params={
-                    "user_id": f"eq.{user_id}",
-                    "select": "*",
-                    "order": "created_at.desc",
-                },
-            )
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPError as e:
-        print(f"[database] 그룹 목록 조회 오류: {e}")
-        return []
-
-
-async def create_group(user_id: str, name: str, item_ids: list[str]) -> dict | None:
-    """그룹 생성"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{SUPABASE_URL}/rest/v1/groups",
-                headers={**_headers(), "Prefer": "return=representation"},
-                json={"user_id": user_id, "name": name, "item_ids": item_ids},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data[0] if data else None
-    except httpx.HTTPError as e:
-        print(f"[database] 그룹 생성 오류: {e}")
-        return None
-
-
-async def update_group(group_id: str, user_id: str, name: str, item_ids: list[str]) -> bool:
-    """그룹 수정 (본인 소유 확인)"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/groups",
-                headers={**_headers(), "Prefer": "return=minimal"},
-                params={"id": f"eq.{group_id}", "user_id": f"eq.{user_id}"},
-                json={"name": name, "item_ids": item_ids},
-            )
-            response.raise_for_status()
-            return True
-    except httpx.HTTPError as e:
-        print(f"[database] 그룹 수정 오류: {e}")
-        return False
-
-
-async def delete_group(group_id: str, user_id: str) -> bool:
-    """그룹 삭제 (본인 소유 확인)"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.delete(
-                f"{SUPABASE_URL}/rest/v1/groups",
-                headers={**_headers(), "Prefer": "return=minimal"},
-                params={"id": f"eq.{group_id}", "user_id": f"eq.{user_id}"},
-            )
-            response.raise_for_status()
-            return True
-    except httpx.HTTPError as e:
-        print(f"[database] 그룹 삭제 오류: {e}")
-        return False
-
-
-async def get_group_items(group_id: str, user_id: str) -> dict:
-    """그룹 + 그룹에 담긴 콘텐츠 item 목록 반환"""
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            res = await client.get(
-                f"{SUPABASE_URL}/rest/v1/groups",
-                headers=_headers(),
-                params={"id": f"eq.{group_id}", "user_id": f"eq.{user_id}",
-                        "select": "*", "limit": "1"},
-            )
-            res.raise_for_status()
-            rows = res.json()
-            if not rows:
-                return {"group": None, "items": []}
-            group = rows[0]
-            item_ids = group.get("item_ids") or []
-            if not item_ids:
-                return {"group": group, "items": []}
-
-            # in.(...) 필터로 한 번에 조회
-            id_filter = ",".join(item_ids)
-            cres = await client.get(
-                f"{SUPABASE_URL}/rest/v1/contents",
-                headers=_headers(),
-                params={"id": f"in.({id_filter})", "user_id": f"eq.{user_id}", "select": "*"},
-            )
-            cres.raise_for_status()
-            content_rows = {r["id"]: r for r in cres.json()}
-            # 그룹의 item_ids 순서를 유지
-            items = [_row_to_item(content_rows[i]) for i in item_ids if i in content_rows]
-            return {"group": group, "items": items}
-    except httpx.HTTPError as e:
-        print(f"[database] 그룹 아이템 조회 오류: {e}")
-        return {"group": None, "items": []}
