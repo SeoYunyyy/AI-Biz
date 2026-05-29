@@ -1,7 +1,7 @@
 # ── 자연어 검색 (벡터 임베딩 기반) ──
 
 from flask import Blueprint, request, jsonify, session
-from database.db import search_contents
+from database.db import search_contents, row_to_item
 from services.embedding import generate_embedding
 from services.query_expander import expand_query
 
@@ -26,18 +26,21 @@ def search():
     if not user_id:
         return jsonify({'error': '로그인이 필요합니다'}), 401
 
-    query_text = (request.json.get('query') or '').strip()
+    data       = request.json or {}
+    query_text = (data.get('query') or '').strip()
+    limit      = int(data.get('limit', 5))
+
     if not query_text:
         return jsonify({'error': '검색어를 입력해주세요'}), 400
 
-    # 쿼리 확장 → 임베딩 → 유사도 검색
     expanded        = expand_query(query_text)
     query_embedding = generate_embedding(expanded)
 
     if not query_embedding:
         return jsonify({'error': '검색어 임베딩 실패'}), 500
 
-    results = search_contents(user_id, query_embedding, limit=3)
+    raw_results = search_contents(user_id, query_embedding, limit=limit)
+    results     = [row_to_item(r) for r in raw_results]
 
     if not results:
         return jsonify({

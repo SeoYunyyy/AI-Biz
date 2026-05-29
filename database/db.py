@@ -25,22 +25,29 @@ def row_to_item(row: dict) -> dict:
     # contents 테이블 row → 프론트엔드 item 형식으로 변환
     metadata = row.get('metadata') or {}
     topics   = row.get('topics') or []
-    category = metadata.get('category') or map_topics_to_category(topics)
+    # category: 직접 컬럼 → metadata JSON → topics 매핑 순으로 fallback
+    category = row.get('category') or metadata.get('category') or map_topics_to_category(topics)
+    # sub_category: 직접 컬럼 → topics[0] 순으로 fallback
+    subcategory = row.get('sub_category') or (topics[0] if topics else '-')
+    # summary: one_line_summary 우선, 없으면 description
+    summary = row.get('one_line_summary') or row.get('description', '')
+    # tags: topics 사용 (hashtags는 #포함이라 프론트에서 중복 방지)
+    tags = topics or []
     return {
-        'id':           row.get('id', ''),
-        'url':          row.get('url', ''),
-        'title':        row.get('title', ''),
-        'category':     category,
-        'subcategory':  topics[0] if topics else '-',
-        'summary':      row.get('description', ''),
-        'content_type': row.get('content_type', 'other'),
-        'tags':         row.get('hashtags') or [],
-        'thumbnail':    row.get('thumbnail_url', ''),
-        'deadline':     metadata.get('deadline'),
-        'created_at':   row.get('saved_at', ''),
+        'id':               row.get('id', ''),
+        'url':              row.get('url', ''),
+        'title':            row.get('title', ''),
+        'category':         category,
+        'subcategory':      subcategory,
+        'summary':          summary,
+        'content_type':     row.get('content_type', 'other'),
+        'tags':             tags,
+        'thumbnail':        row.get('thumbnail_url', ''),
+        'deadline':         row.get('deadline_date') or metadata.get('deadline'),
+        'created_at':       row.get('saved_at', ''),
         'one_line_summary': row.get('one_line_summary', ''),
-        'topics':       topics,
-        'similarity':   row.get('similarity', 0),
+        'topics':           topics,
+        'similarity':       row.get('similarity', 0),
     }
 
 

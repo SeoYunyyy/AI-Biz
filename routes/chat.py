@@ -77,7 +77,7 @@ def _filter_results(query: str, results: list) -> list:
         return results
     try:
         items = "\n".join([
-            f"- id:{r['id']} | 제목:{r.get('title','')} | 태그:{','.join(r.get('topics', []))}"
+            f"- id:{r['id']} | 제목:{r.get('title','')} | 태그:{','.join(r.get('topics') or [])}"
             for r in results
         ])
         raw = _llm(
