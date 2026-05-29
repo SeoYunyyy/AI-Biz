@@ -1,9 +1,16 @@
-# ── 아카이브 (URL 저장 / 카테고리 조회 / 아이템 조회) ──
+# ── 아카이브 (URL 저장 파이프라인 / 카테고리 조회 / 아이템 조회) ──
 
 from flask import Blueprint, request, jsonify, session
-from database.db import get_db, row_to_item
-from services.fetcher import fetch_url_content
+from database.db import (
+    get_db, row_to_item,
+    check_duplicate, save_content_initial, update_content_completed,
+    mark_failed, find_similar_contents,
+    get_or_create_collection,
+)
+from services.metadata.dispatcher import extract as dispatch
 from services.analyzer import analyze_content
+from services.embedding import run as embed, generate_embedding, build_embed_text
+from services.thumbnail_vision import analyze_thumbnail
 from services.category_mapper import map_topics_to_category
 
 archive_bp = Blueprint('archive', __name__)
@@ -15,46 +22,111 @@ def _uid():
 
 @archive_bp.route('/api/save', methods=['POST'])
 def save():
-    user_id  = _uid()
+    """
+    URL 하나 받아서 끝까지 처리.
+
+    흐름:
+    1. 중복 체크
+    2. 즉시 저장 (processing)
+    3. 메타데이터 추출 (dispatcher)
+    4. 썸네일 Vision 분석
+    5. AI 분류
+    6. 임베딩 생성 + 저장
+    7. contents 업데이트 (completed)
+    """
+    user_id = _uid()
     if not user_id:
         return jsonify({'error': '로그인이 필요합니다'}), 401
 
-    data     = request.json
-    url      = data.get('url', '').strip()
-    deadline = data.get('deadline')
+    data        = request.json
+    url         = (data.get('url') or '').strip()
+    instruction = data.get('instruction', '')   # "생비과제 폴더에 넣어줘" 같은 지시사항
 
     if not url:
         return jsonify({'error': 'URL을 입력해주세요'}), 400
 
+    # 1. 중복 체크
+    existing = check_duplicate(user_id, url)
+    if existing:
+        return jsonify({'duplicate': True, 'item': existing})
+
+    # 2. 즉시 저장 (분석 전 — 사용자를 기다리게 하지 않음)
+    saved = save_content_initial(user_id, url)
+    if not saved:
+        return jsonify({'error': '초기 저장 실패'}), 500
+
+    content_id = saved['id']
+
     try:
-        content  = fetch_url_content(url)
-        analysis = analyze_content(content, deadline)
+        # 3. 메타데이터 추출 (URL 보고 적절한 추출기 선택)
+        metadata = dispatch(url)
+
+        # 4. 썸네일 Vision 분석 (thumbnail 있을 때만, 실패해도 파이프라인 계속)
+        thumbnail_description = analyze_thumbnail(
+            metadata.get('thumbnail', ''),
+            metadata.get('title', ''),
+        )
+
+        # 5. AI 분류
+        analysis = analyze_content(metadata, user_instruction=instruction)
+        if instruction:
+            analysis['save_purpose'] = instruction
+
+        # 5-1. 사용자 지정 폴더 처리
+        collection_id = None
+        if analysis.get('user_collection'):
+            collection_id = get_or_create_collection(user_id, analysis['user_collection'])
+
+        # 6. 임베딩 생성 + embeddings 테이블 저장 (썸네일 설명 포함)
+        embed(content_id, metadata, analysis, thumbnail_description)
+
+        # 6-1. 유사 콘텐츠 검색
+        embed_text = build_embed_text(metadata, analysis, thumbnail_description)
+        embedding  = generate_embedding(embed_text)
+        similar    = find_similar_contents(user_id, embedding) if embedding else []
+
+        # 7. contents 업데이트 (completed)
+        update_content_completed(content_id, metadata, analysis, thumbnail_description)
+
+        # 유사 콘텐츠 리마인드 메시지 생성
+        reminder_message = None
+        if similar:
+            top_title = similar[0].get('title', '')
+            if len(similar) == 1:
+                reminder_message = f"'{top_title}'과 비슷한 내용을 저장한 적 있어요."
+            else:
+                reminder_message = f"'{top_title}' 등 {len(similar)}개의 비슷한 내용을 저장한 적 있어요."
+
+        return jsonify({
+            'success':          True,
+            'id':               content_id,
+            'title':            metadata.get('title', ''),
+            'thumbnail':        metadata.get('thumbnail', ''),
+            'platform':         metadata.get('platform', ''),
+            'category':         analysis.get('category', ''),
+            'one_line_summary': analysis.get('one_line_summary', ''),
+            'tags':             analysis.get('tags', []),
+            'has_deadline':     analysis.get('has_deadline', False),
+            'deadline_date':    analysis.get('deadline_date'),
+            'deadline_note':    analysis.get('deadline_note'),
+            'sub_category':     analysis.get('sub_category', ''),
+            'analysis_status':  'completed',
+            'reminder_message': reminder_message,
+            'similar_contents': [
+                {
+                    'id':               s['id'],
+                    'title':            s['title'],
+                    'url':              s.get('url', ''),
+                    'similarity':       round(s.get('similarity', 0), 2),
+                    'one_line_summary': s.get('one_line_summary', ''),
+                }
+                for s in similar
+            ],
+        })
+
     except Exception as e:
-        return jsonify({'error': f'분석 중 오류: {str(e)}'}), 500
-
-    subcategory = (analysis.get('subcategory') or '').strip()
-    metadata    = {'category': analysis.get('category', '기타')}
-    if deadline:
-        metadata['deadline'] = deadline
-
-    row = {
-        'user_id':         user_id,
-        'url':             url,
-        'title':           analysis.get('title', ''),
-        'description':     analysis.get('summary'),
-        'thumbnail_url':   content.get('thumbnail', ''),
-        'content_type':    content.get('platform', 'web'),
-        'topics':          [subcategory] if subcategory else [],
-        'hashtags':        analysis.get('tags', []),
-        'analysis_status': 'completed',
-        'metadata':        metadata,
-    }
-
-    db     = get_db()
-    result = db.table('contents').insert(row).execute()
-    saved  = result.data[0] if result.data else row
-
-    return jsonify({'success': True, 'item': row_to_item(saved)})
+        mark_failed(content_id)
+        return jsonify({'error': f'분석 실패: {str(e)}'}), 500
 
 
 @archive_bp.route('/api/categories')
@@ -63,14 +135,15 @@ def categories():
     if not user_id:
         return jsonify({'error': '로그인이 필요합니다'}), 401
 
-    db    = get_db()
-    rows  = db.table('contents').select('metadata, topics').eq('user_id', user_id).execute().data
+    db   = get_db()
+    rows = db.table('contents').select('metadata, topics, category').eq('user_id', user_id).execute().data
 
     cats = {}
     for row in rows:
         metadata = row.get('metadata') or {}
         topics   = row.get('topics') or []
-        cat = metadata.get('category') or map_topics_to_category(topics)
+        # AI 분류 결과 category 우선, 없으면 기존 방식으로 매핑
+        cat = row.get('category') or metadata.get('category') or map_topics_to_category(topics)
         sub = topics[0] if topics else '기타'
         cats.setdefault(cat, {})
         cats[cat][sub] = cats[cat].get(sub, 0) + 1
@@ -92,10 +165,12 @@ def items():
     subcategory = request.args.get('subcategory', '')
 
     db       = get_db()
-    all_rows = (db.table('contents').select('*')
-                  .eq('user_id', user_id)
-                  .order('saved_at', desc=True)
-                  .execute().data)
+    all_rows = (
+        db.table('contents').select('*')
+        .eq('user_id', user_id)
+        .order('saved_at', desc=True)
+        .execute().data
+    )
 
     result = [
         row_to_item(r) for r in all_rows
@@ -105,4 +180,4 @@ def items():
 
     return jsonify({'items': result})
 
-# 로그인한 유저의 URL 저장(AI 분석 포함), 카테고리 목록 조회, 카테고리별 아이템 조회 라우트
+# URL 저장 7단계 파이프라인, 카테고리 목록 조회, 카테고리별 아이템 조회 라우트
