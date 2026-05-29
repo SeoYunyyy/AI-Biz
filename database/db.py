@@ -245,4 +245,55 @@ def move_content_collection(content_id: str, user_id: str, collection_id: str | 
         print(f"[database] 폴더 이동 오류: {e}")
         return False
 
+
+def update_deadline(content_id: str, user_id: str, has_deadline: bool, deadline_date: str | None, deadline_note: str | None) -> bool:
+    """마감기한 수정 (채팅에서 사용자가 정정할 때)"""
+    try:
+        _client.table('contents').update({
+            "has_deadline":  has_deadline,
+            "deadline_date": deadline_date,
+            "deadline_note": deadline_note,
+        }).eq('id', content_id).eq('user_id', user_id).execute()
+        return True
+    except Exception as e:
+        print(f"[database] 마감기한 수정 오류: {e}")
+        return False
+
+
+def get_all_contents_for_reclassify(user_id: str) -> list:
+    """재분류용 전체 콘텐츠 조회"""
+    try:
+        result = (
+            _client.table('contents')
+            .select('id,title,content_type,description,url,metadata')
+            .eq('user_id', user_id)
+            .eq('analysis_status', 'completed')
+            .execute()
+        )
+        return result.data
+    except Exception as e:
+        print(f"[database] 전체 조회 오류: {e}")
+        return []
+
+
+def update_ai_fields(content_id: str, analysis: dict) -> bool:
+    """AI 분류 결과 필드만 업데이트 (재분류용)"""
+    try:
+        _client.table('contents').update({
+            "category":         analysis.get("category", "기타/알쓸신잡"),
+            "sub_category":     analysis.get("sub_category", ""),
+            "one_line_summary": analysis.get("one_line_summary", ""),
+            "detailed_summary": analysis.get("detailed_summary", ""),
+            "save_purpose":     analysis.get("save_purpose", ""),
+            "topics":           analysis.get("tags", []),
+            "hashtags":         [f"#{t}" for t in analysis.get("tags", [])],
+            "has_deadline":     analysis.get("has_deadline", False),
+            "deadline_date":    analysis.get("deadline_date"),
+            "deadline_note":    analysis.get("deadline_note"),
+        }).eq('id', content_id).execute()
+        return True
+    except Exception as e:
+        print(f"[database] AI 필드 업데이트 오류: {e}")
+        return False
+
 # Supabase 클라이언트 반환 및 contents row → item dict 변환 헬퍼, 파이프라인용 DB 함수 모음

@@ -57,22 +57,27 @@ def analyze_content(metadata: dict, user_instruction: str = "") -> dict:
     """
     추출된 메타데이터를 받아서 AI로 분류.
     user_instruction: 사용자가 넘긴 지시사항 (예: "생비과제 폴더에 넣어줘")
+    실패 시 _empty_result() 반환 (파이프라인 중단 없음).
     """
     prompt = _build_prompt(metadata, user_instruction)
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=700,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=700,
+        )
+        result_text = response.choices[0].message.content.strip()
+        result = json.loads(result_text)
+        return _validate(result)
 
-    result_text = response.choices[0].message.content.strip()
-    result = json.loads(result_text)
-    return _validate(result)
+    except Exception as e:
+        print(f"[analyzer] AI 분류 오류: {e}")
+        return _empty_result(error=str(e))
 
 
 def _build_prompt(metadata: dict, user_instruction: str = "") -> str:
@@ -134,6 +139,22 @@ def _validate(result: dict) -> dict:
         "deadline_date":    result.get("deadline_date"),
         "deadline_note":    result.get("deadline_note"),
         "user_collection":  result.get("user_collection"),
+    }
+
+
+def _empty_result(error: str = "") -> dict:
+    return {
+        "one_line_summary": "",
+        "detailed_summary": "",
+        "tags":             [],
+        "category":         "기타/알쓸신잡",
+        "sub_category":     "",
+        "save_purpose":     "",
+        "has_deadline":     False,
+        "deadline_date":    None,
+        "deadline_note":    None,
+        "user_collection":  None,
+        "error":            error,
     }
 
 

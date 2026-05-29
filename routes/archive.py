@@ -6,6 +6,7 @@ from database.db import (
     check_duplicate, save_content_initial, update_content_completed,
     mark_failed, find_similar_contents,
     get_or_create_collection,
+    get_all_contents_for_reclassify, update_ai_fields,
 )
 from services.metadata.dispatcher import extract as dispatch
 from services.analyzer import analyze_content
@@ -122,6 +123,20 @@ def save():
                 }
                 for s in similar
             ],
+            # 프론트 호환용 item 래퍼 (buildSavedItemContent에서 data.item 접근)
+            'item': {
+                'id':           content_id,
+                'url':          url,
+                'title':        metadata.get('title', ''),
+                'category':     analysis.get('category', ''),
+                'subcategory':  analysis.get('sub_category', ''),
+                'summary':      analysis.get('one_line_summary', ''),
+                'content_type': metadata.get('platform', 'web'),
+                'tags':         analysis.get('tags', []),
+                'thumbnail':    metadata.get('thumbnail', ''),
+                'deadline':     analysis.get('deadline_date'),
+                'created_at':   '',
+            },
         })
 
     except Exception as e:
@@ -180,4 +195,35 @@ def items():
 
     return jsonify({'items': result})
 
-# URL 저장 7단계 파이프라인, 카테고리 목록 조회, 카테고리별 아이템 조회 라우트
+@archive_bp.route('/admin/reclassify/<user_id>', methods=['POST'])
+def reclassify_all(user_id: str):
+    """
+    기존 저장 콘텐츠 전체를 AI로 재분류.
+    category, sub_category, 요약, 태그 등 AI 필드만 업데이트.
+    """
+    contents = get_all_contents_for_reclassify(user_id)
+    if not contents:
+        return jsonify({"updated": 0, "message": "재분류할 콘텐츠가 없어요."})
+
+    updated, failed = 0, 0
+    for c in contents:
+        try:
+            metadata = {
+                "title":        c.get("title", ""),
+                "platform":     c.get("content_type", "web"),
+                "summary":      c.get("description", ""),
+                "original_url": c.get("url", ""),
+            }
+            analysis = analyze_content(metadata)
+            success  = update_ai_fields(c["id"], analysis)
+            if success:
+                updated += 1
+            else:
+                failed += 1
+        except Exception as e:
+            print(f"[reclassify] {c.get('id')} 실패: {e}")
+            failed += 1
+
+    return jsonify({"updated": updated, "failed": failed, "total": len(contents)})
+
+# URL 저장 7단계 파이프라인, 카테고리 목록 조회, 카테고리별 아이템 조회, 재분류 라우트

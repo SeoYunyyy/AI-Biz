@@ -9,7 +9,8 @@ from openai import OpenAI
 import os
 
 from database.db import (
-    search_contents, get_deadlines, get_collections, get_old_contents,
+    search_contents, get_deadlines, get_collections,
+    get_old_contents, update_deadline, row_to_item,
 )
 from services.embedding import generate_embedding
 from services.query_expander import expand_query
@@ -23,18 +24,24 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
-- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘" 등)
+- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘" 등)
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
-- delete   : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘" 등)
-- general  : 그 외
+             ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐",
+              "쌓인 거 뭐 있어", "안 보는 거 뭐야", "오래된 거 알려줘" 등)
+- delete         : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
+- deadline_edit  : 방금 저장한 콘텐츠의 마감기한 정정 ("마감 없어", "마감이 7월이야", "날짜 틀렸어" 등)
+- general        : 그 외
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
 
 folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null
-delete_query: 삭제 의도일 때 삭제 대상 키워드, 없으면 null
-move_query: 이동 의도일 때 이동할 콘텐츠 키워드, 없으면 null
-target_folder: 이동 의도일 때 목적지 폴더명, 없으면 null"""
+delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
+move_query: 이동 의도일 때 이동할 콘텐츠 키워드 (예: "에릭센 기사"), 없으면 null
+target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null
+deadline_edit_type: deadline_edit 의도일 때 "remove"(마감 없음) 또는 "update"(날짜 변경), 없으면 null
+deadline_edit_date: deadline_edit + update일 때 언급된 날짜 YYYY-MM-DD, 없으면 null
+deadline_edit_note: deadline_edit + update일 때 마감 설명 (예: "신청 마감 7/15"), 없으면 null"""
 
 DISSATISFACTION_SIGNALS = ["없", "아니", "못 찾", "모르겠", "그거 말고", "다른 거", "없는데", "아닌데", "틀렸"]
 _FOLLOWUP_ASKED_MARKERS = [
@@ -65,7 +72,7 @@ def _detect_intent(query: str, history: list) -> dict:
 
 
 def _filter_results(query: str, results: list) -> list:
-    """LLM으로 검색 결과 중 명백히 무관한 항목만 제거"""
+    """LLM으로 장르·분야가 명백히 다른 항목만 제거 (같은 분야 내 세부 차이는 유지)"""
     if not results:
         return results
     try:
@@ -78,9 +85,13 @@ def _filter_results(query: str, results: list) -> list:
                 {
                     "role": "system",
                     "content": (
-                        "검색 결과에서 명백히 무관한 항목만 제거하세요. "
-                        "한국어 줄임말이나 영어 표기 등 표현이 다를 수 있으므로, 확실하지 않으면 포함시키세요. "
-                        "관련 있을 가능성이 있는 결과의 id를 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
+                        "검색어와 장르/분야가 명백히 다른 콘텐츠만 제거하세요.\n"
+                        "규칙:\n"
+                        "- 케이팝·아이돌 검색 → 재즈, 클래식, 팝, 뉴스 등 다른 장르 제거\n"
+                        "- 재즈 검색 → 케이팝, 뉴스 등 제거\n"
+                        "- 같은 장르 내 아티스트·성별·그룹 차이는 제거하지 말 것\n"
+                        "- 불확실하면 포함 유지\n"
+                        "관련 있는 결과의 id만 JSON 배열로 반환. 예: [\"id1\", \"id2\"]"
                     ),
                 },
                 {"role": "user", "content": f"검색어: {query}\n\n결과:\n{items}"},
@@ -138,6 +149,15 @@ def _is_dissatisfied(query: str, history: list) -> bool:
     return any(s in query for s in DISSATISFACTION_SIGNALS)
 
 
+def _has_extra_context(query: str) -> bool:
+    """불만족 신호 외에 추가 검색 정보가 있는지 (있으면 바로 검색)"""
+    cleaned = query
+    for s in DISSATISFACTION_SIGNALS:
+        cleaned = cleaned.replace(s, "")
+    cleaned = cleaned.strip().replace(" ", "")
+    return len(cleaned) >= 4  # 4글자 이상 남으면 의미 있는 추가 정보로 판단
+
+
 def _already_asked_followup(history: list) -> bool:
     return any(
         any(marker in m.get("content", "") for marker in _FOLLOWUP_ASKED_MARKERS)
@@ -151,24 +171,29 @@ def _already_asked_followup(history: list) -> bool:
 def _handle_search(user_id: str, query: str, history: list, shown_ids: list) -> dict:
     already_asked = _already_asked_followup(history)
 
-    if _is_dissatisfied(query, history) and already_asked:
-        return {
-            "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
-            "results": [],
-            "follow_up_questions": [],
-        }
-
-    if _is_dissatisfied(query, history) and not already_asked:
-        return {
-            "answer": "찾으시는 게 없었군요. 조금 더 알려주시면 다시 찾아볼게요!",
-            "results": [],
-            "follow_up_questions": [
-                "유튜브 영상이었나요, 아니면 블로그나 뉴스 글이었나요?",
-                "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
-                "언제쯤 저장하셨는지 기억나시나요?",
-                "제목에 특정 단어가 포함됐었나요?",
-            ],
-        }
+    if _is_dissatisfied(query, history):
+        if _has_extra_context(query):
+            # "없어 남돌 영상인데" 처럼 추가 정보 있으면 → 바로 검색
+            pass
+        elif already_asked:
+            # 유도질문 했는데 또 그냥 없다고만 하면 → 힌트 요청
+            return {
+                "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
+                "results": [],
+                "follow_up_questions": [],
+            }
+        else:
+            # 추가 정보 없이 그냥 없다고만 하면 → 유도질문
+            return {
+                "answer": "찾으시는 게 없었군요. 조금 더 알려주시면 다시 찾아볼게요!",
+                "results": [],
+                "follow_up_questions": [
+                    "유튜브 영상이었나요, 아니면 블로그나 뉴스 글이었나요?",
+                    "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
+                    "언제쯤 저장하셨는지 기억나시나요?",
+                    "제목에 특정 단어가 포함됐었나요?",
+                ],
+            }
 
     context_query = _build_context_query(query, history) if history else query
     expanded  = expand_query(context_query)
@@ -177,14 +202,14 @@ def _handle_search(user_id: str, query: str, history: list, shown_ids: list) -> 
     if not embedding:
         return {"answer": "검색어 처리 중 문제가 생겼어요. 다시 시도해주세요.", "results": [], "follow_up_questions": []}
 
-    threshold   = 0.4 if shown_ids else 0.3
-    raw_results = search_contents(user_id, embedding, limit=10, threshold=threshold)
+    threshold   = 0.3
+    raw_results = search_contents(user_id, embedding, limit=15, threshold=threshold)
     candidates  = [r for r in raw_results if r.get("id") not in shown_ids]
-    candidates  = _filter_results(expanded, candidates)
-    results     = candidates[:5]
+    filtered    = _filter_results(expanded, candidates[:10])
+    results     = filtered[:5]
 
     if not results:
-        if already_asked:
+        if already_asked or _has_extra_context(query):
             return {
                 "answer": "그 조건으로도 찾지 못했어요. 제목에 포함된 단어나 저장 시기를 조금 더 알려주시면 다시 찾아볼게요.",
                 "results": [],
@@ -207,12 +232,16 @@ def _handle_search(user_id: str, query: str, history: list, shown_ids: list) -> 
         return {
             "answer": "이거 맞나요?",
             "results": results[:1],
-            "follow_up_questions": ["맞아요", "아니요, 다른 거예요"],
+            "follow_up_questions": ["맞아요", "아니요, 다른 거예요 — 제목이나 내용 키워드를 더 알려주시면 다시 찾아볼게요!"],
         }
 
-    count    = len(results)
-    answer   = f"관련 콘텐츠 {count}개 찾았어요."
-    follow_up = ["이 중에 없으면 '없어'라고 해주세요."] if count >= 3 else []
+    count = len(results)
+    if count == 1:
+        answer   = "이거 맞나요?"
+        follow_up = ["맞아요", "아니요, 다른 거예요 — 제목이나 내용 키워드를 더 알려주시면 다시 찾아볼게요!"]
+    else:
+        answer   = f"관련 콘텐츠 {count}개 찾았어요. 찾으시는 거 있나요?"
+        follow_up = ["이 중에 없으면 제목이나 내용 키워드를 더 알려주세요!"]
 
     return {"answer": answer, "results": results, "follow_up_questions": follow_up}
 
@@ -223,19 +252,19 @@ def _handle_deadline(user_id: str) -> dict:
     today_str  = today.isoformat()
     week_later = (today + timedelta(days=7)).isoformat()
 
-    urgent  = [d for d in deadlines if today_str <= d.get("deadline_date", "9999") <= week_later]
-    relaxed = [d for d in deadlines if d.get("deadline_date", "9999") > week_later]
-    expired = [d for d in deadlines if d.get("deadline_date", "9999") < today_str]
+    urgent  = [d for d in deadlines if today_str <= (d.get("deadline_date") or "9999") <= week_later]
+    relaxed = [d for d in deadlines if (d.get("deadline_date") or "9999") > week_later]
+    expired = [d for d in deadlines if (d.get("deadline_date") or "9999") < today_str]
 
     if not urgent and not relaxed and not expired:
         return {"answer": "마감기한이 있는 콘텐츠가 없어요.", "results": []}
 
     context_parts = []
     if urgent:
-        context_parts.append("[ 마감 임박 — 7일 이내 ]")
+        context_parts.append("[ 🚨 마감 임박 — 7일 이내 ]")
         context_parts += [f"- {d.get('title','')}: {d.get('deadline_date','')} ({d.get('deadline_note','')})" for d in urgent]
     if relaxed:
-        context_parts.append("\n[ 여유 있음 — 7일 초과 ]")
+        context_parts.append("\n[ 📅 여유 있음 — 7일 초과 ]")
         context_parts += [f"- {d.get('title','')}: {d.get('deadline_date','')} ({d.get('deadline_note','')})" for d in relaxed[:5]]
     if expired:
         context_parts.append("\n[ 만료됨 ]")
@@ -288,7 +317,7 @@ def _handle_folder(user_id: str, folder_name: str) -> dict:
 def _handle_cleanup(user_id: str) -> dict:
     deadlines    = get_deadlines(user_id)
     today        = datetime.now(timezone.utc).date().isoformat()
-    expired      = [d for d in deadlines if d.get("deadline_date", "9999") < today]
+    expired      = [d for d in deadlines if (d.get("deadline_date") or "9999") < today]
     old_contents = get_old_contents(user_id, days=365)
 
     if not expired and not old_contents:
@@ -347,6 +376,23 @@ def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
     }
 
 
+def _handle_deadline_edit(user_id: str, content_id: str, edit_type: str, deadline_date: str | None, deadline_note: str | None) -> dict:
+    if edit_type == "remove":
+        success = update_deadline(content_id, user_id, False, None, None)
+        if success:
+            return {"answer": "마감기한을 삭제했어요.", "results": []}
+        return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
+
+    if edit_type == "update" and deadline_date:
+        note = deadline_note or f"마감 {deadline_date[5:]}"
+        success = update_deadline(content_id, user_id, True, deadline_date, note)
+        if success:
+            return {"answer": f"마감기한을 '{note}'으로 수정했어요.", "results": []}
+        return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
+
+    return {"answer": "마감일을 어떻게 바꿔드릴까요? '마감 없어' 또는 '7월 15일이야'처럼 말해주세요.", "results": []}
+
+
 def _handle_delete(user_id: str, delete_query: str) -> dict:
     expanded  = expand_query(delete_query)
     embedding = generate_embedding(expanded)
@@ -372,33 +418,40 @@ def _handle_delete(user_id: str, delete_query: str) -> dict:
 def chat():
     """
     의도 자동 파악 후 처리:
-    - search  : 벡터 검색 → 불만족 감지 → 유도 질문
-    - deadline: 마감기한 정리
-    - folder  : 유사 폴더 감지 → 확인 요청
-    - move    : 콘텐츠 폴더 이동
-    - delete  : 콘텐츠 삭제 확인
-    - cleanup : 만료/오래된 콘텐츠 정리 안내
+    - search        : 벡터 검색 → 불만족 감지 → 유도 질문
+    - deadline      : 마감기한 정리
+    - folder        : 유사 폴더 감지 → 확인 요청
+    - move          : 콘텐츠 폴더 이동
+    - delete        : 콘텐츠 삭제 확인
+    - cleanup       : 만료/오래된 콘텐츠 정리 안내
+    - deadline_edit : 마감기한 정정 (저장 직후 수정)
     """
     user_id = (session.get('user') or {}).get('id', '')
     if not user_id:
         return jsonify({'error': '로그인이 필요합니다'}), 401
 
-    data      = request.json
-    message   = (data.get('message') or '').strip()
-    history   = data.get('history', [])       # [{"role": "user"/"assistant", "content": "..."}]
-    shown_ids = data.get('shown_ids', [])     # 이미 보여준 콘텐츠 ID (재검색 시 제외)
+    data       = request.json
+    message    = (data.get('message') or '').strip()
+    history    = data.get('history', [])
+    shown_ids  = data.get('shown_ids', [])
+    content_id = data.get('content_id')  # 마감기한 수정 등 특정 콘텐츠 대상 작업 시
 
     if not message:
         return jsonify({'error': '메시지를 입력해주세요'}), 400
 
-    intent_data   = _detect_intent(message, history)
-    intent        = intent_data.get('intent', 'general')
-    folder_name   = intent_data.get('folder_name')
-    delete_query  = intent_data.get('delete_query')
-    move_query    = intent_data.get('move_query')
-    target_folder = intent_data.get('target_folder')
+    intent_data        = _detect_intent(message, history)
+    intent             = intent_data.get('intent', 'general')
+    folder_name        = intent_data.get('folder_name')
+    delete_query       = intent_data.get('delete_query')
+    move_query         = intent_data.get('move_query')
+    target_folder      = intent_data.get('target_folder')
+    deadline_edit_type = intent_data.get('deadline_edit_type')
+    deadline_edit_date = intent_data.get('deadline_edit_date')
+    deadline_edit_note = intent_data.get('deadline_edit_note')
 
-    if intent == 'search':
+    if intent == 'deadline_edit' and content_id:
+        result = _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+    elif intent == 'search':
         result = _handle_search(user_id, message, history, shown_ids)
     elif intent == 'deadline':
         result = _handle_deadline(user_id)
@@ -414,6 +467,11 @@ def chat():
         result = _handle_search(user_id, message, history, shown_ids)
 
     result['intent'] = intent
+
+    # 프론트 호환: answer → message, results → items (row_to_item으로 필드명 변환)
+    result['message'] = result.get('answer', '')
+    result['items']   = [row_to_item(r) for r in result.get('results', [])]
+
     return jsonify(result)
 
-# 의도 분류 후 search/deadline/folder/move/delete/cleanup 핸들러로 분기, 대화 히스토리 유지
+# 의도 분류 후 search/deadline/folder/move/delete/cleanup/deadline_edit 핸들러로 분기, 대화 히스토리 유지
