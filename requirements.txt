@@ -1,8 +1,6 @@
-flask
-openai
-requests
+fastapi
+uvicorn[standard]
+httpx
 beautifulsoup4
 python-dotenv
-lxml
-supabase
-httpx
+jinja2

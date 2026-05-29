@@ -17,7 +17,7 @@
           <line x1="33" y1="50" x2="52" y2="28" stroke="white" stroke-width="5" stroke-linecap="round"/>
           <line x1="33" y1="50" x2="52" y2="72" stroke="white" stroke-width="5" stroke-linecap="round"/>
         </svg>
-        <span class="logo-text">eepit</span>
+        <span class="logo-text">Keepit</span>
       </a>
       <div class="nav-btns">
         <button id="btn-archives">아카이브</button>
@@ -28,9 +28,8 @@
     </nav>
 
     <div class="page-wrapper">
-      <!-- 좌측 사이드바: 생성된 그룹 목록 -->
+      <!-- 좌측 컬렉션(폴더) 사이드바 -->
       <aside class="left-sidebar" id="left-sidebar">
-        <div class="sidebar-header">내 그룹</div>
         <div id="group-list" class="group-list"></div>
       </aside>
 
@@ -63,7 +62,7 @@
         <section id="results" class="results-section"></section>
       </main>
 
-      <!-- 우측 슬라이드 패널 (그룹 상세 / AI 채팅) -->
+      <!-- 우측 슬라이드 패널 (카테고리 상세 / AI 채팅) -->
       <div class="right-panel" id="right-panel">
         <div class="right-panel-inner">
           <div class="panel-header">
@@ -80,20 +79,6 @@
       <div class="modal-panel">
         <button id="modal-close" class="modal-close">&times;</button>
         <div id="modal-body"></div>
-      </div>
-    </div>
-
-    <!-- 그룹 수정 모달 (Glassmorphism) -->
-    <div id="group-edit-modal" class="group-edit-modal">
-      <div class="glass-panel">
-        <div class="group-edit-header">
-          <input type="text" id="group-edit-name" class="group-name-input" />
-          <button id="group-edit-close" class="edit-close-btn">&times;</button>
-        </div>
-        <div id="group-edit-items" class="group-edit-items"></div>
-        <div class="group-edit-footer">
-          <button id="group-edit-save" class="save-btn">저장</button>
-        </div>
       </div>
     </div>
 

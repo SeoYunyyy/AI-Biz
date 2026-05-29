@@ -1,22 +1,19 @@
 // ── Keepit 메인 인터랙션 ──
 
-const promptInput   = document.getElementById('prompt-input')
-const submitBtn     = document.getElementById('submit-btn')
-const resultsDiv    = document.getElementById('results')
-const modal         = document.getElementById('modal')
-const modalBody     = document.getElementById('modal-body')
-const rightPanel    = document.getElementById('right-panel')
-const panelBody     = document.getElementById('panel-body')
-const panelTitle    = document.getElementById('panel-title')
-const leftSidebar   = document.getElementById('left-sidebar')
-const groupList     = document.getElementById('group-list')
-const groupEditModal = document.getElementById('group-edit-modal')
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001'
 
-// 수정 모달 데이터 임시 저장소 (onclick 속성에 JSON 직렬화 없이 참조)
-const editStore = {}
-let editStoreSeq = 0
-let editGroupId   = null
-let editGroupItems = []
+// 채팅 세션 상태 (패널 열릴 때 초기화)
+let chatHistory = []
+let shownIds = new Set()
+
+const promptInput = document.getElementById('prompt-input')
+const submitBtn   = document.getElementById('submit-btn')
+const resultsDiv  = document.getElementById('results')
+const modal       = document.getElementById('modal')
+const modalBody   = document.getElementById('modal-body')
+const rightPanel  = document.getElementById('right-panel')
+const panelBody   = document.getElementById('panel-body')
+const panelTitle  = document.getElementById('panel-title')
 
 // URL 여부 판별
 function isURL(str) {
@@ -29,22 +26,6 @@ function parseInput(text) {
     const deadline = deadlineMatch ? deadlineMatch[1] : null
     const url = text.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
     return { url, deadline }
-}
-
-// 결과 카드 HTML 생성
-function buildCard(item, isSaved = false) {
-    const showSummary = item.content_type !== 'music' && item.summary
-    const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? JSON.parse(item.tags) : [])
-    return `
-        <div class="result-card">
-            ${isSaved ? '<span class="save-banner">저장 완료</span>' : ''}
-            <span class="card-meta">${item.category} &nbsp;/&nbsp; ${item.subcategory}</span>
-            <p class="card-title">${item.title}</p>
-            ${showSummary ? `<p class="card-summary">${item.summary}</p>` : ''}
-            ${tags.length ? `<div class="card-tags">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
-            <a href="${item.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
-        </div>
-    `
 }
 
 function showResults(html) {
@@ -146,37 +127,39 @@ async function openCategoryPanel(category, subcategory) {
     }
 }
 
-// ── 그룹 목록 로드 (좌측 사이드바) ──
-async function loadGroups() {
+// ── 컬렉션(폴더) 사이드바 로드 ──
+async function loadCollections() {
     try {
-        const data = await fetch('/api/groups').then(r => r.json())
-        if (!data.groups.length) {
-            leftSidebar.classList.remove('open')
+        const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
+        const sidebar = document.getElementById('left-sidebar')
+        const list    = document.getElementById('group-list')
+
+        if (!data.collections || !data.collections.length) {
+            sidebar.classList.remove('open')
             return
         }
-        leftSidebar.classList.add('open')
-        groupList.innerHTML = data.groups.map(g => `
-            <div class="group-sidebar-item" onclick="openGroupPanel(${g.id})">
-                <span class="group-sidebar-name">${g.name}</span>
-                <span class="group-sidebar-count">${g.item_ids.length}개</span>
+        sidebar.classList.add('open')
+        list.innerHTML = data.collections.map(c => `
+            <div class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
+                <span class="group-sidebar-name">${c.emoji ? c.emoji + ' ' : ''}${c.name}</span>
             </div>
         `).join('')
     } catch (e) {
-        console.error('그룹 로드 실패:', e)
+        console.error('컬렉션 로드 실패:', e)
     }
 }
 
-// ── 그룹 상세 패널 열기 ──
-async function openGroupPanel(groupId) {
-    openRightPanel('그룹', '<div class="chat-loading">···</div>')
+// ── 컬렉션 상세 패널 열기 ──
+async function openCollectionPanel(collectionId, name) {
+    openRightPanel(name, '<div class="chat-loading">···</div>')
     try {
-        const data = await fetch(`/api/groups/${groupId}/items`).then(r => r.json())
-        panelTitle.textContent = data.group.name
+        const data = await fetch(`/api/collections/${collectionId}/items?user_id=${DEFAULT_USER_ID}`).then(r => r.json())
         if (!data.items.length) {
-            panelBody.innerHTML = '<p class="no-result">이 그룹에 자료가 없어요.</p>'
+            panelBody.innerHTML = '<p class="no-result">이 폴더에 자료가 없어요.</p>'
             return
         }
         panelBody.innerHTML = data.items.map(item => {
+            const tags = Array.isArray(item.tags) ? item.tags : []
             const thumbHTML = item.thumbnail
                 ? `<img src="${item.thumbnail}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
                 : ''
@@ -185,6 +168,7 @@ async function openGroupPanel(groupId) {
                     ${thumbHTML}
                     <p class="panel-item-title">${item.title}</p>
                     ${item.summary ? `<p class="panel-item-summary">${item.summary}</p>` : ''}
+                    ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <a href="${item.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
                 </div>
             `
@@ -196,6 +180,8 @@ async function openGroupPanel(groupId) {
 
 // ── AI 채팅 패널 열기 (전체화면) ──
 function openChatPanel(initialText = '') {
+    chatHistory = []
+    shownIds = new Set()
     openRightPanel('AI 어시스턴트', `
         <div class="chat-container">
             <div class="chat-messages" id="chat-messages">
@@ -220,7 +206,7 @@ function openChatPanel(initialText = '') {
     }
 }
 
-// ── 채팅 메시지 전송 (URL 붙여넣기 → 저장 / 텍스트 → AI 대화) ──
+// ── 채팅 메시지 전송 (URL → 저장 / 텍스트 → AI 대화) ──
 async function sendChat() {
     const chatInput    = document.getElementById('chat-input')
     const chatSend     = document.getElementById('chat-send')
@@ -244,10 +230,11 @@ async function sendChat() {
         if (isURL(text.split(' ')[0])) {
             // URL → 저장
             const { url, deadline } = parseInput(text)
-            const res  = await fetch('/api/save', {
+            const instruction = deadline ? `마감기한: ${deadline}` : ''
+            const res = await fetch('/ingest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, deadline })
+                body: JSON.stringify({ url, user_id: DEFAULT_USER_ID, instruction })
             })
             const data = await res.json()
             loadingEl.remove()
@@ -255,27 +242,53 @@ async function sendChat() {
 
             const aiEl = document.createElement('div')
             aiEl.className = 'chat-msg ai'
-            aiEl.innerHTML = buildSavedItemContent(data.item)
+
+            if (data.duplicate) {
+                aiEl.innerHTML = buildSavedItemContent(data.content, true)
+            } else {
+                aiEl.innerHTML = buildSavedItemContent(data)
+                if (data.reminder_message) {
+                    const reminderEl = document.createElement('div')
+                    reminderEl.className = 'chat-msg ai'
+                    reminderEl.textContent = data.reminder_message
+                    chatMessages.appendChild(aiEl)
+                    chatMessages.appendChild(reminderEl)
+                    chatMessages.scrollTop = chatMessages.scrollHeight
+                    loadTopFolders()
+                    loadCollections()
+                    return
+                }
+            }
             chatMessages.appendChild(aiEl)
             loadTopFolders()
+            loadCollections()
         } else {
             // 텍스트 → AI 대화
-            const res  = await fetch('/api/chat', {
+            chatHistory.push({ role: 'user', content: text })
+            const res = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify({
+                    query: text,
+                    user_id: DEFAULT_USER_ID,
+                    history: chatHistory.slice(-10),
+                    shown_ids: [...shownIds],
+                })
             })
             const data = await res.json()
             loadingEl.remove()
+
+            // 보여준 결과 ID 누적
+            if (data.results) {
+                data.results.forEach(r => r.id && shownIds.add(r.id))
+            }
+            chatHistory.push({ role: 'assistant', content: data.answer || '' })
 
             const aiEl = document.createElement('div')
             aiEl.className = 'chat-msg ai'
             aiEl.innerHTML = buildAIContent(data)
             chatMessages.appendChild(aiEl)
-
-            if (data.type === 'create_group' && data.group) {
-                await loadGroups()
-            }
+            loadCollections()
         }
     } catch (e) {
         loadingEl.remove()
@@ -286,18 +299,22 @@ async function sendChat() {
     }
 }
 
-// URL 저장 결과를 채팅 버블로 표시 (썸네일 포함)
-function buildSavedItemContent(item) {
+// URL 저장 결과를 채팅 버블로 표시
+function buildSavedItemContent(item, isDuplicate = false) {
     const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? JSON.parse(item.tags) : [])
     const thumbHTML = item.thumbnail
         ? `<img src="${item.thumbnail}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
         : ''
+    const statusText = isDuplicate ? '이미 저장된 콘텐츠예요' : '✓ 저장 완료'
+    const statusColor = isDuplicate ? '#9A7055' : '#5A9A60'
+    const summary = item.one_line_summary || item.description || ''
+    const subcat = item.sub_category || item.subcategory || ''
     return `
-        <div style="font-size:11px;font-weight:700;color:#5A9A60;margin-bottom:8px;letter-spacing:0.3px">✓ 저장 완료</div>
+        <div style="font-size:11px;font-weight:700;color:${statusColor};margin-bottom:8px;letter-spacing:0.3px">${statusText}</div>
         ${thumbHTML}
         <div style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px;line-height:1.4">${item.title}</div>
-        <div style="font-size:12px;color:#9A7055;margin-bottom:8px">${item.category} / ${item.subcategory}</div>
-        ${item.summary ? `<div style="font-size:13px;color:#6B4E3A;line-height:1.55;margin-bottom:8px">${item.summary}</div>` : ''}
+        <div style="font-size:12px;color:#9A7055;margin-bottom:8px">${item.category || ''}${subcat ? ' / ' + subcat : ''}</div>
+        ${summary ? `<div style="font-size:13px;color:#6B4E3A;line-height:1.55;margin-bottom:8px">${summary}</div>` : ''}
         ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
         <a href="${item.url}" target="_blank" class="panel-item-link" style="margin-top:4px;display:inline-block">링크 열기 &rarr;</a>
     `
@@ -311,21 +328,18 @@ function appendMsg(container, role, text) {
     container.scrollTop = container.scrollHeight
 }
 
-// 아이템 카드 뉴스 HTML (썸네일 포함)
+// 검색 결과 카드 HTML
 function buildResultCards(items, maxCount = 5) {
-    const preview  = items.slice(0, maxCount)
-    const more     = items.length - maxCount
+    const preview = items.slice(0, maxCount)
+    const more    = items.length - maxCount
     const cardsHTML = preview.map(item => {
-        const thumbHTML = item.thumbnail
-            ? `<img src="${item.thumbnail}" class="msg-card-thumb" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="" /><div class="msg-card-thumb-placeholder" style="display:none">📄</div>`
-            : `<div class="msg-card-thumb-placeholder">📄</div>`
+        const summary = item.one_line_summary || item.summary || ''
         return `
             <a href="${item.url}" target="_blank" class="msg-result-card">
-                ${thumbHTML}
+                <div class="msg-card-thumb-placeholder">📄</div>
                 <div class="msg-card-body">
-                    <div class="msg-card-category">${item.category || ''} ${item.subcategory ? '/ ' + item.subcategory : ''}</div>
                     <div class="msg-card-title">${item.title}</div>
-                    ${item.summary ? `<div class="msg-card-summary">${item.summary}</div>` : ''}
+                    ${summary ? `<div class="msg-card-summary">${summary}</div>` : ''}
                     <span class="msg-card-link">링크 열기 →</span>
                 </div>
             </a>
@@ -334,74 +348,32 @@ function buildResultCards(items, maxCount = 5) {
     return `<div class="msg-result-cards">${cardsHTML}${more > 0 ? `<span class="msg-more">외 ${more}개</span>` : ''}</div>`
 }
 
-// AI 응답 HTML 빌드 (그룹카드 / 검색결과 포함)
+// AI 응답 HTML 빌드
 function buildAIContent(data) {
-    let html = data.message || ''
+    let html = data.answer || ''
 
-    if (data.items && data.items.length) {
-        if (data.type === 'create_group' && data.group) {
-            const key = ++editStoreSeq
-            editStore[key] = { id: data.group.id, name: data.group.name, items: data.items }
-            html += `
-                <div class="msg-group-card">
-                    <div class="msg-group-title">
-                        ${data.group.name}
-                        <button class="msg-edit-btn" onclick="openGroupEdit(${key})">수정하기</button>
-                    </div>
-                    ${buildResultCards(data.items)}
-                </div>
-            `
-        } else {
-            html += buildResultCards(data.items)
-        }
+    if (data.results && data.results.length) {
+        html += buildResultCards(data.results)
     }
+
+    if (data.follow_up_questions && data.follow_up_questions.length) {
+        html += `<div class="follow-up-questions">${data.follow_up_questions.map(q =>
+            `<button class="follow-up-btn" onclick="followUp(this)">${q}</button>`
+        ).join('')}</div>`
+    }
+
+
     return html
 }
 
-// ── 그룹 수정 모달 ──
-function openGroupEdit(storeKey) {
-    const d = editStore[storeKey]
-    if (!d) return
-    editGroupId    = d.id
-    editGroupItems = [...d.items]
-    document.getElementById('group-edit-name').value = d.name
-    renderEditItems()
-    groupEditModal.classList.add('open')
+// 후속 질문 버튼 클릭 시 채팅 입력에 삽입
+window.followUp = function(btn) {
+    const chatInput = document.getElementById('chat-input')
+    if (chatInput) {
+        chatInput.value = btn.textContent
+        chatInput.focus()
+    }
 }
-
-function renderEditItems() {
-    document.getElementById('group-edit-items').innerHTML = editGroupItems.map((item, i) => `
-        <div class="edit-item-row">
-            <span class="edit-item-title">${item.title}</span>
-            <button class="edit-item-remove" onclick="removeEditItem(${i})">&#x2715;</button>
-        </div>
-    `).join('')
-}
-
-window.removeEditItem = function(i) {
-    editGroupItems.splice(i, 1)
-    renderEditItems()
-}
-
-document.getElementById('group-edit-close').addEventListener('click', () => {
-    groupEditModal.classList.remove('open')
-})
-
-document.getElementById('group-edit-save').addEventListener('click', async () => {
-    const name = document.getElementById('group-edit-name').value.trim()
-    if (!name || editGroupId === null) return
-    await fetch(`/api/groups/${editGroupId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, item_ids: editGroupItems.map(i => i.id) })
-    })
-    groupEditModal.classList.remove('open')
-    await loadGroups()
-})
-
-groupEditModal.addEventListener('click', e => {
-    if (e.target === groupEditModal) groupEditModal.classList.remove('open')
-})
 
 // ── 메인 submit 핸들러 → 채팅 패널로 통합 ──
 function handleSubmit() {
@@ -439,7 +411,7 @@ async function showArchiveItems(category, subcategory) {
     const cards  = data.items.length
         ? data.items.map(item => {
             const tags = Array.isArray(item.tags) ? item.tags : []
-            const date = item.created_at ? item.created_at.slice(0, 10) : ''
+            const date = item.saved_at ? item.saved_at.slice(0, 10) : ''
             return `
                 <div class="archive-item-card">
                     ${item.content_type !== 'music' && item.summary ? `<p class="archive-item-summary">${item.summary}</p>` : ''}
@@ -478,16 +450,16 @@ submitBtn.addEventListener('click', handleSubmit)
 promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
 
 document.getElementById('btn-reminders').addEventListener('click', async () => {
-    const data = await fetch('/api/reminders').then(r => r.json())
-    if (!data.length) {
-        openModal('리마인더', '<p class="no-result">3일 이내 마감 자료가 없어요.</p>')
+    const data = await fetch(`/deadlines/${DEFAULT_USER_ID}`).then(r => r.json())
+    if (!data.deadlines || !data.deadlines.length) {
+        openModal('리마인더', '<p class="no-result">마감 자료가 없어요.</p>')
         return
     }
-    openModal('리마인더', data.map(r => `
+    openModal('리마인더', data.deadlines.map(r => `
         <div class="reminder-item">
-            <span class="reminder-deadline">마감: ${r.deadline}</span>
+            <span class="reminder-deadline">마감: ${r.deadline_date}</span>
             <p class="reminder-title">${r.title}</p>
-            <span class="reminder-cat">${r.category}</span>
+            ${r.deadline_note ? `<span class="reminder-cat">${r.deadline_note}</span>` : ''}
             <a href="${r.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
         </div>
     `).join(''))
@@ -497,7 +469,7 @@ document.getElementById('btn-report').addEventListener('click', async () => {
     const data = await fetch('/api/monthly-report').then(r => r.json())
     const statsHtml = data.stats.map(s => `
         <div class="stat-row">
-            <span>${s.category} / ${s.subcategory}</span>
+            <span>${s.category}</span>
             <span class="stat-count">${s.count}개</span>
         </div>
     `).join('')
@@ -507,7 +479,6 @@ document.getElementById('btn-report').addEventListener('click', async () => {
     `)
 })
 
-// 주간 레포트 — 전체화면 오버레이
 document.getElementById('btn-weekly-report').addEventListener('click', () => {
     const overlay = document.createElement('div')
     overlay.id = 'weekly-report-overlay'
@@ -524,6 +495,4 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
 
 // ── 초기 로드 ──
 loadTopFolders()
-loadGroups()
-
-// URL 저장 시 채팅 버블 표시, 자연어 입력 시 AI 채팅 패널 오픈 / 폴더 클릭 시 카테고리 상세 패널 표시 / 그룹 생성 시 좌측 사이드바 업데이트
+loadCollections()
