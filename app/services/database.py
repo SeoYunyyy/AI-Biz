@@ -249,6 +249,28 @@ async def get_collections(user_id: str) -> list[dict]:
         print(f"[database] 폴더 목록 조회 오류: {e}")
         return []
     
+async def get_collection_items(user_id: str, collection_id: str) -> list[dict]:
+    """특정 폴더의 콘텐츠 목록 조회 (폴더 컨텍스트 검색용)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "collection_id": f"eq.{collection_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,url,one_line_summary,thumbnail_url,collection_id",
+                    "order": "saved_at.desc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 폴더 아이템 조회 오류: {e}")
+        return []
+
+
 async def find_similar_contents(user_id: str, embedding: list[float], threshold: float = 0.5, limit: int = 3) -> list[dict]:
     """
     새로 저장하려는 콘텐츠와 유사한 기존 콘텐츠 검색

@@ -17,6 +17,7 @@ from app.services.database import (
     get_or_create_collection,
     move_content_collection,
     update_deadline,
+    get_collection_items,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -28,24 +29,25 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
-- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘" 등)
+- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘", "묶어줘" 등)
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
-             ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐",
-              "쌓인 거 뭐 있어", "안 보는 거 뭐야", "오래된 거 알려줘" 등)
-- delete         : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
-- deadline_edit  : 방금 저장한 콘텐츠의 마감기한 정정 ("마감 없어", "마감이 7월이야", "날짜 틀렸어" 등)
-- general        : 그 외
+- delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등)
+- deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정
+- general  : 그 외
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "second_intent": null, "second_query": null}
 
-folder_name: 폴더 의도일 때만 폴더명 추출, 없으면 null
-delete_query: 삭제 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
-move_query: 이동 의도일 때 이동할 콘텐츠 키워드 (예: "에릭센 기사"), 없으면 null
-target_folder: 이동 의도일 때 목적지 폴더명 (예: "스포츠"), 없으면 null
-deadline_edit_type: deadline_edit 의도일 때 "remove"(마감 없음) 또는 "update"(날짜 변경), 없으면 null
-deadline_edit_date: deadline_edit + update일 때 언급된 날짜 YYYY-MM-DD, 없으면 null
-deadline_edit_note: deadline_edit + update일 때 마감 설명 (예: "신청 마감 7/15"), 없으면 null"""
+folder_name: 폴더 의도일 때만 생성할 폴더명
+delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
+source_folder: "OO 폴더에서", "OO에 있는" 처럼 출처 폴더를 명시한 경우 그 이름 (예: "노래", "음악")
+move_query: 이동 의도일 때 이동할 콘텐츠 키워드
+target_folder: 이동 목적지 폴더명
+second_intent: 메시지에 두 가지 요청이 있을 때 두 번째 의도 ("delete"/"move"/"search" 등), 없으면 null
+second_query: 두 번째 요청의 핵심 키워드, 없으면 null
+deadline_edit_type: "remove" 또는 "update"
+deadline_edit_date: YYYY-MM-DD
+deadline_edit_note: 마감 설명"""
 
 
 async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
@@ -453,7 +455,41 @@ async def _handle_deadline_edit(user_id: str, content_id: str, edit_type: str, d
     return {"answer": "마감일을 어떻게 바꿔드릴까요? '마감 없어' 또는 '7월 15일이야'처럼 말해주세요.", "results": []}
 
 
-async def _handle_delete(user_id: str, delete_query: str) -> dict:
+async def _handle_delete(user_id: str, delete_query: str, source_folder: str | None = None) -> dict:
+    # 출처 폴더가 지정된 경우 해당 폴더 내에서만 검색
+    if source_folder:
+        collections = await get_collections(user_id)
+        existing_names = [c["name"] for c in collections]
+        matched_folder = _fuzzy_match(source_folder, existing_names)
+        if matched_folder:
+            col = next(c for c in collections if c["name"] == matched_folder)
+            folder_items = await get_collection_items(user_id, col["id"])
+            # 키워드 매칭으로 필터링
+            kw = delete_query.lower().replace(" ", "")
+            results = [
+                {
+                    "id": r["id"],
+                    "title": r["title"],
+                    "url": r["url"],
+                    "one_line_summary": r.get("one_line_summary", ""),
+                    "thumbnail_url": r.get("thumbnail_url", ""),
+                    "similarity": 1.0,
+                }
+                for r in folder_items
+                if kw in r.get("title", "").lower().replace(" ", "")
+                or kw in r.get("one_line_summary", "").lower().replace(" ", "")
+            ]
+            if results:
+                titles = "\n".join([f"- {r['title']}" for r in results])
+                return {
+                    "answer": f"'{matched_folder}' 폴더에서 '{delete_query}' 관련 {len(results)}개를 찾았어요:\n{titles}\n\n삭제할까요?",
+                    "needs_confirmation": True,
+                    "pending_delete_ids": [r["id"] for r in results],
+                    "results": results,
+                }
+            # 폴더 내 없으면 전체 검색으로 폴백
+            return {"answer": f"'{matched_folder}' 폴더에서 '{delete_query}' 관련 콘텐츠를 찾지 못했어요.", "results": []}
+
     expanded = await expand_query(delete_query)
     embedding = await generate_embedding(expanded)
     if not embedding:
@@ -480,11 +516,14 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
     delete_query = intent_data.get("delete_query")
+    source_folder = intent_data.get("source_folder")
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
     deadline_edit_type = intent_data.get("deadline_edit_type")
     deadline_edit_date = intent_data.get("deadline_edit_date")
     deadline_edit_note = intent_data.get("deadline_edit_note")
+    second_intent = intent_data.get("second_intent")
+    second_query = intent_data.get("second_query")
 
     if intent == "deadline_edit" and content_id:
         result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
@@ -499,9 +538,14 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "move" and move_query and target_folder:
         result = await _handle_move(user_id, move_query, target_folder)
     elif intent == "delete" and delete_query:
-        result = await _handle_delete(user_id, delete_query)
+        result = await _handle_delete(user_id, delete_query, source_folder)
     else:
         result = await _handle_search(user_id, query, history, shown_ids)
+
+    # 두 번째 요청이 감지된 경우 안내 메시지 추가
+    if second_intent and second_query:
+        notice = f"\n\n💡 두 번째 요청 ('{second_query}' {second_intent})은 이게 끝난 후 말씀해주시면 처리할게요!"
+        result["answer"] = (result.get("answer") or "") + notice
 
     result["intent"] = intent
     return result

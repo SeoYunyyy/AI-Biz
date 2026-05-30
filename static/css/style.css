@@ -1514,3 +1514,131 @@ nav {
 }
 
 .follow-up-btn:hover { background: rgba(90,48,2,0.14); }
+
+/* ── 로그인 오버레이 ── */
+.login-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(245,239,230,0.96);
+    backdrop-filter: blur(12px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-overlay.hidden { display: none; }
+
+.login-box {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(90,48,2,0.14);
+    border-radius: 24px;
+    padding: 40px 36px;
+    width: 340px;
+    box-shadow: 0 16px 64px rgba(44,26,14,0.16);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.login-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+}
+
+.login-tabs {
+    display: flex;
+    gap: 0;
+    background: rgba(90,48,2,0.07);
+    border-radius: 10px;
+    padding: 3px;
+}
+
+.login-tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: #9A7055;
+    transition: all 0.2s;
+}
+
+.login-tab.active {
+    background: #fff;
+    color: #5A3002;
+    box-shadow: 0 2px 8px rgba(44,26,14,0.1);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.auth-form.hidden { display: none; }
+
+.auth-input {
+    border: 1.5px solid rgba(90,48,2,0.16);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    background: rgba(255,255,255,0.7);
+    color: #2C1A0E;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.auth-input:focus { border-color: #5A3002; }
+
+.auth-btn {
+    background: #5A3002;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-family: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+    margin-top: 4px;
+}
+
+.auth-btn:hover { background: #7A4515; transform: scale(1.02); }
+
+.auth-error {
+    font-size: 13px;
+    color: #C0392B;
+    text-align: center;
+    min-height: 18px;
+}
+
+/* nav 사용자 정보 */
+.nav-username {
+    font-size: 13px;
+    color: rgba(255,255,255,0.75);
+    font-weight: 500;
+}
+
+.nav-logout-btn {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.nav-logout-btn:hover { background: rgba(255,255,255,0.22); }

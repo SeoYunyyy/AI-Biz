@@ -1,8 +1,4 @@
 # app/main.py
-import sys, io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -37,6 +33,7 @@ from app.services.database import (
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
+from app.routes.auth import router as auth_router
 
 app = FastAPI(title="Keepit API")
 
@@ -53,6 +50,7 @@ templates = Jinja2Templates(directory="templates")
 
 app.include_router(archive_router)
 app.include_router(report_router)
+app.include_router(auth_router)
 
 
 # ── 요청/응답 모델 ─────────────────────────────────────────────────────────────

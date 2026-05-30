@@ -1,6 +1,84 @@
 // ── Keepit 메인 인터랙션 ──
 
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001'
+// ── 인증 ──────────────────────────────────────────────────────────────────────
+function getCurrentUserId()   { return localStorage.getItem('keepit_user_id') || '' }
+function getCurrentUsername() { return localStorage.getItem('keepit_username') || '' }
+function isLoggedIn()         { return !!getCurrentUserId() }
+
+function initAuth() {
+    const overlay = document.getElementById('login-overlay')
+    if (isLoggedIn()) {
+        overlay.classList.add('hidden')
+        document.getElementById('nav-username').textContent = getCurrentUsername()
+    } else {
+        overlay.classList.remove('hidden')
+    }
+}
+
+window.switchTab = function(tab) {
+    document.getElementById('login-form').classList.toggle('hidden', tab !== 'login')
+    document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup')
+    document.querySelectorAll('.login-tab').forEach((btn, i) => {
+        btn.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'signup'))
+    })
+}
+
+window.handleLogin = async function(e) {
+    e.preventDefault()
+    const username = document.getElementById('login-username').value.trim()
+    const password = document.getElementById('login-password').value
+    const errEl    = document.getElementById('login-error')
+    errEl.textContent = ''
+    try {
+        const res  = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) { errEl.textContent = data.detail || '로그인 실패'; return }
+        localStorage.setItem('keepit_user_id', data.user_id)
+        localStorage.setItem('keepit_username', data.username)
+        document.getElementById('login-overlay').classList.add('hidden')
+        document.getElementById('nav-username').textContent = data.username
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        errEl.textContent = '서버 연결 오류'
+    }
+}
+
+window.handleSignup = async function(e) {
+    e.preventDefault()
+    const username = document.getElementById('signup-username').value.trim()
+    const password = document.getElementById('signup-password').value
+    const errEl    = document.getElementById('signup-error')
+    errEl.textContent = ''
+    try {
+        const res  = await fetch('/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        })
+        const data = await res.json()
+        if (!res.ok) { errEl.textContent = data.detail || '가입 실패'; return }
+        localStorage.setItem('keepit_user_id', data.user_id)
+        localStorage.setItem('keepit_username', data.username)
+        document.getElementById('login-overlay').classList.add('hidden')
+        document.getElementById('nav-username').textContent = data.username
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        errEl.textContent = '서버 연결 오류'
+    }
+}
+
+window.handleLogout = function() {
+    localStorage.removeItem('keepit_user_id')
+    localStorage.removeItem('keepit_username')
+    location.reload()
+}
+// ── 인증 끝 ──────────────────────────────────────────────────────────────────
 
 // 채팅 세션 상태
 let chatHistory = []
@@ -82,7 +160,7 @@ async function initFolderPicker() {
 async function populateFolderDropdown(dropdown, onSelect) {
     dropdown.innerHTML = '<div class="folder-option" style="color:#9A7055">불러오는 중···</div>'
     try {
-        const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
+        const data = await fetch(`/collections/${getCurrentUserId()}`).then(r => r.json())
         const cols = data.collections || []
         dropdown.innerHTML = `
             <div class="folder-option selected" onclick="(${onSelect.toString()})(null, null)">선택 안 함</div>
@@ -171,7 +249,7 @@ async function openCategoryPanel(category, subcategory) {
 // ── 컬렉션(폴더) 사이드바 로드 ──
 async function loadCollections() {
     try {
-        const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
+        const data = await fetch(`/collections/${getCurrentUserId()}`).then(r => r.json())
         const sidebar = document.getElementById('left-sidebar')
         const list    = document.getElementById('group-list')
 
@@ -194,7 +272,7 @@ async function loadCollections() {
 async function openCollectionPanel(collectionId, name) {
     openRightPanel(name, '<div class="chat-loading">···</div>')
     try {
-        const data = await fetch(`/api/collections/${collectionId}/items?user_id=${DEFAULT_USER_ID}`).then(r => r.json())
+        const data = await fetch(`/api/collections/${collectionId}/items?user_id=${getCurrentUserId()}`).then(r => r.json())
         if (!data.items.length) {
             panelBody.innerHTML = '<p class="no-result">이 폴더에 자료가 없어요.</p>'
             return
@@ -322,7 +400,7 @@ async function sendChat(chatCollectionId) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url,
-                    user_id: DEFAULT_USER_ID,
+                    user_id: getCurrentUserId(),
                     instruction,
                     collection_id: chatCollectionId || null,
                 })
@@ -364,7 +442,7 @@ async function sendChat(chatCollectionId) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: text,
-                    user_id: DEFAULT_USER_ID,
+                    user_id: getCurrentUserId(),
                     history: chatHistory.slice(-10),
                     shown_ids: [...shownIds],
                     content_id: currentContentId,  // 마감기한 수정 대상 ID
@@ -519,7 +597,7 @@ window.executeDelete = async function(btn) {
     let successCount = 0
     for (const id of ids) {
         try {
-            const res = await fetch(`/contents/${id}?user_id=${DEFAULT_USER_ID}`, { method: 'DELETE' })
+            const res = await fetch(`/contents/${id}?user_id=${getCurrentUserId()}`, { method: 'DELETE' })
             if (res.ok) successCount++
         } catch (e) {}
     }
@@ -541,7 +619,7 @@ window.executeMove = async function(btn) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_id: DEFAULT_USER_ID,
+                user_id: getCurrentUserId(),
                 content_ids: ids,
                 target_folder: folder,
             })
@@ -587,7 +665,7 @@ function buildFolderConfirm(confirmationData) {
 window.createFolder = async function(name) {
     document.querySelector('.folder-confirm-box')?.remove()
     try {
-        const res = await fetch(`/collections?user_id=${DEFAULT_USER_ID}&name=${encodeURIComponent(name)}`, { method: 'POST' })
+        const res = await fetch(`/collections?user_id=${getCurrentUserId()}&name=${encodeURIComponent(name)}`, { method: 'POST' })
         const chatMessages = document.getElementById('chat-messages')
         if (chatMessages) {
             const el = document.createElement('div')
@@ -746,6 +824,9 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
 })
 
 // ── 초기 로드 ──
-loadTopFolders()
-loadCollections()
+initAuth()
+if (isLoggedIn()) {
+    loadTopFolders()
+    loadCollections()
+}
 initFolderPicker()
