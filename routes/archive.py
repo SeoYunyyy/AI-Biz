@@ -141,7 +141,6 @@ def categories():
 
     cats = {}
     for row in rows:
-        # 새 파이프라인 필드 우선, 없으면 기존 필드 폴백
         cat = row.get('category') \
               or (row.get('metadata') or {}).get('category') \
               or map_topics_to_category(row.get('topics') or [])
@@ -176,7 +175,7 @@ def items():
             item['category'] = r['category']
         if r.get('sub_category'):
             item['subcategory'] = r['sub_category']
-        if item['category'] == category and item['subcategory'] == subcategory:
+        if item['category'] == category and (not subcategory or item['subcategory'] == subcategory):
             result.append(item)
 
     return jsonify({'items': result})

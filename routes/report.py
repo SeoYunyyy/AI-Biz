@@ -26,12 +26,14 @@ def _get_time_slot(hour: int) -> str:
     else:                 return "심야"
 
 
-def _get_week_range(year: int, month: int, week: int):
-    """week: 1=1~7일, 2=8~14일, 3=15~21일, 4=22~28일, 5=29일~말일"""
-    start_day = (week - 1) * 7 + 1
-    end_day   = min(week * 7, cal_module.monthrange(year, month)[1])
-    return (datetime(year, month, start_day, tzinfo=timezone.utc),
-            datetime(year, month, end_day, 23, 59, 59, tzinfo=timezone.utc))
+def _get_week_range(ref: date = None):
+    """ref 기준 월요일~ref(당일) 범위 반환. ref 없으면 오늘 기준."""
+    ref = ref or date.today()
+    monday = ref - timedelta(days=ref.weekday())   # weekday(): 0=월, 6=일
+    end_d  = min(ref, monday + timedelta(days=6))  # 주중이면 오늘, 일요일 이후면 일요일
+    start  = datetime(monday.year, monday.month, monday.day, tzinfo=timezone.utc)
+    end    = datetime(end_d.year,  end_d.month,  end_d.day,  23, 59, 59, tzinfo=timezone.utc)
+    return start, end, monday
 
 
 def _get_month_range(year: int, month: int):
@@ -190,13 +192,16 @@ def _gen_ai_result(year: int, month: int, stats: dict, period: str = "주") -> d
 
 @report_bp.route('/api/weekly-report')
 def weekly_report():
-    today = date.today()
-    year  = int(request.args.get('year',  today.year))
-    month = int(request.args.get('month', today.month))
-    week  = int(request.args.get('week',  (today.day - 1) // 7 + 1))
+    # offset=0: 이번 주, offset=-1: 지난 주, ...
+    offset     = int(request.args.get('offset', 0))
+    ref        = date.today() + timedelta(weeks=offset)
+    start, end, monday = _get_week_range(ref)
 
-    start, end = _get_week_range(year, month, week)
-    rows       = _fetch_contents(start, end)
+    year  = monday.year
+    month = monday.month
+    week  = (monday.day - 1) // 7 + 1   # 해당 월의 몇 번째 주
+
+    rows = _fetch_contents(start, end)
 
     if not rows:
         return jsonify({'empty': True, 'total': 0,
@@ -206,15 +211,9 @@ def weekly_report():
     stats            = _build_stats(rows)
     collection_count = len({r.get('collection_id') for r in rows if r.get('collection_id')})
 
-    # 이전 주 (비교용)
-    if week > 1:
-        prev_start, prev_end = _get_week_range(year, month, week - 1)
-    else:
-        prev_month = month - 1 if month > 1 else 12
-        prev_year  = year if month > 1 else year - 1
-        last_week  = (cal_module.monthrange(prev_year, prev_month)[1] - 1) // 7 + 1
-        prev_start, prev_end = _get_week_range(prev_year, prev_month, last_week)
-
+    # 이전 주 (비교용): 지난 주 월요일 기준
+    prev_monday            = monday - timedelta(days=7)
+    prev_start, prev_end, _ = _get_week_range(prev_monday + timedelta(days=6))  # 그 주 일요일 기준
     prev_rows     = _fetch_contents(prev_start, prev_end)
     comparison    = []
     new_discovery = None

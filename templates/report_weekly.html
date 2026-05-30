@@ -32,7 +32,8 @@
   .hero-type-desc { font-size: 15px; opacity: .72; line-height: 1.65; max-width: 520px; margin-bottom: 28px; }
   .share-btn { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.25); color: #fdf3ec; font-size: 14px; font-weight: 600; padding: 10px 22px; border-radius: 24px; cursor: pointer; backdrop-filter: blur(8px); transition: background .2s; }
   .share-btn:hover { background: rgba(255,255,255,0.24); }
-  .hero-right { flex-shrink: 0; font-size: 140px; filter: drop-shadow(0 10px 32px rgba(0,0,0,0.28)); line-height: 1; }
+  .hero-right { flex-shrink: 0; line-height: 1; }
+  .hero-keepi  { width: 420px; height: 420px; object-fit: contain; filter: drop-shadow(0 10px 32px rgba(0,0,0,0.28)); }
 
   /* ── 페이지 래퍼 ── */
   .page { max-width: 1440px; margin: 0 auto; padding: 40px 60px 80px; }
@@ -79,7 +80,8 @@
   /* ── 비교 ── */
   .compare-list { display: flex; flex-direction: column; gap: 10px; }
   .compare-item { background: #f5ede6; border-radius: 14px; padding: 14px 18px; display: flex; align-items: center; gap: 14px; }
-  .compare-icon { font-size: 22px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: #fff; border-radius: 12px; flex-shrink: 0; }
+  .compare-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: #fff; border-radius: 12px; flex-shrink: 0; overflow: hidden; }
+  .topic-keepi  { width: 36px; height: 36px; object-fit: contain; }
   .compare-text { flex: 1; }
   .compare-topic { font-size: 14px; font-weight: 700; color: #2c1206; margin-bottom: 2px; }
   .compare-sub   { font-size: 12px; color: #b08060; }
@@ -188,9 +190,9 @@ const WC_COLORS  = ['#3b1f0e','#6b3a2a','#a0522d','#8b4513','#c8874a','#d4956a',
 const SLOT_COLORS = { '오전':'#c8a890', '오후':'#a0724e', '저녁':'#6b3a2a', '심야':'#3b1f0e' }
 const H_COLORS   = ['#f5f0eb','#f5e6d8','#d4a574','#a0522d','#6b3a2a','#3b1f0e']
 
-function topicEmoji(t) {
+function topicImage(t) {
   t = (t || '').toLowerCase()
-  if (/요리|레시피|음식|먹|맛/.test(t))              return '🍳'
+  if (/요리|레시피|음식|먹|맛/.test(t))               return '🍳'
   if (/기술|개발|코드|python|ai|react|js|자바/.test(t)) return '💻'
   if (/건강|운동|필라테스|요가|홈트|헬스/.test(t))     return '🧘'
   if (/여행|제주|해외|관광|숙소/.test(t))             return '✈️'
@@ -200,6 +202,21 @@ function topicEmoji(t) {
   if (/음악|노래|콘서트/.test(t))                    return '🎵'
   if (/패션|뷰티|향수|옷/.test(t))                   return '👗'
   return '📌'
+}
+
+function personalityImage(type) {
+  type = (type || '').toLowerCase()
+  let src
+  if (/음악|노래|뮤직|재즈|k-pop/.test(type))         src = 'keepi_music.png'
+  else if (/기술|개발|ai|디지털|코딩/.test(type))      src = 'keepi_tech.png'
+  else if (/건강|운동|웰니스|헬스/.test(type))         src = 'keepi_health.png'
+  else if (/여행|탐험|모험/.test(type))               src = 'keepi_travel.png'
+  else if (/카페|미식|푸드|요리/.test(type))           src = 'keepi_food.png'
+  else if (/독서|공부|학습/.test(type))               src = 'keepi_book.png'
+  else if (/영상|영화|드라마|콘텐츠/.test(type))       src = 'keepi_video.png'
+  else if (/패션|뷰티|스타일/.test(type))             src = 'keepi_fashion.png'
+  else                                               src = 'keepi_default.png'
+  return `<img src="/static/images/keepi/${src}" class="hero-keepi" alt="keepi" />`
 }
 
 function fmtEstimate(s) {
@@ -229,7 +246,7 @@ function bHero(d) {
         <div class="hero-type-desc">${d.personality_desc || ''}</div>
         <button class="share-btn" onclick="document.getElementById('shareModal').classList.add('show')">↗ 공유하기</button>
       </div>
-      <div class="hero-right">${d.personality_emoji || '✨'}</div>
+      <div class="hero-right">${personalityImage(d.personality_type)}</div>
     </div>
   </div>`
 }
@@ -294,7 +311,7 @@ function bComparison(d) {
     else if (item.change === 'down') { badge = `<span class="compare-badge badge-down">▼ ${Math.abs(item.pct)}%</span>`;   sub = '지난주보다 조금 줄었어요' }
     else                              { badge = '<span class="compare-badge" style="background:#f0e6dc;color:#a0785a">→</span>'; sub = '꾸준히 유지 중이에요' }
     return `<div class="compare-item">
-      <div class="compare-icon">${topicEmoji(item.topic)}</div>
+      <div class="compare-icon">${topicImage(item.topic)}</div>
       <div class="compare-text"><div class="compare-topic">${item.topic}</div><div class="compare-sub">${sub}</div></div>
       ${badge}
     </div>`
@@ -315,7 +332,7 @@ function bDiscovery(d) {
   return `<div class="card">
     <div class="card-title">🌱 이번 주 새로운 발견</div>
     <span class="discovery-new">이번 주 처음!</span>
-    <div class="discovery-topic">${topicEmoji(nd.topic)} ${nd.topic}</div>
+    <div class="discovery-topic">${topicImage(nd.topic)} ${nd.topic}</div>
     <div class="discovery-desc">지난주까지는 없었던 관심사예요. 다음 주엔 더 많이 저장하게 될지도 몰라요!</div>
   </div>`
 }

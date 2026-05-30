@@ -88,12 +88,11 @@ async function loadTopFolders() {
         const data = await fetch('/api/categories').then(r => r.json())
         const folderGrid = document.getElementById('folder-grid')
 
-        let allCats = []
-        Object.entries(data).forEach(([cat, subs]) => {
-            subs.forEach(sub => allCats.push({ category: cat, name: sub.name, count: sub.count }))
-        })
-        allCats.sort((a, b) => b.count - a.count)
-        const top5 = allCats.slice(0, 5)
+        // 대분류별 총 개수 집계 후 내림차순 정렬
+        const top5 = Object.entries(data)
+            .map(([cat, subs]) => ({ category: cat, count: subs.reduce((sum, s) => sum + s.count, 0) }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
 
         if (!top5.length) {
             folderGrid.innerHTML = '<div class="folder-placeholder">저장된 콘텐츠가 없어요</div>'
@@ -101,7 +100,7 @@ async function loadTopFolders() {
         }
 
         folderGrid.innerHTML = top5.map(cat => `
-            <div class="folder-card" onclick="openCategoryPanel('${esc(cat.category)}','${esc(cat.name)}')">
+            <div class="folder-card" onclick="openCategoryPanel('${esc(cat.category)}','')">
                 <div class="folder-icon-wrap">
                     <div class="folder-tab"></div>
                     <div class="folder-body">
@@ -113,7 +112,7 @@ async function loadTopFolders() {
                     </div>
                 </div>
                 <div class="folder-meta">
-                    <span class="folder-name">${cat.name || cat.category}</span>
+                    <span class="folder-name">${cat.category}</span>
                     <span class="folder-count">${cat.count}개</span>
                 </div>
             </div>
@@ -125,7 +124,7 @@ async function loadTopFolders() {
 
 // ── 카테고리 패널 열기 ──
 async function openCategoryPanel(category, subcategory) {
-    openRightPanel(`${category} / ${subcategory}`, '<div class="chat-loading">···</div>')
+    openRightPanel(subcategory ? `${category} / ${subcategory}` : category, '<div class="chat-loading">···</div>')
     try {
         const params = new URLSearchParams({ category, subcategory })
         const data = await fetch(`/api/items?${params}`).then(r => r.json())
@@ -133,7 +132,15 @@ async function openCategoryPanel(category, subcategory) {
             panelBody.innerHTML = '<p class="no-result">저장된 자료가 없어요.</p>'
             return
         }
-        panelBody.innerHTML = data.items.map(item => {
+        // 중분류별 그룹핑
+        const groups = {}
+        data.items.forEach(item => {
+            const sub = item.subcategory || '기타'
+            if (!groups[sub]) groups[sub] = []
+            groups[sub].push(item)
+        })
+
+        const renderItem = item => {
             const tags = Array.isArray(item.tags) ? item.tags : []
             const thumbHTML = item.thumbnail
                 ? `<img src="${item.thumbnail}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
@@ -147,7 +154,14 @@ async function openCategoryPanel(category, subcategory) {
                     <a href="${item.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
                 </div>
             `
-        }).join('')
+        }
+
+        panelBody.innerHTML = Object.entries(groups).map(([sub, items]) => `
+            <div class="panel-sub-section">
+                <div class="panel-sub-header">${sub}</div>
+                ${items.map(renderItem).join('')}
+            </div>
+        `).join('')
     } catch (e) {
         panelBody.innerHTML = `<p class="error-msg">${e.message}</p>`
     }
@@ -505,31 +519,17 @@ promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubm
 document.getElementById('btn-reminders').addEventListener('click', async () => {
     const data = await fetch('/api/reminders').then(r => r.json())
     if (!data.length) {
-        openModal('리마인더', '<p class="no-result">3일 이내 마감 자료가 없어요.</p>')
+        openModal('리마인더', '<p class="no-result">마감 자료가 없어요.</p>')
         return
     }
     openModal('리마인더', data.map(r => `
         <div class="reminder-item">
-            <span class="reminder-deadline">마감: ${r.deadline}</span>
+            <span class="reminder-deadline">마감: ${r.deadline_date}</span>
             <p class="reminder-title">${r.title}</p>
-            <span class="reminder-cat">${r.category}</span>
+            ${r.deadline_note ? `<span class="reminder-cat">${r.deadline_note}</span>` : ''}
             <a href="${r.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
         </div>
     `).join(''))
-})
-
-document.getElementById('btn-report').addEventListener('click', async () => {
-    const data = await fetch('/api/monthly-report').then(r => r.json())
-    const statsHtml = data.stats.map(s => `
-        <div class="stat-row">
-            <span>${s.category} / ${s.subcategory}</span>
-            <span class="stat-count">${s.count}개</span>
-        </div>
-    `).join('')
-    openModal('월간 취향 레포트', `
-        <div class="report-text">${data.report}</div>
-        ${statsHtml ? `<div class="stats-list">${statsHtml}</div>` : ''}
-    `)
 })
 
 // 주간 레포트 — 전용 페이지로 이동

@@ -504,6 +504,19 @@ nav {
 .panel-body::-webkit-scrollbar { width: 4px; }
 .panel-body::-webkit-scrollbar-thumb { background: rgba(90,48,2,0.18); border-radius: 2px; }
 
+/* 중분류 섹션 */
+.panel-sub-section { margin-bottom: 20px; }
+.panel-sub-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #8B5E3C;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 0 8px;
+    border-bottom: 1px solid rgba(139,94,60,0.18);
+    margin-bottom: 10px;
+}
+
 /* 패널 내 아이템 카드 */
 .panel-item-card {
     background: rgba(255,255,255,0.65);
