@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Keepit</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@latest/dist/web/static/pretendard.css" />
-    <link rel="stylesheet" href="/static/css/style.css" />
+    <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v }}" />
   </head>
   <body>
     <nav>
@@ -45,7 +45,18 @@
     <div class="page-wrapper">
       <!-- 좌측 컬렉션(폴더) 사이드바 -->
       <aside class="left-sidebar" id="left-sidebar">
-        <div id="group-list" class="group-list"></div>
+        <button class="sidebar-tab" id="sidebar-tab" onclick="toggleSidebar()" title="내 컬렉션 열기">내 컬렉션</button>
+        <div class="sidebar-full">
+          <div class="sidebar-header">
+            <span class="sidebar-header-title">내 컬렉션</span>
+            <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="사이드바 접기" aria-label="사이드바 접기">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="13 17 8 12 13 7"/>
+              </svg>
+            </button>
+          </div>
+          <div id="group-list" class="group-list"></div>
+        </div>
       </aside>
 
       <!-- 메인 콘텐츠 -->
@@ -54,9 +65,12 @@
           <h1 class="hero-title">오늘은 무엇을 Keep하고 싶나요?</h1>
           <p class="hero-sub">키핏이 저장하고 요약하고 다시 알려드려요</p>
 
-          <!-- Top 5 폴더 (JS로 동적 생성) -->
+          <!-- 메인 노출 컬렉션 5개 + 편집(연필) 아이콘 -->
+          <div class="folder-grid-header">
+            <button id="edit-folders-btn" class="edit-folders-icon" title="메인 노출 컬렉션 편집" aria-label="편집" style="display:none">✏️</button>
+          </div>
           <div id="folder-grid" class="folder-grid">
-            <div class="folder-placeholder">저장된 콘텐츠가 없어요</div>
+            <div class="folder-placeholder">아직 컬렉션이 없어요</div>
           </div>
         </section>
 
@@ -82,12 +96,25 @@
         <div class="right-panel-inner">
           <div class="panel-header">
             <span id="panel-title" class="panel-title"></span>
-            <button id="panel-close" class="panel-close-btn">접기 ›</button>
+            <button id="panel-close" class="panel-close-btn" title="패널 닫기" aria-label="패널 닫기">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <line x1="15" y1="4" x2="15" y2="20"/>
+              </svg>
+            </button>
           </div>
           <div id="panel-body" class="panel-body"></div>
         </div>
       </div>
     </div>
+
+    <!-- 채팅 다시 열기 (접힌 동안 우상단 노출) -->
+    <button id="panel-reopen" class="panel-reopen-btn" style="display:none" aria-label="채팅 열기">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span class="reopen-tip">채팅 열기</span>
+    </button>
 
     <!-- 아카이브·리마인더·레포트 모달 -->
     <div id="modal" class="modal">
@@ -101,7 +128,7 @@
     <script>
       window.__USER_ID__ = {{ (user.id if user else None) | tojson }};
     </script>
-    <script src="/static/js/main.js"></script>
+    <script src="/static/js/main.js?v={{ asset_v }}"></script>
 
     <!-- Supabase 세션 연동 스크립트 -->
     <script>

@@ -337,6 +337,25 @@ async def delete_content(content_id: str, user_id: str) -> bool:
         return False
 
 
+async def delete_contents_by_ids(user_id: str, content_ids: list[str]) -> bool:
+    """선택한 콘텐츠 여러 건을 한 번에 영구 삭제 (복수 선택 삭제용)"""
+    if not content_ids:
+        return False
+    ids = ",".join(content_ids)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"user_id": f"eq.{user_id}", "id": f"in.({ids})"},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 다중 삭제 오류: {e}")
+        return False
+
+
 async def delete_contents_by_subcategory(user_id: str, category: str, subcategory: str) -> bool:
     """특정 대분류/중분류에 속한 콘텐츠 전체 영구 삭제 (중분류 삭제용)"""
     try:
@@ -423,6 +442,51 @@ async def update_ai_fields(content_id: str, analysis: dict) -> bool:
     except httpx.HTTPError as e:
         print(f"[database] AI 필드 업데이트 오류: {e}")
         return False
+
+
+async def get_recent_contents(user_id: str, limit: int = 3) -> list[dict]:
+    """가장 최근에 저장(분석 완료)한 콘텐츠 N개 — '이거/방금 거 요약' 대상 후보용"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,url,one_line_summary,thumbnail_url",
+                    "order": "saved_at.desc",
+                    "limit": str(limit),
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 최근 콘텐츠 조회 오류: {e}")
+        return []
+
+
+async def get_contents_by_ids(user_id: str, content_ids: list[str]) -> list[dict]:
+    """선택한 콘텐츠 id 목록의 상세 필드 조회 — 요약 생성용"""
+    if not content_ids:
+        return []
+    ids = ",".join(content_ids)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "id": f"in.({ids})",
+                    "select": "id,title,url,one_line_summary,detailed_summary,description,topics,thumbnail_url,thumbnail_description,category,sub_category",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] id 묶음 조회 오류: {e}")
+        return []
 
 
 async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:

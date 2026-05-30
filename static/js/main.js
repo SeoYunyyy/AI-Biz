@@ -21,12 +21,19 @@ function isURL(str) {
     return /^https?:\/\//i.test(str) || /^www\./i.test(str)
 }
 
-// 입력에서 URL과 마감기한 분리
-function parseInput(text) {
-    const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
-    const deadline = deadlineMatch ? deadlineMatch[1] : null
-    const url = text.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
-    return { url, deadline }
+// 입력에서 모든 URL 추출
+function extractUrls(text) {
+    const re = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi
+    return (text.match(re) || []).map(u => u.replace(/[.,)\]]+$/, ''))
+}
+
+// 자연어에서 대상 컬렉션 이름 추출 ("○○ 컬렉션/폴더에 저장/담아/넣어")
+function parseCollectionName(text) {
+    const m = text.match(/([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]*?)\s*(?:컬렉션|폴더)\s*에?\s*(?:저장|넣어|넣|담아|담|추가|모아|올려)/)
+    if (!m) return null
+    let name = m[1].trim()
+    name = name.replace(/^(를|을|은|는|이|가|에|에서|로|으로|와|과|도|만|,)\s*/, '').trim()
+    return name || null
 }
 
 function showResults(html) {
@@ -40,69 +47,196 @@ function setLoading(on) {
 }
 
 // ── 우측 패널 ──
+let lastPanelFullscreen = false   // 닫았다 다시 열 때 모드 복원용
+
 function openRightPanel(title, content, fullscreen = false) {
+    lastPanelFullscreen = fullscreen
     panelTitle.textContent = title
     panelBody.innerHTML = content
     rightPanel.classList.add('open')
-    const wrapper = document.querySelector('.page-wrapper')
-    if (fullscreen) {
-        wrapper.classList.add('chat-fullscreen')
-    } else {
-        wrapper.classList.remove('chat-fullscreen')
-    }
+    document.querySelector('.page-wrapper').classList.toggle('chat-fullscreen', fullscreen)
+    const reopen = document.getElementById('panel-reopen')
+    if (reopen) reopen.style.display = 'none'
 }
 
 function closeRightPanel() {
     rightPanel.classList.remove('open')
     document.querySelector('.page-wrapper').classList.remove('chat-fullscreen')
+    // 내용이 남아 있으면 '다시 열기' 버튼 노출 (대화/패널 복원 가능)
+    const reopen = document.getElementById('panel-reopen')
+    if (reopen && panelBody.innerHTML.trim()) reopen.style.display = 'flex'
 }
 
-// ── Top 5 폴더 로드 ──
+// 닫았던 패널(채팅 등)을 내용 그대로 다시 열기
+window.reopenPanel = function () {
+    rightPanel.classList.add('open')
+    document.querySelector('.page-wrapper').classList.toggle('chat-fullscreen', lastPanelFullscreen)
+    const reopen = document.getElementById('panel-reopen')
+    if (reopen) reopen.style.display = 'none'
+}
+
+// ── 메인 '자주 보는 컬렉션' 설정 (localStorage) ──
+function folderSettingKey() { return `keepit_pinned_${DEFAULT_USER_ID}` }
+
+function getFolderSetting() {
+    try { return JSON.parse(localStorage.getItem(folderSettingKey())) || { mode: 'auto', ids: [] } }
+    catch (e) { return { mode: 'auto', ids: [] } }
+}
+
+function setFolderSetting(s) { localStorage.setItem(folderSettingKey(), JSON.stringify(s)) }
+
+// ── 컬렉션 클릭 횟수 추적 (자동 정렬용) ──
+function clickKey() { return `keepit_clicks_${DEFAULT_USER_ID}` }
+
+function getClicks() {
+    try { return JSON.parse(localStorage.getItem(clickKey())) || {} }
+    catch (e) { return {} }
+}
+
+function bumpCollectionClick(id) {
+    const m = getClicks()
+    m[id] = (m[id] || 0) + 1
+    localStorage.setItem(clickKey(), JSON.stringify(m))
+}
+
+// 폴더 카드 1개 HTML
+function folderCardHTML(c) {
+    return `
+        <div class="folder-card" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
+            <div class="folder-icon-wrap">
+                <div class="folder-tab"></div>
+                <div class="folder-body">
+                    <div class="folder-papers">
+                        <div class="folder-paper-line"></div>
+                        <div class="folder-paper-line"></div>
+                        <div class="folder-paper-line short"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="folder-meta">
+                <span class="folder-name">${c.name}</span>
+                <span class="folder-count">${c.content_count || 0}개</span>
+            </div>
+        </div>
+    `
+}
+
+// ── 메인: 자주 보는 컬렉션 5개 로드 ──
 async function loadTopFolders() {
     try {
-        const data = await fetch('/api/categories').then(r => r.json())
+        const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
+        const collections = data.collections || []
         const folderGrid = document.getElementById('folder-grid')
 
-        let allCats = []
-        Object.entries(data).forEach(([cat, subs]) => {
-            subs.forEach(sub => allCats.push({ category: cat, name: sub.name, count: sub.count }))
-        })
-        allCats.sort((a, b) => b.count - a.count)
-        const top5 = allCats.slice(0, 5)
-
-        if (!top5.length) {
-            folderGrid.innerHTML = '<div class="folder-placeholder">저장된 콘텐츠가 없어요</div>'
+        const editBtn0 = document.getElementById('edit-folders-btn')
+        if (!collections.length) {
+            folderGrid.innerHTML = '<div class="folder-placeholder">아직 컬렉션이 없어요</div>'
+            if (editBtn0) editBtn0.style.display = 'none'
             return
         }
 
-        folderGrid.innerHTML = top5.map(cat => `
-            <div class="folder-card" onclick="openCategoryPanel('${esc(cat.category)}','${esc(cat.name)}')">
-                <div class="folder-icon-wrap">
-                    <div class="folder-tab"></div>
-                    <div class="folder-body">
-                        <div class="folder-papers">
-                            <div class="folder-paper-line"></div>
-                            <div class="folder-paper-line"></div>
-                            <div class="folder-paper-line short"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="folder-meta">
-                    <span class="folder-name">${cat.name || cat.category}</span>
-                    <span class="folder-count">${cat.count}개</span>
-                </div>
-            </div>
-        `).join('')
+        const setting = getFolderSetting()
+        let pinned
+        if (setting.mode === 'custom' && setting.ids.length) {
+            const byId = Object.fromEntries(collections.map(c => [c.id, c]))
+            pinned = setting.ids.map(id => byId[id]).filter(Boolean).slice(0, 5)
+        } else {
+            // 자동: 클릭 많은 순 5개 (동률이면 콘텐츠 수 순)
+            const clicks = getClicks()
+            pinned = [...collections].sort((a, b) => {
+                const diff = (clicks[b.id] || 0) - (clicks[a.id] || 0)
+                return diff !== 0 ? diff : (b.content_count || 0) - (a.content_count || 0)
+            }).slice(0, 5)
+        }
+
+        folderGrid.innerHTML = pinned.length
+            ? pinned.map(folderCardHTML).join('')
+            : '<div class="folder-placeholder">표시할 컬렉션이 없어요</div>'
+
+        // 편집(연필) 아이콘은 컬렉션이 있을 때만 노출
+        const editBtn = document.getElementById('edit-folders-btn')
+        if (editBtn) editBtn.style.display = collections.length ? 'inline-flex' : 'none'
     } catch (e) {
         console.error('폴더 로드 실패:', e)
     }
+}
+
+// ── 자주 보는 컬렉션 편집 (우측 슬라이드 사이드바, X로 닫기) ──
+async function openFolderSettings() {
+    const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
+    const collections = data.collections || []
+    if (!collections.length) return
+
+    const setting = getFolderSetting()
+    document.getElementById('folder-edit-panel')?.remove()
+
+    const checks = collections.map(c => `
+        <label class="pin-item">
+            <input type="checkbox" class="pin-check" value="${esc(c.id)}" ${setting.mode === 'custom' && setting.ids.includes(c.id) ? 'checked' : ''} />
+            <span class="pin-name">${c.name}</span>
+            <span class="pin-count">${c.content_count || 0}개</span>
+        </label>
+    `).join('')
+
+    const panel = document.createElement('div')
+    panel.id = 'folder-edit-panel'
+    panel.className = 'folder-edit-panel'
+    panel.innerHTML = `
+        <div class="fe-header">
+            <span class="fe-title">메인 노출 컬렉션 편집</span>
+            <button class="fe-close" onclick="closeFolderSettings()" aria-label="닫기">&times;</button>
+        </div>
+        <div class="fe-body">
+            <label class="fe-label">표시 방식</label>
+            <select id="fe-mode" class="fe-select" onchange="feToggleList()">
+                <option value="auto"   ${setting.mode !== 'custom' ? 'selected' : ''}>자주 사용하는 컬렉션</option>
+                <option value="custom" ${setting.mode === 'custom' ? 'selected' : ''}>사용자 설정</option>
+            </select>
+            <div id="fe-list" class="pin-list">${checks}</div>
+            <button class="summarize-go-btn" onclick="saveFolderSettings()">저장</button>
+        </div>
+    `
+    document.body.appendChild(panel)
+    requestAnimationFrame(() => panel.classList.add('open'))
+    feToggleList()
+}
+
+window.closeFolderSettings = function () {
+    const p = document.getElementById('folder-edit-panel')
+    if (!p) return
+    p.classList.remove('open')
+    setTimeout(() => p.remove(), 250)
+}
+
+// 드롭다운 모드에 따라 체크리스트 활성/비활성
+window.feToggleList = function () {
+    const mode = document.getElementById('fe-mode')?.value
+    const list = document.getElementById('fe-list')
+    if (!list) return
+    const on = mode === 'custom'
+    list.style.opacity = on ? '1' : '0.4'
+    list.style.pointerEvents = on ? 'auto' : 'none'
+}
+
+// 설정 저장 → 메인 갱신
+window.saveFolderSettings = function () {
+    const mode = document.getElementById('fe-mode')?.value || 'auto'
+    let ids = []
+    if (mode === 'custom') {
+        ids = [...document.querySelectorAll('#fe-list .pin-check:checked')].map(c => c.value)
+        if (!ids.length) { alert('컬렉션을 1개 이상 선택해주세요.'); return }
+        if (ids.length > 5) { alert('최대 5개까지 선택할 수 있어요.'); return }
+    }
+    setFolderSetting({ mode, ids })
+    closeFolderSettings()
+    loadTopFolders()
 }
 
 // ── 카테고리 패널 열기 ──
 async function openCategoryPanel(category, subcategory) {
     openRightPanel(`${category} / ${subcategory}`, '<div class="chat-loading">···</div>')
     try {
-        const params = new URLSearchParams({ category, subcategory })
+        const params = new URLSearchParams({ category, subcategory, user_id: DEFAULT_USER_ID })
         const data = await fetch(`/api/items?${params}`).then(r => r.json())
         if (!data.items.length) {
             panelBody.innerHTML = '<p class="no-result">저장된 자료가 없어요.</p>'
@@ -128,23 +262,46 @@ async function openCategoryPanel(category, subcategory) {
     }
 }
 
+// ── 사이드바 접힘 상태 (localStorage) ──
+function sidebarKey() { return `keepit_sb_${DEFAULT_USER_ID}` }
+function isSidebarCollapsed() { return localStorage.getItem(sidebarKey()) === '1' }
+function setSidebarCollapsed(v) { localStorage.setItem(sidebarKey(), v ? '1' : '0') }
+
+function applySidebarState(hasCollections) {
+    const sidebar = document.getElementById('left-sidebar')
+    sidebar.classList.remove('open', 'collapsed')
+    if (!hasCollections) return
+    // 접힘이면 '내 컬렉션' 탭만 남기고, 펼침이면 전체 노출
+    sidebar.classList.add(isSidebarCollapsed() ? 'collapsed' : 'open')
+}
+
+window.toggleSidebar = function () {
+    const collapsed = !isSidebarCollapsed()
+    setSidebarCollapsed(collapsed)
+    const sidebar = document.getElementById('left-sidebar')
+    sidebar.classList.toggle('open', !collapsed)
+    sidebar.classList.toggle('collapsed', collapsed)
+}
+
 // ── 컬렉션(폴더) 사이드바 로드 ──
 async function loadCollections() {
     try {
         const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
-        const sidebar = document.getElementById('left-sidebar')
-        const list    = document.getElementById('group-list')
+        const list = document.getElementById('group-list')
+        const cols = data.collections || []
 
-        if (!data.collections || !data.collections.length) {
-            sidebar.classList.remove('open')
+        if (!cols.length) {
+            applySidebarState(false)
             return
         }
-        sidebar.classList.add('open')
-        list.innerHTML = data.collections.map(c => `
-            <div class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
-                <span class="group-sidebar-name">${c.emoji ? c.emoji + ' ' : ''}${c.name}</span>
-            </div>
+        // 이름은 아이콘/이모지 없이 텍스트만 노출
+        list.innerHTML = cols.map(c => `
+            <button class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
+                <span class="group-sidebar-name">${c.name}</span>
+                ${c.content_count ? `<span class="group-sidebar-count">${c.content_count}</span>` : ''}
+            </button>
         `).join('')
+        applySidebarState(true)
     } catch (e) {
         console.error('컬렉션 로드 실패:', e)
     }
@@ -152,17 +309,21 @@ async function loadCollections() {
 
 // ── 컬렉션 상세 패널 열기 (이름 수정 / 폴더 삭제 / 폴더에서 빼기 포함) ──
 async function openCollectionPanel(collectionId, name) {
+    bumpCollectionClick(collectionId)   // 클릭 횟수 누적 → 메인 자동 정렬에 반영
     openRightPanel(name, '<div class="chat-loading">···</div>')
     try {
         const data = await fetch(`/api/collections/${collectionId}/items?user_id=${DEFAULT_USER_ID}`).then(r => r.json())
 
-        // 폴더 관리 헤더 (이름 변경 + 폴더 삭제)
+        // 폴더 관리 헤더 (이름 변경 + 폴더 삭제 + 선택 삭제)
         const manageHTML = `
             <div class="collection-manage">
                 <div class="collection-rename-row">
                     <input id="collection-rename-input" class="collection-rename-input" value="${(name ?? '').replace(/"/g, '&quot;')}" />
                     <button class="manage-btn" onclick="renameCollection('${esc(collectionId)}')">이름 저장</button>
                 </div>
+                <button class="manage-btn" onclick="openAddToCollection('${esc(collectionId)}','${esc(name)}')">+ 콘텐츠 추가</button>
+                <button class="manage-btn" onclick="deleteSelectedCollection('${esc(collectionId)}','${esc(name)}')">선택 삭제</button>
+                <button class="manage-btn" onclick="deleteAllCollection('${esc(collectionId)}','${esc(name)}')">전체 삭제</button>
                 <button class="manage-btn danger" onclick="deleteCollection('${esc(collectionId)}','${esc(name)}')">폴더 삭제</button>
             </div>
         `
@@ -178,13 +339,17 @@ async function openCollectionPanel(collectionId, name) {
                 : ''
             return `
                 <div class="panel-item-card">
+                    <button class="item-x-btn" title="이 폴더에서 빼기" onclick="removeFromCollection('${esc(collectionId)}','${esc(item.id)}','${esc(name)}')">&times;</button>
+                    <label class="arch-select">
+                        <input type="checkbox" class="coll-check" value="${esc(item.id)}" />
+                        <span>선택</span>
+                    </label>
                     ${thumbHTML}
                     <p class="panel-item-title">${item.title}</p>
                     ${item.summary ? `<p class="panel-item-summary">${item.summary}</p>` : ''}
                     ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <div class="panel-item-actions">
                         <a href="${item.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
-                        <button class="item-remove-btn" onclick="removeFromCollection('${esc(collectionId)}','${esc(item.id)}','${esc(name)}')">폴더에서 빼기</button>
                     </div>
                 </div>
             `
@@ -239,6 +404,75 @@ window.removeFromCollection = async function (collectionId, contentId, name) {
     }
 }
 
+// ── 컬렉션에 콘텐츠 추가 (현재 폴더에 없는 콘텐츠 선택) ──
+window.openAddToCollection = async function (collectionId, name) {
+    try {
+        const [all, current] = await Promise.all([
+            fetch(`/api/items?user_id=${DEFAULT_USER_ID}`).then(r => r.json()),
+            fetch(`/api/collections/${collectionId}/items?user_id=${DEFAULT_USER_ID}`).then(r => r.json()),
+        ])
+        const inIds = new Set((current.items || []).map(i => i.id))
+        const candidates = (all.items || []).filter(i => !inIds.has(i.id))
+        if (!candidates.length) {
+            openModal('콘텐츠 추가', '<p class="no-result">추가할 콘텐츠가 없어요.</p>')
+            return
+        }
+        const list = candidates.map(i => `
+            <label class="pin-item">
+                <input type="checkbox" class="add-check" value="${esc(i.id)}" />
+                <span class="pin-name">${i.title || '제목 없음'}</span>
+            </label>
+        `).join('')
+        openModal(`'${name}'에 콘텐츠 추가`, `
+            <div class="pin-list">${list}</div>
+            <button class="summarize-go-btn" onclick="confirmAddToCollection('${esc(collectionId)}','${esc(name)}')">선택 추가</button>
+        `)
+    } catch (e) {
+        alert('목록을 불러오지 못했어요: ' + e.message)
+    }
+}
+
+window.confirmAddToCollection = async function (collectionId, name) {
+    const ids = [...document.querySelectorAll('.add-check:checked')].map(c => c.value)
+    if (!ids.length) { alert('추가할 콘텐츠를 선택해주세요.'); return }
+    try {
+        const res = await fetch('/contents/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: DEFAULT_USER_ID, content_ids: ids, target_folder: name }),
+        })
+        if (!res.ok) throw new Error('추가 실패')
+        closeModal()
+        openCollectionPanel(collectionId, name)
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        alert('추가 실패: ' + e.message)
+    }
+}
+
+// ── 폴더 패널: 선택한 콘텐츠 복수 영구 삭제 ──
+window.deleteSelectedCollection = async function (collectionId, name) {
+    const ids = [...document.querySelectorAll('.coll-check:checked')].map(c => c.value)
+    if (!ids.length) { alert('삭제할 콘텐츠를 선택해주세요.'); return }
+    if (!confirm(`선택한 ${ids.length}개 콘텐츠를 영구 삭제할까요?\n되돌릴 수 없습니다.`)) return
+    await _bulkDeleteContents(ids)
+    openCollectionPanel(collectionId, name)
+    loadTopFolders()
+    loadCollections()
+}
+
+// ── 폴더 패널: 폴더 안 콘텐츠 전체 영구 삭제 ──
+window.deleteAllCollection = async function (collectionId, name) {
+    const ids = [...document.querySelectorAll('.coll-check')].map(c => c.value)
+    if (!ids.length) { alert('삭제할 콘텐츠가 없어요.'); return }
+    if (!confirm(`이 폴더의 ${ids.length}개 콘텐츠를 모두 영구 삭제할까요?\n(폴더는 남고 콘텐츠만 삭제됩니다)\n되돌릴 수 없습니다.`)) return
+    await _bulkDeleteContents(ids)
+    openCollectionPanel(collectionId, name)
+    loadTopFolders()
+    loadCollections()
+}
+
 // ── AI 채팅 패널 열기 (전체화면) ──
 function openChatPanel(initialText = '') {
     chatHistory = []
@@ -288,39 +522,45 @@ async function sendChat() {
     chatMessages.scrollTop = chatMessages.scrollHeight
 
     try {
-        if (isURL(text.split(' ')[0])) {
-            // URL → 저장
-            const { url, deadline } = parseInput(text)
-            const instruction = deadline ? `마감기한: ${deadline}` : ''
-            const res = await fetch('/ingest', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, user_id: DEFAULT_USER_ID, instruction })
-            })
-            const data = await res.json()
+        const urls = extractUrls(text)
+        if (urls.length) {
+            // URL(들) → 저장. 자연어 요청(컬렉션 지정·마감)도 함께 해석
             loadingEl.remove()
-            if (!res.ok || data.error) throw new Error(data.error || '저장 실패')
+            const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
+            const deadline = deadlineMatch ? deadlineMatch[1] : null
+            let nl = text
+            urls.forEach(u => { nl = nl.replace(u, ' ') })
+            nl = nl.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
+            const collectionName = parseCollectionName(nl)
+            let instruction = nl
+            if (deadline) instruction = `${instruction} 마감기한: ${deadline}`.trim()
 
-            const aiEl = document.createElement('div')
-            aiEl.className = 'chat-msg ai'
+            let saved = 0
+            for (const url of urls) {
+                try {
+                    const res = await fetch('/ingest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url, user_id: DEFAULT_USER_ID, instruction, collection_name: collectionName })
+                    })
+                    const data = await res.json()
+                    if (!res.ok || data.error) { appendMsg(chatMessages, 'ai', `저장 실패: ${url}`); continue }
 
-            if (data.duplicate) {
-                aiEl.innerHTML = buildSavedItemContent(data.content, true)
-            } else {
-                aiEl.innerHTML = buildSavedItemContent(data)
-                if (data.reminder_message) {
-                    const reminderEl = document.createElement('div')
-                    reminderEl.className = 'chat-msg ai'
-                    reminderEl.textContent = data.reminder_message
+                    const aiEl = document.createElement('div')
+                    aiEl.className = 'chat-msg ai'
+                    aiEl.innerHTML = data.duplicate ? buildSavedItemContent(data.content, true) : buildSavedItemContent(data)
                     chatMessages.appendChild(aiEl)
-                    chatMessages.appendChild(reminderEl)
-                    chatMessages.scrollTop = chatMessages.scrollHeight
-                    loadTopFolders()
-                    loadCollections()
-                    return
+                    if (data.reminder_message) appendMsg(chatMessages, 'ai', data.reminder_message)
+                    saved++
+                } catch (err) {
+                    appendMsg(chatMessages, 'ai', `저장 실패: ${url}`)
                 }
+                chatMessages.scrollTop = chatMessages.scrollHeight
             }
-            chatMessages.appendChild(aiEl)
+            if (urls.length > 1 || collectionName) {
+                const where = collectionName ? ` '${collectionName}' 컬렉션에 담았어요.` : '.'
+                appendMsg(chatMessages, 'ai', `링크 ${saved}개를 저장했어요${where}`)
+            }
             loadTopFolders()
             loadCollections()
         } else {
@@ -395,9 +635,12 @@ function buildResultCards(items, maxCount = 5) {
     const more    = items.length - maxCount
     const cardsHTML = preview.map(item => {
         const summary = item.one_line_summary || item.summary || ''
+        const thumbHTML = item.thumbnail
+            ? `<img src="${item.thumbnail}" class="msg-card-thumb" onerror="this.outerHTML='<div class=\\'msg-card-thumb-placeholder\\'>📄</div>'" alt="" />`
+            : `<div class="msg-card-thumb-placeholder">📄</div>`
         return `
             <a href="${item.url}" target="_blank" class="msg-result-card">
-                <div class="msg-card-thumb-placeholder">📄</div>
+                ${thumbHTML}
                 <div class="msg-card-body">
                     <div class="msg-card-title">${item.title}</div>
                     ${summary ? `<div class="msg-card-summary">${summary}</div>` : ''}
@@ -409,11 +652,94 @@ function buildResultCards(items, maxCount = 5) {
     return `<div class="msg-result-cards">${cardsHTML}${more > 0 ? `<span class="msg-more">외 ${more}개</span>` : ''}</div>`
 }
 
+// 요약 대상 후보 카드 (체크박스 복수 선택)
+function buildSelectableCards(items) {
+    const cards = items.map(item => {
+        const thumb = item.thumbnail
+            ? `<img src="${item.thumbnail}" class="sum-card-thumb" onerror="this.style.display='none'" alt="" />`
+            : ''
+        return `
+            <label class="sum-card">
+                <input type="checkbox" class="sum-check" value="${esc(item.id)}" />
+                ${thumb}
+                <div class="sum-card-body">
+                    <div class="sum-card-title">${item.title || '제목 없음'}</div>
+                    ${item.summary ? `<div class="sum-card-summary">${item.summary}</div>` : ''}
+                </div>
+            </label>
+        `
+    }).join('')
+    return `<div class="sum-cards">${cards}</div>
+        <button class="summarize-go-btn" onclick="summarizeSelected(this)">선택한 콘텐츠 요약하기</button>`
+}
+
+// 선택한 콘텐츠 요약 실행
+window.summarizeSelected = async function (btn) {
+    const bubble = btn.closest('.chat-msg')
+    const ids = [...bubble.querySelectorAll('.sum-check:checked')].map(c => c.value)
+    if (!ids.length) { alert('요약할 콘텐츠를 선택해주세요.'); return }
+
+    const chatMessages = document.getElementById('chat-messages')
+    btn.disabled = true
+    const loadingEl = document.createElement('div')
+    loadingEl.className = 'chat-loading'
+    loadingEl.textContent = '···'
+    chatMessages.appendChild(loadingEl)
+    chatMessages.scrollTop = chatMessages.scrollHeight
+
+    try {
+        const res = await fetch('/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: DEFAULT_USER_ID, content_ids: ids }),
+        })
+        const data = await res.json()
+        loadingEl.remove()
+        const aiEl = document.createElement('div')
+        aiEl.className = 'chat-msg ai'
+        aiEl.innerHTML = buildAIContent(data)
+        chatMessages.appendChild(aiEl)
+    } catch (e) {
+        loadingEl.remove()
+        appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
+    } finally {
+        chatMessages.scrollTop = chatMessages.scrollHeight
+    }
+}
+
+// 다중 요약 — 콘텐츠별 (카드 + 요약) 분리 출력
+function buildSummaryBlocks(summaries) {
+    return summaries.map((s, i) => {
+        const thumb = s.thumbnail
+            ? `<img src="${s.thumbnail}" class="sum-block-thumb" onerror="this.style.display='none'" alt="" />`
+            : ''
+        const body = (s.summary_text || '').replace(/\n/g, '<br>')
+        return `
+            <div class="summary-block">
+                <div class="summary-block-card">
+                    ${thumb}
+                    <div class="summary-block-info">
+                        <div class="summary-block-title">${summaries.length > 1 ? (i + 1) + '. ' : ''}${s.title || '제목 없음'}</div>
+                        <a href="${s.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
+                    </div>
+                </div>
+                <div class="summary-block-text">${body}</div>
+            </div>
+        `
+    }).join('')
+}
+
 // AI 응답 HTML 빌드
 function buildAIContent(data) {
     let html = data.answer || ''
 
-    if (data.results && data.results.length) {
+    if (data.action === 'summary_result' && data.summaries && data.summaries.length) {
+        // 답변(intro) 다음 줄바꿈 후, 콘텐츠별 요약+카드 분리
+        html += buildSummaryBlocks(data.summaries)
+    } else if (data.action === 'summarize_select' && data.results && data.results.length) {
+        // 요약 대상 후보 → 복수 선택 카드 + 요약 버튼
+        html += buildSelectableCards(data.results)
+    } else if (data.results && data.results.length) {
         html += buildResultCards(data.results)
     }
 
@@ -423,10 +749,13 @@ function buildAIContent(data) {
         ).join('')}</div>`
     }
 
-    // 폴더 생성 완료 시 → 그룹 수정(이름 변경 / 콘텐츠 빼기) 진입 버튼
+    // 폴더 생성/이동 완료 시 → 수정(이름·리스트) 진입 아이콘 버튼
     if (data.action === 'folder_created' && data.collection_id) {
         html += `<div class="folder-edit-row">
-            <button class="folder-edit-btn" onclick="openCollectionPanel('${esc(data.collection_id)}','${esc(data.collection_name)}')">그룹 수정하기</button>
+            <button class="folder-edit-icon" title="컬렉션 수정 (이름·콘텐츠)" onclick="openCollectionPanel('${esc(data.collection_id)}','${esc(data.collection_name)}')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                <span>컬렉션 수정</span>
+            </button>
         </div>`
     }
 
@@ -434,12 +763,12 @@ function buildAIContent(data) {
 }
 
 // 후속 질문 버튼 클릭 시 채팅 입력에 삽입
+// 행동 유도 버튼 클릭 → 즉시 사용자 말풍선으로 전송하고 바로 실행
 window.followUp = function(btn) {
     const chatInput = document.getElementById('chat-input')
-    if (chatInput) {
-        chatInput.value = btn.textContent
-        chatInput.focus()
-    }
+    if (!chatInput) return
+    chatInput.value = btn.textContent
+    sendChat()
 }
 
 // ── 메인 submit 핸들러 → 채팅 패널로 통합 ──
@@ -452,7 +781,7 @@ function handleSubmit() {
 
 // ── 아카이브 모달 ──
 async function showArchiveHome() {
-    const data = await fetch('/api/categories').then(r => r.json())
+    const data = await fetch(`/api/categories?user_id=${DEFAULT_USER_ID}`).then(r => r.json())
     const keys = Object.keys(data)
     if (!keys.length) {
         openModal('아카이브', '<p class="no-result">저장된 자료가 없어요.</p>')
@@ -460,7 +789,10 @@ async function showArchiveHome() {
     }
     const html = keys.map(cat => `
         <div class="archive-cat">
-            <h3 class="cat-name">${cat}</h3>
+            <div class="cat-header">
+                <h3 class="cat-name">${cat}</h3>
+                <button class="cat-view-btn" onclick="showArchiveItems('${esc(cat)}','')">전체 콘텐츠 &rsaquo;</button>
+            </div>
             ${data[cat].map(s => `
                 <div class="sub-item" onclick="showArchiveItems('${esc(cat)}','${esc(s.name)}')">
                     <span>${s.name ?? '미분류'}</span>
@@ -477,7 +809,7 @@ async function showArchiveHome() {
 }
 
 async function showArchiveItems(category, subcategory) {
-    const params = new URLSearchParams({ category, subcategory })
+    const params = new URLSearchParams({ category, subcategory, user_id: DEFAULT_USER_ID })
     const data   = await fetch(`/api/items?${params}`).then(r => r.json())
     const cards  = data.items.length
         ? data.items.map(item => {
@@ -488,23 +820,30 @@ async function showArchiveItems(category, subcategory) {
                 : ''
             return `
                 <div class="archive-item-card">
+                    <label class="arch-select">
+                        <input type="checkbox" class="arch-check" value="${esc(item.id)}" />
+                        <span>선택</span>
+                    </label>
                     ${thumbHTML}
                     ${item.content_type !== 'music' && item.summary ? `<p class="archive-item-summary">${item.summary}</p>` : ''}
                     <p class="archive-item-title">${item.title}</p>
                     ${tags.length ? `<div class="archive-item-tags">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
                         <span class="archive-item-meta">${date}</span>
-                        <div class="archive-item-btns">
-                            <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
-                            <button class="archive-del-btn"
-                                onclick="deleteArchiveContent('${esc(item.id)}','${esc(category)}','${esc(subcategory)}')">삭제</button>
-                        </div>
+                        <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
                     </div>
                 </div>
             `
           }).join('')
         : '<p class="no-result">저장된 자료가 없어요.</p>'
-    openModal(`${category} / ${subcategory}`, `<button class="back-btn" onclick="showArchiveHome()">&#8592; 전체 카테고리</button>${cards}`)
+    const toolbar = data.items.length
+        ? `<div class="archive-toolbar">
+               <button class="archive-del-btn" onclick="deleteSelectedArchive('${esc(category)}','${esc(subcategory)}')">선택 삭제</button>
+               <button class="archive-del-btn solid" onclick="deleteAllArchive('${esc(category)}','${esc(subcategory)}')">전체 삭제</button>
+           </div>`
+        : ''
+    const title = subcategory ? `${category} / ${subcategory}` : `${category} 전체`
+    openModal(title, `<button class="back-btn" onclick="showArchiveHome()">&#8592; 전체 카테고리</button>${toolbar}${cards}`)
 }
 
 // ── 중분류 삭제 (안의 콘텐츠 전체 영구 삭제) ──
@@ -521,14 +860,35 @@ window.deleteSubcategory = async function (category, subcategory) {
     }
 }
 
-// ── 아카이브 콘텐츠 1건 영구 삭제 ──
-window.deleteArchiveContent = async function (contentId, category, subcategory) {
-    if (!confirm('이 콘텐츠를 영구 삭제할까요?')) return
+// ── 아카이브 콘텐츠 복수 선택 영구 삭제 ──
+window.deleteSelectedArchive = async function (category, subcategory) {
+    const ids = [...document.querySelectorAll('.arch-check:checked')].map(c => c.value)
+    if (!ids.length) { alert('삭제할 콘텐츠를 선택해주세요.'); return }
+    if (!confirm(`선택한 ${ids.length}개 콘텐츠를 영구 삭제할까요?\n되돌릴 수 없습니다.`)) return
+    await _bulkDeleteContents(ids)
+    showArchiveItems(category, subcategory)
+    loadTopFolders()
+}
+
+// ── 아카이브 현재 목록 전체 영구 삭제 ──
+window.deleteAllArchive = async function (category, subcategory) {
+    const ids = [...document.querySelectorAll('.arch-check')].map(c => c.value)
+    if (!ids.length) { alert('삭제할 콘텐츠가 없어요.'); return }
+    if (!confirm(`현재 목록의 ${ids.length}개 콘텐츠를 모두 영구 삭제할까요?\n되돌릴 수 없습니다.`)) return
+    await _bulkDeleteContents(ids)
+    showArchiveItems(category, subcategory)
+    loadTopFolders()
+}
+
+// 공통 벌크 삭제 호출
+async function _bulkDeleteContents(ids) {
     try {
-        const res = await fetch(`/contents/${contentId}?user_id=${DEFAULT_USER_ID}`, { method: 'DELETE' })
+        const res = await fetch('/contents/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: DEFAULT_USER_ID, content_ids: ids }),
+        })
         if (!res.ok) throw new Error('삭제 실패')
-        showArchiveItems(category, subcategory)
-        loadTopFolders()
     } catch (e) {
         alert('삭제 실패: ' + e.message)
     }
@@ -549,6 +909,8 @@ function esc(str) {
 
 // ── 이벤트 바인딩 ──
 document.getElementById('btn-archives').addEventListener('click', showArchiveHome)
+document.getElementById('edit-folders-btn')?.addEventListener('click', openFolderSettings)
+document.getElementById('panel-reopen')?.addEventListener('click', reopenPanel)
 document.getElementById('panel-close').addEventListener('click', closeRightPanel)
 document.getElementById('modal-close').addEventListener('click', closeModal)
 modal.addEventListener('click', e => { if (e.target === modal) closeModal() })

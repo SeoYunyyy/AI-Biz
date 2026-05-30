@@ -11,38 +11,40 @@ from app.services.query_expander import expand_query
 from app.services.database import (
     search_contents,
     get_deadlines,
-    get_collections,
     get_old_contents,
     get_or_create_collection,
     move_content_collection,
+    get_recent_contents,
+    get_contents_by_ids,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
-INTENT_PROMPT = """사용자 메시지를 보고 의도를 분류하세요. 반드시 JSON만 응답.
+INTENT_PROMPT = """너는 Keepit(개인 콘텐츠 아카이브) 비서야. 사용자 메시지의 의도를 분류해. 반드시 JSON만 응답.
+직전 대화 맥락이 있으면 "방금 거", "그중 두번째" 같은 표현을 그 맥락으로 해석해.
 
 의도 종류:
-- search   : 저장한 콘텐츠를 찾거나 검색하는 요청
-- deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
-- folder   : 폴더 자체를 새로 만들거나, 지금 보고 있는 특정 링크 하나를 폴더에 지정하는 요청
-             ("OO 폴더 만들어줘", "이 링크 OO 폴더에 저장해줘" 등)
-- move     : 특정 주제·키워드에 해당하는 저장된 콘텐츠 여러 개를 찾아서 폴더로 모으거나 이동하는 요청
-             ("음악 관련 링크들 노래 폴더에 넣어줘", "플레이리스트 노래 폴더로 옮겨줘",
-              "OO 관련 자료 전부 OO 폴더에 모아줘", "OO 폴더로 옮겨줘" 등)
-- cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
-             ("오래된 거 정리해줘", "정리할 거 뭐있지", "리마인드 해줘봐",
-              "쌓인 거 뭐 있어", "안 보는 거 뭐야", "오래된 거 알려줘" 등)
-- delete   : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
-- general  : 그 외
+- search    : 저장한 콘텐츠를 찾거나 검색하는 요청 ("OO 찾아줘", "OO 저장한 거 있어?")
+- summarize : 저장한 콘텐츠를 요약하거나 설명해 달라는 요청
+              ("이거 요약해줘", "방금 저장한 거 설명해줘", "OO 영상 요약해줘", "내용 정리해줘")
+- deadline  : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
+- folder    : 폴더 자체를 새로 만들거나, 지금 보고 있는 특정 링크 하나를 폴더에 지정하는 요청
+              ("OO 폴더 만들어줘", "이 링크 OO 폴더에 저장해줘" 등)
+- move      : 특정 주제·키워드에 해당하는 저장된 콘텐츠 여러 개를 찾아서 폴더로 모으거나 이동하는 요청
+              ("음악 관련 링크들 노래 폴더에 넣어줘", "OO 관련 자료 전부 OO 폴더에 모아줘" 등)
+- cleanup   : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청 ("오래된 거 정리해줘", "쌓인 거 뭐 있어")
+- delete    : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
+- general   : 그 외 일반 대화 (인사, 잡담, 서비스 무관 질문 포함)
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null, "summarize_query": null}
 
 folder_name: folder 의도일 때만 폴더명 추출, 없으면 null
 delete_query: delete 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
-move_query: move 의도일 때 이동할 콘텐츠 주제·키워드 (예: "음악", "플레이리스트"), 없으면 null
-target_folder: move 의도일 때 목적지 폴더명 (예: "노래"), 없으면 null"""
+move_query: move 의도일 때 이동할 콘텐츠 주제·키워드 (예: "음악"), 없으면 null
+target_folder: move 의도일 때 목적지 폴더명 (예: "노래"), 없으면 null
+summarize_query: summarize 의도일 때 대상이 명시되면 주제 추출(예: "딥러닝 영상"), "이거/방금 거"처럼 모호하면 null"""
 
 
 async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
@@ -67,15 +69,20 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
     return response.json()["choices"][0]["message"]["content"].strip()
 
 
-async def _detect_intent(query: str) -> dict:
+async def _detect_intent(query: str, history: list = None) -> dict:
+    history = history or []
     try:
+        messages = [{"role": "system", "content": INTENT_PROMPT}]
+        # 직전 맥락 일부 포함 → "방금 거", "그중 두번째" 등 후속 발화 해석
+        for h in history[-4:]:
+            if h.get("role") in ("user", "assistant") and h.get("content"):
+                messages.append({"role": h["role"], "content": str(h["content"])[:300]})
+        messages.append({"role": "user", "content": query})
+
         raw = await _llm(
-            messages=[
-                {"role": "system", "content": INTENT_PROMPT},
-                {"role": "user", "content": query},
-            ],
+            messages=messages,
             model="gpt-4o-mini",
-            max_tokens=80,
+            max_tokens=100,
             json_mode=True,
         )
         return json.loads(raw)
@@ -135,7 +142,16 @@ async def _handle_search(user_id: str, query: str, shown_ids: list = None, histo
     candidates = await search_contents(user_id, embedding, limit=15)
     candidates = [r for r in candidates if r.get("id") not in shown_ids]
     candidates = await _genre_filter(query, candidates)
-    results = candidates[:5]
+    top = candidates[:5]
+
+    # 썸네일·요약 등 전체 필드 보강 후 카드화 (검색 결과에도 썸네일 노출)
+    results = []
+    if top:
+        ids = [r["id"] for r in top]
+        full = await get_contents_by_ids(user_id, ids)
+        order = {cid: i for i, cid in enumerate(ids)}
+        full.sort(key=lambda r: order.get(r.get("id"), 999))
+        results = _to_cards(full)
 
     if not results:
         already_guided = any(
@@ -156,15 +172,15 @@ async def _handle_search(user_id: str, query: str, shown_ids: list = None, histo
 
     if len(results) == 1:
         return {
-            "answer": "이거 맞나요?",
+            "answer": "아~ 이거 찾으시는 것 같아요! 이거 맞나요?",
             "results": results,
-            "follow_up_questions": ["맞아요", "아니요, 다른 거예요 — 키워드를 더 알려주세요!"],
+            "follow_up_questions": ["맞아요, 요약해줘", "아니요, 다른 거예요 — 키워드를 더 알려줄게요"],
         }
 
     return {
-        "answer": f"{len(results)}개 찾았어요. 찾으시는 거 있나요?",
+        "answer": f"아~ 찾아볼게요! 관련해서 {len(results)}개 찾았어요. 이 중에 있나요?",
         "results": results,
-        "follow_up_questions": ["이 중에 없으면 키워드를 더 알려주세요!"],
+        "follow_up_questions": ["이 중에 요약해줘", "다른 키워드로 더 찾아줘", "관련된 것끼리 폴더로 묶어줘"],
     }
 
 
@@ -230,37 +246,31 @@ async def _handle_deadline(user_id: str) -> dict:
 
 
 async def _handle_folder(user_id: str, folder_name: str, original_query: str = "") -> dict:
-    """폴더 즉시 생성 + 관련 콘텐츠 자동으로 채우기."""
+    """폴더 생성 + 관련 콘텐츠를 DB에서 알아서 찾아 자동으로 묶기."""
     collection_id = await get_or_create_collection(user_id, folder_name)
     if not collection_id:
         return {"answer": f"'{folder_name}' 폴더를 만드는 데 실패했어요.", "results": []}
 
-    # 채우기 의도가 있으면 폴더명으로 관련 콘텐츠 검색 후 이동
-    fill_keywords = ["넣어줘", "담아줘", "모아줘", "추가해줘", "채워줘", "관련", "자료", "링크"]
-    should_fill = any(kw in original_query for kw in fill_keywords)
+    # 폴더명(주제)에 맞는 콘텐츠를 detailed_summary 기반으로 정확히 찾아 자동으로 담는다
+    related = await _find_relevant_contents(user_id, folder_name, limit=10)
+    moved_items = []
+    for r in related:
+        if await move_content_collection(r["id"], user_id, collection_id):
+            moved_items.append(r)
+    moved = len(moved_items)
+    cards = _to_cards(moved_items)
 
-    if should_fill:
-        expanded = await expand_query(folder_name)
-        embedding = await generate_embedding(expanded)
-        if embedding:
-            results = await search_contents(user_id, embedding, limit=10)
-            if results:
-                moved = sum(
-                    1 for r in results
-                    if await move_content_collection(r["id"], user_id, collection_id)
-                )
-                titles = "\n".join(f"- {r.get('title', '')}" for r in results[:5])
-                return {
-                    "answer": f"'{folder_name}' 폴더를 만들고 관련 콘텐츠 {moved}개를 추가했어요:\n{titles}",
-                    "results": results,
-                    "action": "folder_created",
-                    "collection_id": collection_id,
-                    "collection_name": folder_name,
-                }
+    if moved:
+        answer = f"'{folder_name}' 컬렉션이 완성되었어요! 관련 콘텐츠 {moved}개를 찾아 모아 담았어요."
+    else:
+        answer = (
+            f"'{folder_name}' 컬렉션을 만들었어요! 다만 지금 묶을 만한 관련 콘텐츠를 찾지 못했어요. "
+            f"관련 링크를 저장하면 채워드릴게요."
+        )
 
     return {
-        "answer": f"'{folder_name}' 폴더를 만들었어요!",
-        "results": [],
+        "answer": answer,
+        "results": cards,
         "action": "folder_created",
         "collection_id": collection_id,
         "collection_name": folder_name,
@@ -308,13 +318,8 @@ async def _handle_cleanup(user_id: str) -> dict:
 
 
 async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
-    """콘텐츠를 검색해서 폴더로 즉시 이동 (폴더 없으면 생성)."""
-    expanded = await expand_query(move_query)
-    embedding = await generate_embedding(expanded)
-    if not embedding:
-        return {"answer": "이동할 콘텐츠를 찾지 못했어요.", "results": []}
-
-    results = await search_contents(user_id, embedding, limit=10)
+    """주제에 맞는 콘텐츠를 정확히 찾아 폴더로 이동 (폴더 없으면 생성)."""
+    results = await _find_relevant_contents(user_id, move_query, limit=10)
     if not results:
         return {
             "answer": f"'{move_query}' 관련 저장된 콘텐츠를 찾지 못했어요. 먼저 관련 링크를 저장해보세요.",
@@ -325,15 +330,18 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dic
     if not collection_id:
         return {"answer": f"'{target_folder}' 폴더를 만드는 데 실패했어요.", "results": []}
 
-    moved = 0
+    moved_items = []
     for r in results:
         if await move_content_collection(r["id"], user_id, collection_id):
-            moved += 1
+            moved_items.append(r)
+    moved = len(moved_items)
 
-    titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results[:5]])
     return {
-        "answer": f"'{move_query}' 관련 콘텐츠 {moved}개를 '{target_folder}' 폴더로 이동했어요:\n{titles}",
-        "results": results,
+        "answer": f"'{target_folder}' 컬렉션으로 옮겼어요! '{move_query}' 관련 콘텐츠 {moved}개를 이동했어요.",
+        "results": _to_cards(moved_items),
+        "action": "folder_created",
+        "collection_id": collection_id,
+        "collection_name": target_folder,
     }
 
 
@@ -357,6 +365,185 @@ async def _handle_delete(user_id: str, delete_query: str) -> dict:
     }
 
 
+# ── 콘텐츠 검색/정규화 공통 헬퍼 ───────────────────────────────────────────────
+
+# 콘텐츠를 프론트 카드 형태로 정규화 (썸네일·요약 포함)
+def _to_cards(items: list[dict]) -> list[dict]:
+    return [
+        {
+            "id": r.get("id"),
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "thumbnail": r.get("thumbnail_url") or r.get("thumbnail") or "",
+            "summary": r.get("detailed_summary") or r.get("one_line_summary") or r.get("description", ""),
+        }
+        for r in items
+    ]
+
+
+async def _search_full(user_id: str, topic: str, candidate_limit: int = 15) -> list[dict]:
+    """주제로 임베딩 검색 후, 각 후보의 전체 필드(detailed_summary·thumbnail_url 등)를 불러온다."""
+    expanded = await expand_query(topic)
+    embedding = await generate_embedding(expanded)
+    if not embedding:
+        return []
+    cands = await search_contents(user_id, embedding, limit=candidate_limit)
+    if not cands:
+        return []
+    ids = [c["id"] for c in cands]
+    full = await get_contents_by_ids(user_id, ids)
+    order = {cid: i for i, cid in enumerate(ids)}
+    full.sort(key=lambda r: order.get(r.get("id"), 999))
+    return full
+
+
+async def _filter_by_topic(topic: str, items: list[dict]) -> list[dict]:
+    """title + detailed_summary 기준으로 주제에 '명확히' 맞는 항목만 LLM이 선별 (오매칭 제거)."""
+    if not items:
+        return []
+    listing = "\n".join(
+        f"[{i}] 제목: {it.get('title', '')}\n    요약: {(it.get('detailed_summary') or it.get('one_line_summary') or '')[:200]}"
+        for i, it in enumerate(items)
+    )
+    try:
+        raw = await _llm(
+            messages=[{"role": "user", "content": (
+                f"주제: '{topic}'\n\n아래 콘텐츠 중 이 주제에 '명확히' 해당하는 것의 번호만 골라줘. "
+                f"주제와 무관하면(예: 야구 주제에 축구·정치) 절대 포함하지 마. 요약 내용을 근거로 판단해.\n\n"
+                f"{listing}\n\n"
+                '반드시 JSON만: {"indices": [번호들]}'
+            )}],
+            model="gpt-4o-mini",
+            max_tokens=150,
+            json_mode=True,
+        )
+        idxs = json.loads(raw).get("indices", [])
+        picked = [items[i] for i in idxs if isinstance(i, int) and 0 <= i < len(items)]
+        return picked
+    except Exception:
+        return items
+
+
+async def _find_relevant_contents(user_id: str, topic: str, limit: int = 10) -> list[dict]:
+    """주제에 맞는 콘텐츠를 detailed_summary 기반으로 정확히 찾아 반환 (요약·묶기 공통)."""
+    full = await _search_full(user_id, topic, candidate_limit=15)
+    filtered = await _filter_by_topic(topic, full)
+    return filtered[:limit]
+
+
+async def _handle_summarize(user_id: str, query: str, summarize_query: str = None) -> dict:
+    """요약 대상 후보를 카드로 제시 → 사용자가 선택하면 /summarize 로 실제 요약."""
+    # 주제가 명시되면 detailed_summary 기반으로 정확히 관련 콘텐츠만 찾기
+    if summarize_query:
+        candidates = await _find_relevant_contents(user_id, summarize_query, limit=5)
+        if candidates:
+            return {
+                "answer": f"'{summarize_query}' 관련 콘텐츠를 찾았어요. 어떤 걸 요약할까요? (여러 개 선택할 수 있어요)",
+                "results": _to_cards(candidates),
+                "action": "summarize_select",
+            }
+        return {
+            "answer": f"'{summarize_query}' 관련해서 저장된 콘텐츠를 찾지 못했어요. 다른 주제로 다시 말씀해 주실래요?",
+            "results": [],
+        }
+
+    # 모호("이거/방금 거")하거나 검색 결과 없음 → 최근 저장 3개 제시
+    recent = await get_recent_contents(user_id, limit=3)
+    if not recent:
+        return {"answer": "아직 저장한 콘텐츠가 없어요. 링크를 먼저 보내주시면 저장하고 요약해드릴게요!", "results": []}
+    return {
+        "answer": "최근 저장한 콘텐츠예요. 이 중에 어떤 걸 요약할까요? (여러 개 선택할 수 있어요)",
+        "results": _to_cards(recent),
+        "action": "summarize_select",
+    }
+
+
+SUMMARIZE_PERSONA = (
+    "너는 Keepit 아카이브 비서야. 저장된 콘텐츠 하나를 깊이 있게 요약해.\n"
+    "인사·사족 없이 '요약 내용'만 출력해. 콘텐츠 성격에 맞는 형식으로:\n"
+    "- 핵심 포인트가 여러 개면 불릿 리스트(• 로 시작)로,\n"
+    "- 하나의 흐름·이야기면 줄글로.\n"
+    "반드시 4줄 이상, 핵심 내용 + 맥락 + 왜 유용한지까지 충실하게. 한국어."
+)
+
+
+async def _summarize_one(item: dict) -> str:
+    """콘텐츠 1개를 detailed_summary 기반으로 요약 (요약 내용만 반환)."""
+    block = (
+        f"[제목] {item.get('title', '')}\n"
+        f"[상세] {item.get('detailed_summary') or item.get('description', '')}\n"
+        f"[태그] {', '.join(item.get('topics') or [])}\n"
+        f"[썸네일 설명] {item.get('thumbnail_description', '') or ''}"
+    )
+    return await _llm(
+        messages=[
+            {"role": "system", "content": SUMMARIZE_PERSONA},
+            {"role": "user", "content": f"다음 콘텐츠를 요약해줘.\n\n{block}"},
+        ],
+        model="gpt-4o",
+        max_tokens=500,
+    )
+
+
+async def summarize_contents(user_id: str, content_ids: list[str]) -> dict:
+    """선택된 콘텐츠들을 각각 분리해서 요약 (콘텐츠별 요약 + 카드)."""
+    items = await get_contents_by_ids(user_id, content_ids)
+    if not items:
+        return {"answer": "앗, 요약할 콘텐츠를 찾지 못했어요. 다시 선택해 주실래요?", "results": []}
+
+    # 요청한 순서 유지
+    order = {cid: i for i, cid in enumerate(content_ids)}
+    items.sort(key=lambda r: order.get(r.get("id"), 999))
+
+    summaries = []
+    for it in items:
+        text = await _summarize_one(it)
+        summaries.append({
+            "id": it.get("id"),
+            "title": it.get("title", ""),
+            "url": it.get("url", ""),
+            "thumbnail": it.get("thumbnail_url") or "",
+            "summary_text": text,
+        })
+
+    intro = "아~ 요약해 드릴게요!" if len(items) == 1 else f"아~ 선택하신 {len(items)}개를 하나씩 요약해 드릴게요!"
+    return {
+        "answer": intro,
+        "summaries": summaries,
+        "action": "summary_result",
+        "intent": "summarize",
+        "follow_up_questions": ["다른 콘텐츠도 요약해줘", "관련된 것끼리 폴더로 묶어줘"],
+    }
+
+
+GENERAL_PERSONA = (
+    "너는 Keepit의 아카이브 비서야. 핵심 역할은 세 가지 — "
+    "① 링크 저장, ② 저장한 콘텐츠를 폴더로 묶고 정리, ③ 저장한 콘텐츠 요약·설명.\n"
+    "사용자의 말과 맥락에 정확히 맞춰 사람처럼 자연스럽게 대화해:\n"
+    "- 인사('안녕')엔 그냥 가볍게 인사로만 답해. 묻지도 않은 폴더·콘텐츠 정보를 먼저 꺼내지 마.\n"
+    "- 사용자가 무언가 요청하면 '아~ 그거 말씀이시군요!'처럼 이해한 듯 받은 뒤 도와줘.\n"
+    "서비스와 무관한 일반 질문(날씨·코딩·잡담 등)엔 짧게 답하고 부드럽게 본업으로 안내해. "
+    "절대 범용 챗봇처럼 장황하게 답하지 마. 한국어로 1~3문장."
+)
+
+
+async def _handle_general(user_id: str, query: str, history: list = None) -> dict:
+    """도메인 범위 안에서 맥락에 맞게 자연스럽게 대화 + 필요 시 본업으로 안내."""
+    history = history or []
+
+    # 폴더 정보를 강제로 끼워넣지 않는다 (맥락 없이 폴더 얘기를 꺼내는 문제 방지)
+    messages = [{"role": "system", "content": GENERAL_PERSONA}]
+    for h in history[-6:]:
+        if h.get("role") in ("user", "assistant") and h.get("content"):
+            messages.append({"role": h["role"], "content": str(h["content"])})
+    messages.append({"role": "user", "content": query})
+
+    answer = await _llm(messages=messages, model="gpt-4o", max_tokens=220)
+    # 일반 대화(인사·잡담)에는 행동 유도 버튼을 붙이지 않는다.
+    # 행동 유도는 사용자가 실제 기능(검색·요약·폴더 등)을 요청했을 때만 해당 핸들러에서 제안한다.
+    return {"answer": answer, "results": []}
+
+
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
 async def process_chat(user_id: str, query: str, history: list = None, shown_ids: list = None) -> dict:
@@ -364,15 +551,18 @@ async def process_chat(user_id: str, query: str, history: list = None, shown_ids
     history = history or []
     shown_ids = shown_ids or []
 
-    intent_data = await _detect_intent(query)
+    intent_data = await _detect_intent(query, history=history)
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
     delete_query = intent_data.get("delete_query")
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
+    summarize_query = intent_data.get("summarize_query")
 
-    if intent in ("search", "general"):
+    if intent == "search":
         result = await _handle_search(user_id, query, shown_ids=shown_ids, history=history)
+    elif intent == "summarize":
+        result = await _handle_summarize(user_id, query, summarize_query)
     elif intent == "deadline":
         result = await _handle_deadline(user_id)
     elif intent == "folder" and folder_name:
@@ -384,7 +574,8 @@ async def process_chat(user_id: str, query: str, history: list = None, shown_ids
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query)
     else:
-        result = await _handle_search(user_id, query, shown_ids=shown_ids, history=history)
+        # general 및 미매칭 → 검색이 아니라 도메인 대화로
+        result = await _handle_general(user_id, query, history=history)
 
     result["intent"] = intent
     return result

@@ -21,13 +21,14 @@ from app.services.ai_classifier import classify
 from app.services.embedding import run as embed, generate_embedding, build_embed_text
 from app.services.thumbnail_vision import analyze_thumbnail
 from app.services.query_expander import expand_query
-from app.services.chat import process_chat
+from app.services.chat import process_chat, summarize_contents
 from app.services.database import (
     save_content, update_content, mark_failed, check_duplicate,
     search_contents, get_deadlines, get_or_create_collection, get_collections,
     find_similar_contents, delete_content, get_all_contents_for_reclassify,
     update_ai_fields, move_content_collection,
     rename_collection, delete_collection, delete_contents_by_subcategory,
+    delete_contents_by_ids,
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
@@ -53,6 +54,15 @@ app.include_router(auth_router)
 
 # ── 페이지 라우트 ──────────────────────────────────────────────────────────────
 
+def _asset_version() -> int:
+    # 정적 파일(JS/CSS) 수정시각으로 캐시 버스팅 토큰 생성 → 코드 변경 시 브라우저가 새로 로드
+    paths = ["static/js/main.js", "static/css/style.css"]
+    try:
+        return int(max(os.path.getmtime(p) for p in paths))
+    except OSError:
+        return 0
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     # 미로그인 시 로그인 페이지로 (기존 Flask @login_required 동작 유지)
@@ -63,6 +73,7 @@ async def index(request: Request):
         "user": user,
         "supabase_url": os.getenv("SUPABASE_URL", ""),
         "supabase_anon_key": os.getenv("SUPABASE_ANON_KEY", ""),
+        "asset_v": _asset_version(),
     })
 
 
@@ -81,6 +92,7 @@ class IngestRequest(BaseModel):
     user_id: str = DEFAULT_USER_ID
     instruction: str = ""
     collection_id: str | None = None
+    collection_name: str | None = None   # 자연어로 지정한 대상 컬렉션 (기존 우선)
 
 
 class SearchRequest(BaseModel):
@@ -94,6 +106,11 @@ class ChatRequest(BaseModel):
     user_id: str = DEFAULT_USER_ID
     history: list[dict] = []
     shown_ids: list[str] = []
+
+
+class SummarizeRequest(BaseModel):
+    user_id: str = DEFAULT_USER_ID
+    content_ids: list[str]
 
 
 class MoveRequest(BaseModel):
@@ -136,6 +153,9 @@ async def ingest(req: IngestRequest):
             analysis["save_purpose"] = req.instruction
 
         collection_id = req.collection_id
+        # 자연어로 컬렉션을 지정했으면 그 이름으로 (기존 컬렉션이 있으면 그대로 사용, 중복 생성 방지)
+        if not collection_id and req.collection_name:
+            collection_id = await get_or_create_collection(req.user_id, req.collection_name.strip())
         if not collection_id and analysis.get("user_collection"):
             collection_id = await get_or_create_collection(
                 req.user_id, analysis["user_collection"]
@@ -286,6 +306,20 @@ async def remove_content(content_id: str, user_id: str):
     return {"deleted": True, "content_id": content_id}
 
 
+class BulkDeleteRequest(BaseModel):
+    user_id: str = DEFAULT_USER_ID
+    content_ids: list[str]
+
+
+@app.post("/contents/delete")
+async def remove_contents_bulk(req: BulkDeleteRequest):
+    # 선택한 콘텐츠 여러 건 한 번에 영구 삭제
+    success = await delete_contents_by_ids(req.user_id, req.content_ids)
+    if not success:
+        raise HTTPException(status_code=500, detail="삭제 실패")
+    return {"deleted": True, "count": len(req.content_ids)}
+
+
 @app.delete("/api/subcategory")
 async def delete_subcategory(category: str, subcategory: str, user_id: str = DEFAULT_USER_ID):
     # 해당 대분류/중분류에 속한 콘텐츠 전체 영구 삭제
@@ -344,6 +378,13 @@ async def reclassify_all(user_id: str):
 async def chat(req: ChatRequest):
     result = await process_chat(req.user_id, req.query, history=req.history, shown_ids=req.shown_ids)
     return result
+
+
+# ── 요약 (선택한 콘텐츠 요약·설명) ─────────────────────────────────────────────
+
+@app.post("/summarize")
+async def summarize(req: SummarizeRequest):
+    return await summarize_contents(req.user_id, req.content_ids)
 
 
 @app.exception_handler(Exception)

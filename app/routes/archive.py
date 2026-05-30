@@ -66,7 +66,7 @@ async def collection_items(
                     "user_id": f"eq.{user_id}",
                     "collection_id": f"eq.{collection_id}",
                     "analysis_status": "eq.completed",
-                    "select": "id,url,title,category,sub_category,description,content_type,topics,thumbnail_url,saved_at",
+                    "select": "id,url,title,category,sub_category,detailed_summary,one_line_summary,description,content_type,topics,thumbnail_url,saved_at",
                     "order": "saved_at.desc",
                 },
             )
@@ -81,7 +81,8 @@ async def collection_items(
                     "title": r.get("title", ""),
                     "category": r.get("category", ""),
                     "subcategory": r.get("sub_category", ""),
-                    "summary": r.get("description", ""),
+                    # LLM이 요약한 detailed_summary 우선 사용 (일관성)
+                    "summary": r.get("detailed_summary") or r.get("one_line_summary") or r.get("description", ""),
                     "content_type": r.get("content_type", "other"),
                     "tags": r.get("topics") or [],
                     "thumbnail": r.get("thumbnail_url", ""),
@@ -103,7 +104,7 @@ async def items(
     params = {
         "user_id": f"eq.{user_id}",
         "analysis_status": "eq.completed",
-        "select": "id,url,title,category,sub_category,description,content_type,topics,thumbnail_url,has_deadline,deadline_date,deadline_note,saved_at",
+        "select": "id,url,title,category,sub_category,detailed_summary,one_line_summary,description,content_type,topics,thumbnail_url,has_deadline,deadline_date,deadline_note,saved_at",
         "order": "saved_at.desc",
     }
     if category:
@@ -129,7 +130,8 @@ async def items(
                     "title": r.get("title", ""),
                     "category": r.get("category", ""),
                     "subcategory": r.get("sub_category", ""),
-                    "summary": r.get("description", ""),
+                    # LLM이 요약한 detailed_summary 우선 사용 (일관성)
+                    "summary": r.get("detailed_summary") or r.get("one_line_summary") or r.get("description", ""),
                     "content_type": r.get("content_type", "other"),
                     "tags": r.get("topics") or [],
                     "thumbnail": r.get("thumbnail_url", ""),
