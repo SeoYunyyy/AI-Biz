@@ -454,9 +454,13 @@ function buildResultCards(items, maxCount = 5) {
     const more    = items.length - maxCount
     const cardsHTML = preview.map(item => {
         const summary = item.one_line_summary || item.summary || ''
+        const thumb   = item.thumbnail_url || item.thumbnail || ''
+        const thumbHTML = thumb
+            ? `<img class="msg-card-thumb" src="${thumb}" onerror="this.style.display='none'" alt="" />`
+            : `<div class="msg-card-thumb-placeholder">📄</div>`
         return `
             <a href="${item.url}" target="_blank" class="msg-result-card">
-                <div class="msg-card-thumb-placeholder">📄</div>
+                ${thumbHTML}
                 <div class="msg-card-body">
                     <div class="msg-card-title">${item.title}</div>
                     ${summary ? `<div class="msg-card-summary">${summary}</div>` : ''}
@@ -555,12 +559,58 @@ window.executeMove = async function(btn) {
     }
 }
 
-// AI 응답 HTML 빌드 (삭제/이동 확인 UI 포함)
+// 폴더 생성 확인 UI 빌드
+function buildFolderConfirm(confirmationData) {
+    const newName   = confirmationData.new_folder_name || ''
+    const suggested = confirmationData.suggested_folder
+
+    if (suggested) {
+        return `
+            <div class="confirm-box folder-confirm-box">
+                <div class="confirm-actions" style="flex-direction:column;gap:8px;align-items:stretch;">
+                    <button class="confirm-btn confirm-move" onclick="createFolder('${esc(suggested)}')">기존 '${suggested}' 폴더 사용</button>
+                    <button class="confirm-btn confirm-cancel" onclick="createFolder('${esc(newName)}')">새로 '${newName}' 만들기</button>
+                </div>
+            </div>
+        `
+    }
+    return `
+        <div class="confirm-box folder-confirm-box">
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel" onclick="this.closest('.confirm-box').remove()">취소</button>
+                <button class="confirm-btn confirm-move" onclick="createFolder('${esc(newName)}')">'${newName}' 만들기</button>
+            </div>
+        </div>
+    `
+}
+
+window.createFolder = async function(name) {
+    document.querySelector('.folder-confirm-box')?.remove()
+    try {
+        const res = await fetch(`/collections?user_id=${DEFAULT_USER_ID}&name=${encodeURIComponent(name)}`, { method: 'POST' })
+        const chatMessages = document.getElementById('chat-messages')
+        if (chatMessages) {
+            const el = document.createElement('div')
+            el.className = 'chat-msg ai'
+            el.textContent = res.ok ? `'${name}' 폴더를 만들었어요!` : `폴더 생성에 실패했어요.`
+            chatMessages.appendChild(el)
+            chatMessages.scrollTop = chatMessages.scrollHeight
+        }
+        if (res.ok) loadCollections()
+    } catch (e) {}
+}
+
+// AI 응답 HTML 빌드 (삭제/이동/폴더 확인 UI 포함)
 function buildAIContent(data) {
     let html = data.answer ? `<div>${data.answer}</div>` : ''
 
     if (data.results && data.results.length) {
         html += buildResultCards(data.results)
+    }
+
+    // 폴더 생성 확인
+    if (data.needs_confirmation && data.confirmation_data) {
+        html += buildFolderConfirm(data.confirmation_data)
     }
 
     // 삭제 확인
@@ -679,20 +729,6 @@ document.getElementById('btn-reminders').addEventListener('click', async () => {
             <a href="${r.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
         </div>
     `).join(''))
-})
-
-document.getElementById('btn-report').addEventListener('click', async () => {
-    const data = await fetch('/api/monthly-report').then(r => r.json())
-    const statsHtml = data.stats.map(s => `
-        <div class="stat-row">
-            <span>${s.category}</span>
-            <span class="stat-count">${s.count}개</span>
-        </div>
-    `).join('')
-    openModal('월간 취향 레포트', `
-        <div class="report-text">${data.report}</div>
-        ${statsHtml ? `<div class="stats-list">${statsHtml}</div>` : ''}
-    `)
 })
 
 document.getElementById('btn-weekly-report').addEventListener('click', () => {

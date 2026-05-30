@@ -66,7 +66,7 @@ async def collection_items(
                     "user_id": f"eq.{user_id}",
                     "collection_id": f"eq.{collection_id}",
                     "analysis_status": "eq.completed",
-                    "select": "id,url,title,category,sub_category,description,content_type,topics,thumbnail_url,saved_at",
+                    "select": "id,url,title,category,sub_category,one_line_summary,content_type,topics,thumbnail_url,saved_at",
                     "order": "saved_at.desc",
                 },
             )
@@ -81,7 +81,7 @@ async def collection_items(
                     "title": r.get("title", ""),
                     "category": r.get("category", ""),
                     "subcategory": r.get("sub_category", ""),
-                    "summary": r.get("description", ""),
+                    "summary": r.get("one_line_summary", ""),
                     "content_type": r.get("content_type", "other"),
                     "tags": r.get("topics") or [],
                     "thumbnail": r.get("thumbnail_url", ""),
@@ -103,7 +103,7 @@ async def items(
     params = {
         "user_id": f"eq.{user_id}",
         "analysis_status": "eq.completed",
-        "select": "id,url,title,category,sub_category,description,content_type,topics,thumbnail_url,has_deadline,deadline_date,deadline_note,saved_at",
+        "select": "id,url,title,category,sub_category,one_line_summary,content_type,topics,thumbnail_url,has_deadline,deadline_date,deadline_note,saved_at",
         "order": "saved_at.desc",
     }
     if category:
@@ -129,7 +129,7 @@ async def items(
                     "title": r.get("title", ""),
                     "category": r.get("category", ""),
                     "subcategory": r.get("sub_category", ""),
-                    "summary": r.get("description", ""),
+                    "summary": r.get("one_line_summary", ""),
                     "content_type": r.get("content_type", "other"),
                     "tags": r.get("topics") or [],
                     "thumbnail": r.get("thumbnail_url", ""),
