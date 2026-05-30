@@ -1,12 +1,18 @@
 # app/main.py
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 from dotenv import load_dotenv
 load_dotenv()
 
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any
-from contextlib import asynccontextmanager
 
 from app.services.metadata.dispatcher import extract as dispatch
 from app.services.ai_classifier import classify
@@ -20,7 +26,7 @@ from app.services.database import (
     mark_failed,
     check_duplicate,
     search_contents,
-    get_deadlines,
+    get_deadlines as db_get_deadlines,
     get_or_create_collection,
     get_collections,
     find_similar_contents,
@@ -29,8 +35,24 @@ from app.services.database import (
     update_ai_fields,
     move_content_collection,
 )
+from app.routes.archive import router as archive_router
+from app.routes.report import router as report_router
 
 app = FastAPI(title="Keepit API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+app.include_router(archive_router)
+app.include_router(report_router)
 
 
 # ── 요청/응답 모델 ─────────────────────────────────────────────────────────────
@@ -56,8 +78,18 @@ class ChatRequest(BaseModel):
 
 # ── 헬스체크 ───────────────────────────────────────────────────────────────────
 
-@app.get("/")
-async def root():
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    return templates.TemplateResponse(request, "index.html")
+
+
+@app.get("/weekly-report", response_class=HTMLResponse)
+async def weekly_report_page(request: Request):
+    return templates.TemplateResponse(request, "report_weekly.html")
+
+
+@app.get("/health")
+async def health():
     return {"status": "ok", "service": "Keepit API"}
 
 
@@ -212,11 +244,9 @@ async def search(req: SearchRequest):
     }
 
 
-# 마감기한 엔드포인트 추가
 @app.get("/deadlines/{user_id}")
-async def get_deadlines(user_id: str):
-    """마감기한 있는 링크를 마감순으로 반환"""
-    results = await get_deadlines(user_id)
+async def list_deadlines(user_id: str):
+    results = await db_get_deadlines(user_id)
     return {"deadlines": results}
 
 @app.get("/collections/{user_id}")
