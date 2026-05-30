@@ -1,7 +1,20 @@
-flask
-openai
+# 웹 프레임워크
+fastapi
+uvicorn[standard]
+
+# HTTP 클라이언트 (크롤링, API 호출)
+httpx
 requests
+
+# HTML 파싱 (크롤링)
 beautifulsoup4
-python-dotenv
 lxml
+
+# AI / API
+openai
+
+# 데이터베이스
 supabase
+
+# 환경변수 로드
+python-dotenv
