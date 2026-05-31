@@ -273,7 +273,7 @@ window.showEmojiPicker = function(btn, collectionId) {
 
     // 버튼 위치 기준으로 팝업 좌표 계산
     const rect = btn.getBoundingClientRect()
-    const pickerW = 224
+    const pickerW = 232
     let left = rect.right + 8
     if (left + pickerW > window.innerWidth) left = rect.left - pickerW - 8
     picker.style.left = left + 'px'

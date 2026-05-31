@@ -181,14 +181,15 @@ nav {
     border-radius: 12px;
     box-shadow: 0 8px 24px rgba(44,26,14,0.18);
     padding: 10px;
-    width: 224px;
+    width: 232px;
 }
 
 .emoji-picker-grid {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 2px;
+    grid-template-columns: repeat(6, 32px);
+    gap: 4px;
     margin-bottom: 8px;
+    overflow: hidden;
 }
 
 .emoji-pick-btn {
@@ -196,10 +197,15 @@ nav {
     border: none;
     font-size: 18px;
     cursor: pointer;
-    padding: 4px;
+    width: 32px;
+    height: 32px;
     border-radius: 6px;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: background 0.12s;
+    overflow: hidden;
 }
 
 .emoji-pick-btn:hover { background: rgba(90,48,2,0.1); }
