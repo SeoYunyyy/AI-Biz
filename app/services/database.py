@@ -18,30 +18,47 @@ def _headers() -> dict:
 
 # ── 저장 ──────────────────────────────────────────────────────────────────────
 
-async def save_content(user_id: str, url: str) -> dict | None:
+async def save_content(user_id: str, url: str, user_name: str = "", user_email: str = "") -> dict | None:
     """
     1단계: URL만 먼저 즉시 저장 (분석 전)
     analysis_status = 'processing' 으로 시작
     → 사용자를 기다리게 하지 않기 위해 분리
+    user_name/user_email 도 함께 기록 (컬럼이 없으면 자동으로 빼고 재시도)
     """
-    try:
+    base = {
+        "user_id": user_id,
+        "url": url,
+        "content_type": "other",
+        "analysis_status": "processing",
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    payload = dict(base)
+    if user_name:
+        payload["user_name"] = user_name
+    if user_email:
+        payload["user_email"] = user_email
+
+    async def _post(body: dict):
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 f"{SUPABASE_URL}/rest/v1/contents",
                 headers={**_headers(), "Prefer": "return=representation"},
-                json={
-                    "user_id": user_id,
-                    "url": url,
-                    "content_type": "other",
-                    "analysis_status": "processing",
-                    "saved_at": datetime.now(timezone.utc).isoformat(),
-                },
+                json=body,
             )
             response.raise_for_status()
             data = response.json()
             return data[0] if data else None
 
+    try:
+        return await _post(payload)
     except httpx.HTTPError as e:
+        # user_name/user_email 컬럼이 아직 없으면 그 필드를 빼고 재시도
+        if user_name or user_email:
+            try:
+                return await _post(base)
+            except httpx.HTTPError as e2:
+                print(f"[database] 초기 저장 오류(재시도): {e2}")
+                return None
         print(f"[database] 초기 저장 오류: {e}")
         return None
 

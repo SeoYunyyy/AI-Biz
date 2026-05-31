@@ -877,12 +877,15 @@ body.detail-open .panel-reopen-btn { right: calc(440px + 20px); }
 }
 
 .chat-msg {
-    max-width: 86%;
+    max-width: 50%;
     border-radius: 14px;
     padding: 10px 14px;
     font-size: 14px;
     line-height: 1.55;
     animation: fadeSlideIn 0.28s ease;
+    /* 절반을 넘는 긴 글자(URL 등)는 말풍선 안에서 줄바꿈 */
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .chat-msg.user {
@@ -1206,6 +1209,18 @@ body.detail-open .panel-reopen-btn { right: calc(440px + 20px); }
     animation: dotPulse 1.2s infinite;
     padding: 4px 8px;
 }
+
+/* ── 주간 레포트 오버레이 — 좌측에서 슬라이드 인 ── */
+.weekly-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #fdf8f5;
+    transform: translateX(-100%);
+    transition: transform 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.weekly-overlay.open { transform: translateX(0); }
 
 /* ── 아카이브·리마인더·레포트 모달 ── */
 .modal {

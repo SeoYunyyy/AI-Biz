@@ -260,8 +260,13 @@ async def _handle_folder(user_id: str, folder_name: str, original_query: str = "
         }
 
     # 후보를 카드로 제시 → 사용자가 선택하거나 전체를 묶는다 (일부만 묶이는 문제 해결)
+    msg = random.choice([
+        f"'{folder_name}'(으)로 묶을 만한 게 {len(related)}개 있어요. 선택하거나 전체로 묶어보세요.",
+        f"이만큼 모였어요! '{folder_name}' 폴더에 담을 걸 골라주세요.",
+        f"'{folder_name}' 관련해서 {len(related)}개 찾았어요. 선택 묶기 / 전체 묶기 중에 골라주세요.",
+    ])
     return {
-        "answer": f"'{folder_name}'(으)로 묶을 만한 콘텐츠 {len(related)}개를 찾았어요! 묶을 항목을 선택하거나 전체를 묶어보세요.",
+        "answer": msg,
         "results": _to_cards(related),
         "action": "folder_select",
         "collection_name": folder_name,
@@ -328,7 +333,11 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dic
     moved = len(moved_items)
 
     return {
-        "answer": f"'{target_folder}' 컬렉션으로 옮겼어요! '{move_query}' 관련 콘텐츠 {moved}개를 이동했어요.",
+        "answer": random.choice([
+            f"'{move_query}' 관련 {moved}개를 '{target_folder}' 폴더로 옮겼어요.",
+            f"{moved}개 정리해서 '{target_folder}'에 담아뒀어요.",
+            f"'{target_folder}'로 {moved}개 이동 완료!",
+        ]),
         "results": _to_cards(moved_items),
         "action": "folder_created",
         "collection_id": collection_id,
@@ -457,33 +466,42 @@ async def _handle_summarize(user_id: str, query: str, summarize_query: str = Non
         if matched:
             items = await get_collection_contents(user_id, matched["id"])
             if items:
-                return {
-                    "answer": f"'{matched['name']}' 컬렉션의 콘텐츠 {len(items)}개예요. 어떤 걸 요약할까요? (여러 개 선택할 수 있어요)",
-                    "results": _to_cards(items),
-                    "action": "summarize_select",
-                }
-            return {"answer": f"'{matched['name']}' 컬렉션이 비어 있어요. 콘텐츠를 먼저 담아주세요!", "results": []}
+                msg = random.choice([
+                    f"'{matched['name']}' 폴더에 {len(items)}개 있네요. 어떤 걸 요약할까요?",
+                    f"'{matched['name']}' 컬렉션 안에서 골라주세요 (여러 개 가능).",
+                    f"여기 '{matched['name']}' 콘텐츠 {len(items)}개예요. 요약할 것 선택!",
+                ])
+                return {"answer": msg, "results": _to_cards(items), "action": "summarize_select"}
+            return {"answer": f"'{matched['name']}' 폴더가 아직 비어 있어요. 콘텐츠를 먼저 담아주세요.", "results": []}
 
     # 2) 주제가 명시되면 detailed_summary 기반으로 정확히 관련 콘텐츠만 찾기
     if summarize_query:
         candidates = await _find_relevant_contents(user_id, summarize_query, limit=5)
         if candidates:
-            return {
-                "answer": f"'{summarize_query}' 관련 콘텐츠를 찾았어요. 어떤 걸 요약할까요? (여러 개 선택할 수 있어요)",
-                "results": _to_cards(candidates),
-                "action": "summarize_select",
-            }
+            msg = random.choice([
+                f"'{summarize_query}' 관련해서 이만큼 찾았어요. 요약할 걸 골라주세요.",
+                f"'{summarize_query}' 쪽으로 {len(candidates)}개 있네요 (여러 개 선택 가능).",
+                f"이 중에서 요약할 '{summarize_query}' 콘텐츠를 선택해 주세요.",
+            ])
+            return {"answer": msg, "results": _to_cards(candidates), "action": "summarize_select"}
         return {
-            "answer": f"'{summarize_query}' 관련해서 저장된 콘텐츠를 찾지 못했어요. 다른 주제로 다시 말씀해 주실래요?",
+            "answer": random.choice([
+                f"'{summarize_query}' 관련 콘텐츠가 안 보이네요. 다른 키워드로 말씀해 주실래요?",
+                f"음, '{summarize_query}'로는 저장된 게 없어요. 주제를 바꿔볼까요?",
+            ]),
             "results": [],
         }
 
-    # 3) 모호("이거/방금 거") → 최근 저장 3개 제시
+    # 3) 모호("이거/방금 거")인데 방금 저장분도 없을 때 → 최근 저장 3개 제시
     recent = await get_recent_contents(user_id, limit=3)
     if not recent:
         return {"answer": "아직 저장한 콘텐츠가 없어요. 링크를 먼저 보내주시면 저장하고 요약해드릴게요!", "results": []}
     return {
-        "answer": "최근 저장한 콘텐츠예요. 이 중에 어떤 걸 요약할까요? (여러 개 선택할 수 있어요)",
+        "answer": random.choice([
+            "최근 저장한 것들이에요. 어떤 걸 요약할까요?",
+            "방금까지 저장한 콘텐츠 중에 골라주세요.",
+            "이 중에 요약할 걸 선택해 주세요 (여러 개 가능).",
+        ]),
         "results": _to_cards(recent),
         "action": "summarize_select",
     }

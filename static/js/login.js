@@ -33,6 +33,8 @@
   const tabLogin      = document.getElementById('tab-login');
   const tabSignup     = document.getElementById('tab-signup');
   const confirmGroup  = document.getElementById('confirm-group');
+  const nameGroup     = document.getElementById('name-group');
+  const nameInput     = document.getElementById('name-input');
   const emailInput    = document.getElementById('email-input');
   const passwordInput = document.getElementById('password-input');
   const confirmInput  = document.getElementById('confirm-input');
@@ -54,6 +56,7 @@
     if (mode === 'login') {
       tabLogin.classList.add('active');    tabLogin.setAttribute('aria-selected', 'true');
       tabSignup.classList.remove('active'); tabSignup.setAttribute('aria-selected', 'false');
+      if (nameGroup) nameGroup.style.display = 'none';
       confirmGroup.style.display = 'none';
       emailBtnText.textContent   = '로그인하기';
       passwordInput.autocomplete = 'current-password';
@@ -61,6 +64,7 @@
     } else {
       tabSignup.classList.add('active');    tabSignup.setAttribute('aria-selected', 'true');
       tabLogin.classList.remove('active');  tabLogin.setAttribute('aria-selected', 'false');
+      if (nameGroup) nameGroup.style.display = 'block';
       confirmGroup.style.display = 'block';
       emailBtnText.textContent   = '회원가입하기';
       passwordInput.autocomplete = 'new-password';
@@ -102,11 +106,16 @@
 
   emailBtn.addEventListener('click', async () => {
     clearMessage();
+    const name     = nameInput ? nameInput.value.trim() : '';
     const email    = emailInput.value.trim();
     const password = passwordInput.value;
     const confirm  = confirmInput.value;
 
     /* 기본 유효성 */
+    if (mode === 'signup' && !name) {
+      nameInput.classList.add('error');
+      return showError('이름을 입력해주세요.');
+    }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       emailInput.classList.add('error');
       return showError('올바른 이메일 주소를 입력해주세요.');
@@ -138,7 +147,11 @@
         // 성공 시 onAuthStateChange → pushSessionAndRedirect
 
       } else {
-        const { data, error } = await sb.auth.signUp({ email, password });
+        const { data, error } = await sb.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name } },   // 이름을 user_metadata에 저장 → 수퍼베이스 auth에 기록
+        });
         if (error) {
           if (error.message.includes('already registered')) {
             showError('이미 가입된 이메일입니다. 로그인을 시도해주세요.');

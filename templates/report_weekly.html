@@ -81,6 +81,22 @@
   /* 워드클라우드 — 높이 키우고 꽉 차게 */
   .wc-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; height: 340px; position: relative; overflow: hidden; }
   .wc-wrap svg { position: absolute; top: 0; left: 0; }
+  /* 워드클라우드 — 단어가 둥실둥실 떠오르는 움직임 */
+  .wc-word {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation-name: wcFloat;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    will-change: transform, opacity;
+  }
+  .wc-word:hover { opacity: 0.65; }
+  @keyframes wcFloat {
+    0%   { transform: translateY(0) scale(1);      opacity: 0.92; }
+    50%  { transform: translateY(-7px) scale(1.06); opacity: 1; }
+    100% { transform: translateY(0) scale(1);      opacity: 0.92; }
+  }
+  @media (prefers-reduced-motion: reduce) { .wc-word { animation: none; } }
 
   /* 히트맵 */
   .heatmap-wrap { background: #fff9f5; border-radius: 18px; border: 1px solid #ede0d4; padding: 22px; }
@@ -366,15 +382,21 @@ function renderWordCloud(topics) {
     .font('bold')
     .fontSize(d => d.size)
     .on('end', drawn => {
-      d3.select('#wc-wrap').append('svg').attr('width', W).attr('height', H)
-        .append('g').attr('transform', `translate(${W/2},${H/2})`)
-        .selectAll('text').data(drawn).enter().append('text')
+      const root = d3.select('#wc-wrap').append('svg').attr('width', W).attr('height', H)
+        .append('g').attr('transform', `translate(${W/2},${H/2})`);
+      // 위치·회전은 그룹(g)에, 움직임 효과는 안쪽 text(.wc-word)에 적용 → 충돌 없이 둥실둥실
+      const nodes = root.selectAll('g.wc-node').data(drawn).enter().append('g')
+        .attr('class', 'wc-node')
+        .attr('transform', d => `translate(${d.x},${d.y})rotate(${d.rotate})`);
+      nodes.append('text')
+        .attr('class', 'wc-word')
         .style('font-size', d => `${d.size}px`)
         .style('font-weight', '700')
         .style('font-family', '-apple-system,sans-serif')
         .style('fill', (_, i) => WC_COLORS[i % WC_COLORS.length])
+        .style('animation-delay', (_, i) => `${(i * 0.18).toFixed(2)}s`)
+        .style('animation-duration', (_, i) => `${(2.6 + (i % 5) * 0.4).toFixed(1)}s`)
         .attr('text-anchor', 'middle')
-        .attr('transform', d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
         .text(d => d.text);
     }).start();
 }

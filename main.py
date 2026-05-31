@@ -130,12 +130,14 @@ async def health():
 # ── URL 저장 파이프라인 ────────────────────────────────────────────────────────
 
 @app.post("/ingest")
-async def ingest(req: IngestRequest):
+async def ingest(req: IngestRequest, request: Request):
     existing = await check_duplicate(req.user_id, req.url)
     if existing:
         return {"duplicate": True, "content": existing}
 
-    saved = await save_content(req.user_id, req.url)
+    # 로그인 사용자(JWT)의 이름·이메일을 contents에 함께 기록
+    user = current_user(request) or {}
+    saved = await save_content(req.user_id, req.url, user.get("name", ""), user.get("email", ""))
     if not saved:
         raise HTTPException(status_code=500, detail="초기 저장 실패")
 

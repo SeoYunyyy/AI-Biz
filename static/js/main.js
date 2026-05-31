@@ -601,6 +601,9 @@ async function sendChat() {
                     aiEl.innerHTML = data.duplicate ? buildSavedItemContent(data.content, true) : buildSavedItemContent(data)
                     chatMessages.appendChild(aiEl)
                     if (data.reminder_message) appendMsg(chatMessages, 'ai', data.reminder_message)
+                    // 방금 저장한 콘텐츠 id 수집 ("이 콘텐츠 요약" 직행용)
+                    const savedId = data.duplicate ? (data.content && data.content.id) : data.id
+                    if (savedId) lastSavedIds.push(savedId)
                     saved++
                 } catch (err) {
                     appendMsg(chatMessages, 'ai', `저장 실패: ${url}`)
@@ -626,6 +629,7 @@ async function sendChat() {
                     user_id: DEFAULT_USER_ID,
                     history: chatHistory.slice(-10),
                     shown_ids: [...shownIds],
+                    recent_saved_ids: lastSavedIds,
                 })
             })
             const data = await res.json()
@@ -1156,11 +1160,13 @@ document.getElementById('btn-report').addEventListener('click', async () => {
 document.getElementById('btn-weekly-report').addEventListener('click', () => {
     const overlay = document.createElement('div')
     overlay.id = 'weekly-report-overlay'
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fdf8f5;'
+    overlay.className = 'weekly-overlay'
     overlay.innerHTML = `
         <iframe src="/weekly-report" style="width:100%;height:100%;border:none;display:block;"></iframe>
     `
     document.body.appendChild(overlay)
+    // 좌측에서 자연스럽게 슬라이드 인
+    requestAnimationFrame(() => overlay.classList.add('open'))
 })
 
 // ── 초기 로드 ──
