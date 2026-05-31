@@ -41,13 +41,14 @@ def _headers() -> dict:
 
 
 async def _fetch(user_id: str | None, since: str, until: str | None = None) -> list[dict]:
+    if not user_id:
+        return []
     params = {
         "analysis_status": "eq.completed",
         "select": "topics, content_type, saved_at, title, collection_id",
         "saved_at": f"gte.{since}",
+        "user_id": f"eq.{user_id}",
     }
-    if user_id:
-        params["user_id"] = f"eq.{user_id}"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -150,7 +151,7 @@ JSON으로 답해줘:
 @router.get("/api/weekly-report")
 async def weekly_report(user_id: str = Query("")):
     since = (datetime.utcnow() - timedelta(days=7)).isoformat()
-    contents = await _fetch(user_id or None, since)
+    contents = await _fetch(user_id, since)
     total = len(contents)
 
     if total == 0:
@@ -167,7 +168,7 @@ async def weekly_report(user_id: str = Query("")):
     # 전주 비교
     prev_since = (datetime.utcnow() - timedelta(days=14)).isoformat()
     prev_until = since
-    prev_c = await _fetch(user_id or None, prev_since, prev_until)
+    prev_c = await _fetch(user_id, prev_since, prev_until)
     prev_topic_c: Counter = Counter()
     for c in prev_c:
         for t in (c.get("topics") or []):
@@ -220,7 +221,7 @@ async def weekly_report(user_id: str = Query("")):
 @router.get("/api/weekly-stats")
 async def weekly_stats(user_id: str = Query("")):
     since = (datetime.utcnow() - timedelta(days=7)).isoformat()
-    contents = await _fetch(user_id or None, since)
+    contents = await _fetch(user_id, since)
 
     if not contents:
         return {'top_topics': [], 'all_topics': [], 'content_types': [], 'recent_categories': [], 'daily_counts': []}

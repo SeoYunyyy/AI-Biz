@@ -335,7 +335,10 @@ function getWeekDateRange() {
   return `${fmt(mon)} ~ ${fmt(sun)}`;
 }
 function getUserId() {
-  return new URLSearchParams(window.location.search).get('user_id') || '';
+  return new URLSearchParams(window.location.search).get('user_id')
+    || (window.parent !== window ? window.parent.localStorage.getItem('keepit_user_id') : null)
+    || localStorage.getItem('keepit_user_id')
+    || '';
 }
 // 카테고리별 서브 이모지 (히어로 오른쪽 두 번째 이모지)
 const CATEGORY_EMOJI = {

@@ -1126,7 +1126,7 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
             style="position:fixed;top:16px;right:20px;z-index:10000;background:#6b3a2a;color:#fdf3ec;border:none;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:700;cursor:pointer;">
             ✕ 닫기
         </button>
-        <iframe src="/weekly-report" style="width:100%;height:100%;border:none;display:block;"></iframe>
+        <iframe src="/weekly-report?user_id=${getCurrentUserId()}" style="width:100%;height:100%;border:none;display:block;"></iframe>
     `
     document.body.appendChild(overlay)
 })
