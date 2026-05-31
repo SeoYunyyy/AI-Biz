@@ -156,8 +156,17 @@ nav {
 
 .sidebar-folder-input:focus { border-color: #5A3002; }
 
-.sidebar-emoji-btn {
+.sidebar-action-btns {
     display: none;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.group-sidebar-item:hover .sidebar-action-btns { display: flex; }
+
+.sidebar-emoji-btn,
+.sidebar-delete-btn {
     background: none;
     border: none;
     font-size: 14px;
@@ -165,13 +174,52 @@ nav {
     padding: 2px 4px;
     border-radius: 5px;
     line-height: 1;
-    flex-shrink: 0;
-    opacity: 0.6;
-    transition: opacity 0.15s;
+    opacity: 0.55;
+    transition: opacity 0.15s, background 0.15s;
 }
 
-.group-sidebar-item:hover .sidebar-emoji-btn { display: block; }
 .sidebar-emoji-btn:hover { opacity: 1; background: rgba(90,48,2,0.1); }
+.sidebar-delete-btn:hover { opacity: 1; background: rgba(180,40,40,0.1); }
+
+.folder-delete-popup {
+    position: fixed;
+    z-index: 9999;
+    background: #fff;
+    border: 1px solid rgba(180,40,40,0.2);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(44,26,14,0.15);
+    padding: 14px;
+    width: 200px;
+}
+
+.folder-delete-msg {
+    font-size: 13px;
+    color: #2C1A0E;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
+.folder-delete-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.folder-delete-cancel,
+.folder-delete-confirm {
+    flex: 1;
+    border: none;
+    border-radius: 7px;
+    padding: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.folder-delete-cancel { background: rgba(90,48,2,0.08); color: #5A3002; }
+.folder-delete-confirm { background: #C0392B; color: #fff; }
+.folder-delete-cancel:hover { background: rgba(90,48,2,0.15); }
+.folder-delete-confirm:hover { background: #A93226; }
 
 .emoji-picker-popup {
     position: fixed;

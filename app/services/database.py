@@ -468,6 +468,30 @@ async def get_contents_by_ids(user_id: str, content_ids: list[str]) -> list[dict
         return []
 
 
+async def delete_collection(collection_id: str, user_id: str) -> bool:
+    """폴더 삭제 — 콘텐츠는 유지하고 collection_id만 해제 후 폴더 삭제"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # 1. 해당 폴더에 속한 콘텐츠의 collection_id 해제
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"user_id": f"eq.{user_id}", "collection_id": f"eq.{collection_id}"},
+                json={"collection_id": None},
+            )
+            # 2. 폴더 삭제
+            response = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{collection_id}", "user_id": f"eq.{user_id}"},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 폴더 삭제 오류: {e}")
+        return False
+
+
 async def update_collection_emoji(collection_id: str, user_id: str, emoji: str | None) -> bool:
     """컬렉션 이모티콘 업데이트"""
     try:

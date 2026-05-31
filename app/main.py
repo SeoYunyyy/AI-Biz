@@ -34,6 +34,7 @@ from app.services.database import (
     move_content_collection,
     update_subcategory,
     update_collection_emoji as db_update_collection_emoji,
+    delete_collection as db_delete_collection,
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
@@ -278,6 +279,15 @@ async def patch_collection(collection_id: str, req: CollectionUpdateRequest):
     if not success:
         raise HTTPException(status_code=500, detail="이모티콘 업데이트 실패")
     return {"updated": True}
+
+
+@app.delete("/collections/{collection_id}")
+async def remove_collection(collection_id: str, user_id: str):
+    """폴더 삭제 (콘텐츠는 유지, 폴더 배정만 해제)"""
+    success = await db_delete_collection(collection_id, user_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="폴더 삭제 실패")
+    return {"deleted": True}
 
 
 # ── 콘텐츠 삭제 / 이동 ─────────────────────────────────────────────────────────

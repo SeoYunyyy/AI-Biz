@@ -217,7 +217,10 @@ async function loadCollections() {
             ${data.collections.map(c => `
                 <div class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
                     <span class="group-sidebar-name">${c.emoji ? c.emoji + ' ' : ''}${c.name}</span>
-                    <button class="sidebar-emoji-btn" onclick="event.stopPropagation(); showEmojiPicker(this, '${esc(c.id)}')" title="이모티콘 변경">🎨</button>
+                    <div class="sidebar-action-btns">
+                        <button class="sidebar-emoji-btn" onclick="event.stopPropagation(); showEmojiPicker(this, '${esc(c.id)}')" title="이모티콘 변경">🎨</button>
+                        <button class="sidebar-delete-btn" onclick="event.stopPropagation(); showFolderDeleteConfirm(this, '${esc(c.id)}', '${esc(c.name)}')" title="폴더 삭제">🗑️</button>
+                    </div>
                 </div>
             `).join('')}
         `
@@ -255,6 +258,43 @@ window.showSidebarFolderInput = function(btn) {
 }
 
 const EMOJI_LIST = ['📚','📝','🎵','🎬','🎮','💼','🍎','✈️','💡','📰','🎨','🏃','💰','📱','🔬','🌱','❤️','⭐','🔥','💎','🎯','🔑','🖥️','🎓','📷','🧪','🏠','🎁','📊','🍕','🎵','🎤','🏋️','📌','🗂️','🛒','🌍','🐾','🎪','🏆']
+
+window.showFolderDeleteConfirm = function(btn, collectionId, collectionName) {
+    document.querySelectorAll('.folder-delete-popup').forEach(p => p.remove())
+
+    const popup = document.createElement('div')
+    popup.className = 'folder-delete-popup'
+    popup.innerHTML = `
+        <div class="folder-delete-msg">'${collectionName}' 폴더를 삭제할까요?<br><span style="font-size:11px;color:#9A7055">콘텐츠는 사라지지 않아요</span></div>
+        <div class="folder-delete-actions">
+            <button class="folder-delete-cancel" onclick="this.closest('.folder-delete-popup').remove()">취소</button>
+            <button class="folder-delete-confirm" onclick="deleteCollection('${esc(collectionId)}')">삭제</button>
+        </div>
+    `
+    document.body.appendChild(popup)
+
+    const rect = btn.getBoundingClientRect()
+    popup.style.left = (rect.right + 8) + 'px'
+    popup.style.top  = Math.min(rect.top, window.innerHeight - 120) + 'px'
+
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!popup.contains(e.target) && e.target !== btn) {
+                popup.remove()
+                document.removeEventListener('click', close)
+            }
+        })
+    }, 0)
+}
+
+window.deleteCollection = async function(collectionId) {
+    document.querySelectorAll('.folder-delete-popup').forEach(p => p.remove())
+    try {
+        await fetch(`/collections/${collectionId}?user_id=${getCurrentUserId()}`, { method: 'DELETE' })
+        loadCollections()
+        loadTopFolders()
+    } catch (e) {}
+}
 
 window.showEmojiPicker = function(btn, collectionId) {
     document.querySelectorAll('.emoji-picker-popup').forEach(p => p.remove())
