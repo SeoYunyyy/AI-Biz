@@ -19,6 +19,8 @@ from app.services.database import (
     update_deadline,
     get_collection_items,
     get_contents_by_ids,
+    get_all_subcategories,
+    get_contents_by_subcategory,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -431,37 +433,75 @@ async def _handle_cleanup(user_id: str) -> dict:
 
 _CONTEXTUAL_REFS = ["그거", "이거", "저거", "방금", "그것", "이것", "맞아", "그 거", "이 거"]
 
+async def _llm_pick_folder(query: str, candidates: list[str]) -> str | None:
+    """영어↔한글 등 퍼지 매칭 실패 시 LLM이 목록에서 골라줌"""
+    if not candidates:
+        return None
+    try:
+        raw = await _llm(
+            [{"role": "system", "content":
+                f"아래 폴더 목록 중 사용자가 찾는 것과 가장 일치하는 이름 하나만 정확히 반환해. "
+                f"일치하는 게 없으면 'none'만 반환해.\n목록: {candidates}"},
+             {"role": "user", "content": query}],
+            model="gpt-4o-mini", max_tokens=40,
+        )
+        pick = raw.strip().strip('"').strip("'")
+        return pick if pick in candidates else None
+    except Exception:
+        return None
+
+
 async def _handle_folder_search(user_id: str, source_folder: str) -> dict:
-    """특정 폴더 내 콘텐츠 전체 조회"""
-    collections = await get_collections(user_id)
-    existing_names = [c["name"] for c in collections]
-
+    """컬렉션 → 소분류 → LLM 3단계로 폴더 찾아 콘텐츠 반환"""
     clean = _strip_particles(source_folder)
-    best, ratio = _best_match(clean, existing_names)
 
-    if ratio < 0.45:
-        hint = f" 혹시 '{best}' 폴더를 말씀하시는 건가요?" if best and ratio >= 0.25 else ""
-        return {"answer": f"'{clean}' 폴더를 찾지 못했어요.{hint}", "results": []}
+    # 1단계: 사용자 컬렉션
+    collections = await get_collections(user_id)
+    col_names = [c["name"] for c in collections]
+    best_col, col_ratio = _best_match(clean, col_names)
+    if col_ratio >= 0.45 and best_col:
+        col = next((c for c in collections if c["name"] == best_col), None)
+        if col:
+            items = await get_collection_items(user_id, col["id"])
+            if items:
+                results = [{"id": r["id"], "title": r["title"], "url": r["url"],
+                            "one_line_summary": r.get("one_line_summary", ""),
+                            "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+                           for r in items]
+                return {"answer": f"'{best_col}' 폴더에 콘텐츠 {len(results)}개가 있어요.",
+                        "results": results, "follow_up_questions": []}
 
-    col = next((c for c in collections if c["name"] == best), None)
-    if not col:
-        return {"answer": f"'{clean}' 폴더를 찾지 못했어요.", "results": []}
+    # 2단계: AI 소분류
+    subcats = await get_all_subcategories(user_id)
+    best_sub, sub_ratio = _best_match(clean, subcats)
+    if sub_ratio >= 0.45 and best_sub:
+        items = await get_contents_by_subcategory(user_id, best_sub)
+        if items:
+            results = [{"id": r["id"], "title": r["title"], "url": r["url"],
+                        "one_line_summary": r.get("one_line_summary", ""),
+                        "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+                       for r in items]
+            return {"answer": f"'{best_sub}' 카테고리에 콘텐츠 {len(results)}개가 있어요.",
+                    "results": results, "follow_up_questions": []}
 
-    items = await get_collection_items(user_id, col["id"])
-    if not items:
-        return {"answer": f"'{best}' 폴더에 저장된 콘텐츠가 없어요.", "results": []}
+    # 3단계: LLM으로 영어↔한글 등 매칭 (컬렉션 + 소분류 통합)
+    all_names = col_names + subcats
+    llm_pick = await _llm_pick_folder(clean, all_names)
+    if llm_pick:
+        if llm_pick in col_names:
+            col = next((c for c in collections if c["name"] == llm_pick), None)
+            items = await get_collection_items(user_id, col["id"]) if col else []
+        else:
+            items = await get_contents_by_subcategory(user_id, llm_pick)
+        if items:
+            results = [{"id": r["id"], "title": r["title"], "url": r["url"],
+                        "one_line_summary": r.get("one_line_summary", ""),
+                        "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+                       for r in items]
+            return {"answer": f"'{llm_pick}'에 콘텐츠 {len(results)}개가 있어요.",
+                    "results": results, "follow_up_questions": []}
 
-    results = [
-        {"id": r["id"], "title": r["title"], "url": r["url"],
-         "one_line_summary": r.get("one_line_summary", ""),
-         "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
-        for r in items
-    ]
-    return {
-        "answer": f"'{best}' 폴더에 콘텐츠 {len(results)}개가 있어요.",
-        "results": results,
-        "follow_up_questions": [],
-    }
+    return {"answer": f"'{clean}' 폴더를 찾지 못했어요. 폴더 이름을 다시 확인해주세요.", "results": []}
 
 
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:

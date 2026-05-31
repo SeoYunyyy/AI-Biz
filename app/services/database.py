@@ -445,6 +445,48 @@ async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
         return []
 
 
+async def get_all_subcategories(user_id: str) -> list[str]:
+    """유저의 전체 소분류 목록 (중복 제거)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "sub_category",
+                },
+            )
+            response.raise_for_status()
+            return list({r["sub_category"] for r in response.json() if r.get("sub_category")})
+    except httpx.HTTPError as e:
+        print(f"[database] 소분류 목록 조회 오류: {e}")
+        return []
+
+
+async def get_contents_by_subcategory(user_id: str, sub_category: str) -> list[dict]:
+    """소분류로 콘텐츠 조회"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "sub_category": f"eq.{sub_category}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,url,one_line_summary,thumbnail_url",
+                    "order": "saved_at.desc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 소분류 콘텐츠 조회 오류: {e}")
+        return []
+
+
 async def get_contents_by_ids(user_id: str, content_ids: list[str]) -> list[dict]:
     """ID 목록으로 콘텐츠 조회 (이동 확인용)"""
     if not content_ids:
