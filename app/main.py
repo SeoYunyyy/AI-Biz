@@ -157,11 +157,10 @@ async def ingest(req: IngestRequest):
         # 유사 콘텐츠 리마인드 메시지 생성
         reminder_message = None
         if similar:
-            top_title = similar[0].get("title", "")
             if len(similar) == 1:
-                reminder_message = f"'{top_title}'과 비슷한 내용을 저장한 적 있어요."
+                reminder_message = "유사한 콘텐츠를 저장한 적 있어요."
             else:
-                reminder_message = f"'{top_title}' 등 {len(similar)}개의 비슷한 내용을 저장한 적 있어요."
+                reminder_message = f"유사한 콘텐츠 {len(similar)}개를 저장한 적 있어요."
 
         has_deadline = analysis.get("has_deadline", False)
         deadline_note = analysis.get("deadline_note")

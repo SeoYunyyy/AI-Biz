@@ -389,7 +389,9 @@ async function sendChat(chatCollectionId) {
                     if (data.reminder_message && urls.length === 1) {
                         const reminderEl = document.createElement('div')
                         reminderEl.className = 'chat-msg ai'
-                        reminderEl.textContent = data.reminder_message
+                        const similar = data.similar_contents || []
+                        reminderEl.innerHTML = data.reminder_message
+                            + (similar.length ? buildResultCards(similar) : '')
                         chatMessages.appendChild(reminderEl)
                     }
                 }
