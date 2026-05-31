@@ -32,22 +32,29 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
-- move     : 콘텐츠를 다른 폴더로 이동 ("OO 폴더로 옮겨줘", "폴더 위치 바꿔줘", "묶어줘" 등)
+- move     : 콘텐츠를 다른 폴더로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
+             목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
 - delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등)
 - deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정
 - general  : 그 외
+
+중요 규칙:
+- "OO에 있는 링크 다른 폴더로 옮기고 싶음" → intent="move", source_folder="OO", target_folder=null
+- "OO 폴더에서 PP 폴더로 옮겨줘" → intent="move", source_folder="OO", target_folder="PP"
+- source_folder는 현재 메시지에서 "~에서", "~에 있는" 형태로 출처를 명시한 경우만 추출. 조사(에, 에서, 의 등)는 제외하고 이름만.
+- target_folder는 구체적인 폴더명이 없으면 반드시 null.
 
 응답 형식:
 {"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "second_intent": null, "second_query": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
-source_folder: "OO 폴더에서", "OO에 있는" 처럼 출처 폴더를 명시한 경우 그 이름 (예: "노래", "음악")
+source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
-target_folder: 이동 목적지 폴더명
-second_intent: 메시지에 두 가지 요청이 있을 때 두 번째 의도 ("delete"/"move"/"search" 등), 없으면 null
-second_query: 두 번째 요청의 핵심 키워드, 없으면 null
+target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
+second_intent: 두 번째 의도, 없으면 null
+second_query: 두 번째 요청 키워드, 없으면 null
 deadline_edit_type: "remove" 또는 "update"
 deadline_edit_date: YYYY-MM-DD
 deadline_edit_note: 마감 설명"""

@@ -1047,7 +1047,13 @@ async function showArchiveItems(category, subcategory) {
                     ${tags.length ? `<div class="archive-item-tags">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
                         <span class="archive-item-meta">${date}</span>
-                        <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
+                            <div class="panel-move-wrap">
+                                <button class="panel-move-btn" onclick="showPanelMoveDropdown(this, '${esc(item.id)}')">폴더 이동 ▾</button>
+                                <div class="panel-move-dropdown"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `
