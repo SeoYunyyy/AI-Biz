@@ -39,22 +39,27 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
 - delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등)
 - deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정
+- merge    : 같은 이름의 소분류/카테고리가 여러 대분류에 흩어져 있을 때 하나로 합치기.
+             "합치다", "합쳐줘", "통합", "하나로", "합쳐", "묶어" 등 포함.
 - general  : 그 외
 
 중요 규칙:
 - "OO에 있는 링크 다른 폴더로 옮기고 싶음" → intent="move", source_folder="OO", target_folder=null
 - "OO 폴더에서 PP 폴더로 옮겨줘" → intent="move", source_folder="OO", target_folder="PP"
+- "주식 둘이 합치고 싶어" / "주식 합쳐줘" → intent="merge", merge_target="주식"
 - source_folder는 현재 메시지에서 "~에서", "~에 있는" 형태로 출처를 명시한 경우만 추출. 조사(에, 에서, 의 등)는 제외하고 이름만.
 - target_folder는 구체적인 폴더명이 없으면 반드시 null.
+- merge_target: 합칠 대상 이름 (예: "주식")
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "second_intent": null, "second_query": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "second_intent": null, "second_query": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
 source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
 target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
+merge_target: 합칠 대상 이름 (예: "주식")
 second_intent: 두 번째 의도, 없으면 null
 second_query: 두 번째 요청 키워드, 없으면 null
 deadline_edit_type: "remove" 또는 "update"
@@ -612,6 +617,38 @@ async def _handle_move_no_target(user_id: str, source_folder: str | None, shown_
     }
 
 
+async def _handle_merge(user_id: str, merge_target: str) -> dict:
+    """여러 대분류에 흩어진 같은 소분류명 콘텐츠를 하나의 컬렉션으로 합치기"""
+    clean = _strip_particles(merge_target)
+
+    # 소분류에서 찾기
+    items = await get_contents_by_subcategory(user_id, clean)
+
+    # 퍼지 매칭 시도
+    if not items:
+        subcats = await get_all_subcategories(user_id)
+        best, ratio = _best_match(clean, subcats)
+        if ratio >= 0.45 and best:
+            items = await get_contents_by_subcategory(user_id, best)
+            clean = best
+
+    if not items:
+        return {"answer": f"'{clean}' 관련 콘텐츠를 찾지 못했어요.", "results": []}
+
+    results = [{"id": r["id"], "title": r["title"], "url": r["url"],
+                "one_line_summary": r.get("one_line_summary", ""),
+                "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+               for r in items]
+    titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in items])
+    return {
+        "answer": f"여러 분류에 흩어진 '{clean}' 콘텐츠 {len(items)}개를 찾았어요:\n{titles}\n\n이 항목들을 '{clean}' 폴더 하나로 합칠까요?",
+        "needs_confirmation": True,
+        "pending_move_ids": [r["id"] for r in items],
+        "target_folder": clean,
+        "results": results,
+    }
+
+
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
@@ -769,6 +806,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     source_folder = intent_data.get("source_folder")
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
+    merge_target = intent_data.get("merge_target")
     deadline_edit_type = intent_data.get("deadline_edit_type")
     deadline_edit_date = intent_data.get("deadline_edit_date")
     deadline_edit_note = intent_data.get("deadline_edit_note")
@@ -788,6 +826,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         result = await _handle_folder(user_id, folder_name)
     elif intent == "cleanup":
         result = await _handle_cleanup(user_id)
+    elif intent == "merge" and merge_target:
+        result = await _handle_merge(user_id, merge_target)
     elif intent == "move" and target_folder:
         result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
     elif intent == "move" and (source_folder or shown_ids):
