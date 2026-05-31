@@ -272,6 +272,78 @@ nav {
 
 .emoji-remove-btn:hover { background: rgba(90,48,2,0.07); }
 
+/* ── 패널 카드 이동 버튼 ── */
+.panel-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.panel-move-wrap { position: relative; }
+
+.panel-move-btn {
+    background: none;
+    border: 1px solid rgba(90,48,2,0.18);
+    border-radius: 7px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #9A7055;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.panel-move-btn:hover { background: rgba(90,48,2,0.07); color: #5A3002; }
+
+.panel-move-dropdown {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 300;
+    background: #fff;
+    border: 1px solid rgba(90,48,2,0.15);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(44,26,14,0.13);
+    min-width: 140px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.panel-move-dropdown.open { display: block; }
+
+.panel-move-option {
+    padding: 7px 12px;
+    font-size: 13px;
+    color: #2C1A0E;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.panel-move-option:hover { background: rgba(90,48,2,0.08); }
+
+/* ── 채팅 폴더 선택 이동 UI ── */
+.folder-pick-select {
+    width: 100%;
+    margin-top: 10px;
+    padding: 7px 10px;
+    border: 1.5px solid rgba(90,48,2,0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fdf8f5;
+    color: #2C1A0E;
+    outline: none;
+    cursor: pointer;
+}
+
+.folder-pick-select:focus { border-color: #5A3002; }
+
 .group-sidebar-count {
     font-size: 11px;
     color: #9A7055;

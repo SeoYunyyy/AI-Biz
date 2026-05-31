@@ -504,6 +504,63 @@ async def _handle_folder_search(user_id: str, source_folder: str) -> dict:
     return {"answer": f"'{clean}' 폴더를 찾지 못했어요. 폴더 이름을 다시 확인해주세요.", "results": []}
 
 
+async def _resolve_folder_items(user_id: str, source_folder: str | None, shown_ids: list[str]) -> tuple[list[dict], str]:
+    """source_folder 또는 shown_ids로 이동 대상 콘텐츠 찾기. (items, found_name) 반환"""
+    if shown_ids and not source_folder:
+        items = await get_contents_by_ids(user_id, list(shown_ids))
+        return items, "이전에 찾은 콘텐츠"
+
+    if source_folder:
+        collections = await get_collections(user_id)
+        col_names = [c["name"] for c in collections]
+        clean = _strip_particles(source_folder)
+
+        best_col, col_ratio = _best_match(clean, col_names)
+        if col_ratio >= 0.45 and best_col:
+            col = next((c for c in collections if c["name"] == best_col), None)
+            if col:
+                items = await get_collection_items(user_id, col["id"])
+                return items, best_col
+
+        subcats = await get_all_subcategories(user_id)
+        best_sub, sub_ratio = _best_match(clean, subcats)
+        if sub_ratio >= 0.45 and best_sub:
+            items = await get_contents_by_subcategory(user_id, best_sub)
+            return items, best_sub
+
+        all_names = col_names + subcats
+        llm_pick = await _llm_pick_folder(clean, all_names) if all_names else None
+        if llm_pick:
+            if llm_pick in col_names:
+                col = next((c for c in collections if c["name"] == llm_pick), None)
+                items = await get_collection_items(user_id, col["id"]) if col else []
+            else:
+                items = await get_contents_by_subcategory(user_id, llm_pick)
+            return items, llm_pick
+
+    return [], source_folder or ""
+
+
+async def _handle_move_no_target(user_id: str, source_folder: str | None, shown_ids: list[str]) -> dict:
+    """target 폴더 미지정 → 아이템 찾고 폴더 선택 UI 반환"""
+    items, found_name = await _resolve_folder_items(user_id, source_folder, shown_ids)
+    if not items:
+        label = source_folder or "이전 검색"
+        return {"answer": f"'{label}'에서 이동할 콘텐츠를 찾지 못했어요.", "results": []}
+
+    results = [{"id": r["id"], "title": r["title"], "url": r["url"],
+                "one_line_summary": r.get("one_line_summary", ""),
+                "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+               for r in items]
+    return {
+        "answer": f"'{found_name}'의 콘텐츠 {len(results)}개를 어느 폴더로 옮길까요?",
+        "needs_folder_pick": True,
+        "pending_move_ids": [r["id"] for r in results],
+        "results": results,
+        "follow_up_questions": [],
+    }
+
+
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
@@ -691,6 +748,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         result = await _handle_cleanup(user_id)
     elif intent == "move" and target_folder:
         result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
+    elif intent == "move" and (source_folder or shown_ids):
+        result = await _handle_move_no_target(user_id, source_folder, shown_ids)
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query, source_folder)
     else:
