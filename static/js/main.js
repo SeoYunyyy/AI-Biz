@@ -195,6 +195,7 @@ async function openCategoryPanel(category, subcategory) {
                             <button class="panel-move-btn" onclick="showPanelMoveDropdown(this, '${esc(item.id)}')">폴더 이동 ▾</button>
                             <div class="panel-move-dropdown"></div>
                         </div>
+                        <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
                     </div>
                 </div>
             `
@@ -373,6 +374,7 @@ async function openCollectionPanel(collectionId, name) {
                             <button class="panel-move-btn" onclick="showPanelMoveDropdown(this, '${esc(item.id)}')">폴더 이동 ▾</button>
                             <div class="panel-move-dropdown"></div>
                         </div>
+                        <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
                     </div>
                 </div>
             `
@@ -880,6 +882,26 @@ window.executeMoveWithPicker = async function(btn, selectId) {
     } catch (e) { btn.disabled = false; btn.textContent = '이동' }
 }
 
+window.panelDeleteItem = async function(contentId, btn) {
+    const card = btn.closest('.panel-item-card, .archive-item-card')
+    const title = card?.querySelector('.panel-item-title, .archive-item-title')?.textContent || '이 항목'
+
+    if (!confirm(`'${title}'\n\n정말 삭제할까요?`)) return
+
+    btn.disabled = true
+    try {
+        const res = await fetch(`/contents/${contentId}?user_id=${getCurrentUserId()}`, { method: 'DELETE' })
+        if (res.ok) {
+            card?.remove()
+        } else {
+            throw new Error()
+        }
+    } catch (e) {
+        alert('삭제에 실패했어요. 다시 시도해주세요.')
+        btn.disabled = false
+    }
+}
+
 window._mergePending = {}
 
 function buildMergePicker(data) {
@@ -1136,6 +1158,7 @@ async function showArchiveItems(category, subcategory) {
                                 <button class="panel-move-btn" onclick="showPanelMoveDropdown(this, '${esc(item.id)}')">폴더 이동 ▾</button>
                                 <div class="panel-move-dropdown"></div>
                             </div>
+                            <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
                         </div>
                     </div>
                 </div>

@@ -36,8 +36,11 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
 - move     : 콘텐츠를 다른 폴더로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
              목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null
-- cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청
-- delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등)
+- cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청.
+             "기간 마감된", "만료된 링크", "기한 지난", "마감 지난", "기한 넘긴", "expired" 포함.
+             → 반드시 cleanup으로 분류할 것. delete와 혼동하지 말 것.
+- delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등).
+             단, "기간 마감된", "만료된" 같은 표현은 cleanup으로 분류할 것.
 - deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정
 - merge    : 같은 이름의 소분류/카테고리가 여러 대분류에 흩어져 있을 때 하나로 합치기.
              "합치다", "합쳐줘", "통합", "하나로", "합쳐", "묶어" 등 포함.
@@ -405,7 +408,7 @@ async def _handle_folder(user_id: str, folder_name: str) -> dict:
     }
 
 
-async def _handle_cleanup(user_id: str) -> dict:
+async def _handle_cleanup(user_id: str, wants_delete: bool = False) -> dict:
     deadlines = await get_deadlines(user_id)
     today = datetime.now(timezone.utc).date().isoformat()
     expired = [d for d in deadlines if (d.get("deadline_date") or "9999") < today]
@@ -413,6 +416,20 @@ async def _handle_cleanup(user_id: str) -> dict:
 
     if not expired and not old_contents:
         return {"answer": "정리할 콘텐츠가 없어요. 저장 목록이 깔끔하네요!", "results": []}
+
+    # 삭제 요청이 포함되어 있고 만료 항목이 있으면 바로 삭제 확인 UI
+    if wants_delete and expired:
+        results = [{"id": d["id"], "title": d.get("title", ""), "url": d.get("url", ""),
+                    "one_line_summary": d.get("one_line_summary", "") or f"마감: {d.get('deadline_date', '')} 만료",
+                    "thumbnail_url": d.get("thumbnail_url", ""), "similarity": 1.0}
+                   for d in expired[:10]]
+        titles = "\n".join([f"- {r['title']}" for r in results])
+        return {
+            "answer": f"마감 기한이 지난 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n삭제할까요?",
+            "needs_confirmation": True,
+            "pending_delete_ids": [r["id"] for r in results],
+            "results": results,
+        }
 
     context_parts = []
     if expired:
@@ -836,7 +853,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "folder" and folder_name:
         result = await _handle_folder(user_id, folder_name)
     elif intent == "cleanup":
-        result = await _handle_cleanup(user_id)
+        wants_delete = any(w in query for w in ["삭제", "지워", "없애", "제거"])
+        result = await _handle_cleanup(user_id, wants_delete=wants_delete)
     elif intent == "merge" and merge_target:
         result = await _handle_merge(user_id, merge_target)
     elif intent == "move" and target_folder:
