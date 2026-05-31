@@ -445,6 +445,23 @@ async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
         return []
 
 
+async def update_collection_emoji(collection_id: str, user_id: str, emoji: str | None) -> bool:
+    """컬렉션 이모티콘 업데이트"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/collections",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{collection_id}", "user_id": f"eq.{user_id}"},
+                json={"emoji": emoji},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 이모티콘 업데이트 오류: {e}")
+        return False
+
+
 async def update_deadline(content_id: str, user_id: str, has_deadline: bool, deadline_date: str | None, deadline_note: str | None) -> bool:
     """마감기한 수정 (채팅에서 사용자가 정정할 때)"""
     try:

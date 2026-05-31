@@ -217,6 +217,7 @@ async function loadCollections() {
             ${data.collections.map(c => `
                 <div class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
                     <span class="group-sidebar-name">${c.emoji ? c.emoji + ' ' : ''}${c.name}</span>
+                    <button class="sidebar-emoji-btn" onclick="event.stopPropagation(); showEmojiPicker(this, '${esc(c.id)}')" title="이모티콘 변경">🎨</button>
                 </div>
             `).join('')}
         `
@@ -251,6 +252,43 @@ window.showSidebarFolderInput = function(btn) {
         if (e.key === 'Escape') { input.remove(); btn.style.display = '' }
     })
     input.addEventListener('blur', () => setTimeout(() => { if (document.contains(input)) { input.remove(); btn.style.display = '' } }, 150))
+}
+
+const EMOJI_LIST = ['📚','📝','🎵','🎬','🎮','💼','🍎','✈️','💡','📰','🎨','🏃','💰','📱','🔬','🌱','❤️','⭐','🔥','💎','🎯','🔑','🖥️','🎓','📷','🧪','🏠','🎁','📊','🍕','🎵','🎤','🏋️','📌','🗂️','🛒','🌍','🐾','🎪','🏆']
+
+window.showEmojiPicker = function(btn, collectionId) {
+    document.querySelectorAll('.emoji-picker-popup').forEach(p => p.remove())
+
+    const picker = document.createElement('div')
+    picker.className = 'emoji-picker-popup'
+    picker.innerHTML = `
+        <div class="emoji-picker-grid">
+            ${EMOJI_LIST.map(e => `<button class="emoji-pick-btn" onclick="setCollectionEmoji('${collectionId}', '${e}')">${e}</button>`).join('')}
+        </div>
+        <button class="emoji-remove-btn" onclick="setCollectionEmoji('${collectionId}', null)">✕ 제거</button>
+    `
+    btn.closest('.group-sidebar-item').appendChild(picker)
+
+    setTimeout(() => {
+        document.addEventListener('click', function closePicker(e) {
+            if (!picker.contains(e.target) && e.target !== btn) {
+                picker.remove()
+                document.removeEventListener('click', closePicker)
+            }
+        })
+    }, 0)
+}
+
+window.setCollectionEmoji = async function(collectionId, emoji) {
+    document.querySelectorAll('.emoji-picker-popup').forEach(p => p.remove())
+    try {
+        await fetch(`/collections/${collectionId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), emoji: emoji || null })
+        })
+        loadCollections()
+    } catch (e) {}
 }
 
 // ── 컬렉션 상세 패널 열기 ──

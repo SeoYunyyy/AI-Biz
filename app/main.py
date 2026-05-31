@@ -31,6 +31,7 @@ from app.services.database import (
     update_ai_fields,
     move_content_collection,
     update_subcategory,
+    update_collection_emoji as db_update_collection_emoji,
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
@@ -261,6 +262,20 @@ async def create_collection(user_id: str, name: str):
     if not collection_id:
         raise HTTPException(status_code=500, detail="폴더 생성 실패")
     return {"collection_id": collection_id, "name": name}
+
+
+class CollectionUpdateRequest(BaseModel):
+    user_id: str
+    emoji: str | None = None
+
+
+@app.patch("/collections/{collection_id}")
+async def patch_collection(collection_id: str, req: CollectionUpdateRequest):
+    """폴더 이모티콘 변경"""
+    success = await db_update_collection_emoji(collection_id, req.user_id, req.emoji)
+    if not success:
+        raise HTTPException(status_code=500, detail="이모티콘 업데이트 실패")
+    return {"updated": True}
 
 
 # ── 콘텐츠 삭제 / 이동 ─────────────────────────────────────────────────────────
