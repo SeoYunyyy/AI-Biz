@@ -21,6 +21,8 @@ from app.services.database import (
     get_contents_by_ids,
     get_all_subcategories,
     get_contents_by_subcategory,
+    get_all_categories,
+    get_contents_by_category,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -458,9 +460,20 @@ async def _llm_pick_folder(query: str, candidates: list[str]) -> str | None:
         return None
 
 
-async def _handle_folder_search(user_id: str, source_folder: str) -> dict:
-    """컬렉션 → 소분류 → LLM 3단계로 폴더 찾아 콘텐츠 반환"""
+def _items_to_results(items: list[dict]) -> list[dict]:
+    return [{"id": r["id"], "title": r["title"], "url": r["url"],
+             "one_line_summary": r.get("one_line_summary", ""),
+             "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+            for r in items]
+
+
+async def _handle_folder_search(user_id: str, source_folder: str, extra_query: str = "") -> dict:
+    """컬렉션 → 소분류 → 대분류 → LLM 4단계로 폴더 찾아 콘텐츠 반환.
+    extra_query가 있으면 폴더 내에서 벡터 검색으로 좁힘."""
     clean = _strip_particles(source_folder)
+
+    items: list[dict] = []
+    found_label: str = ""
 
     # 1단계: 사용자 컬렉션
     collections = await get_collections(user_id)
@@ -470,45 +483,61 @@ async def _handle_folder_search(user_id: str, source_folder: str) -> dict:
         col = next((c for c in collections if c["name"] == best_col), None)
         if col:
             items = await get_collection_items(user_id, col["id"])
-            if items:
-                results = [{"id": r["id"], "title": r["title"], "url": r["url"],
-                            "one_line_summary": r.get("one_line_summary", ""),
-                            "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
-                           for r in items]
-                return {"answer": f"'{best_col}' 폴더에 콘텐츠 {len(results)}개가 있어요.",
-                        "results": results, "follow_up_questions": []}
+            found_label = best_col
 
     # 2단계: AI 소분류
-    subcats = await get_all_subcategories(user_id)
-    best_sub, sub_ratio = _best_match(clean, subcats)
-    if sub_ratio >= 0.45 and best_sub:
-        items = await get_contents_by_subcategory(user_id, best_sub)
-        if items:
-            results = [{"id": r["id"], "title": r["title"], "url": r["url"],
-                        "one_line_summary": r.get("one_line_summary", ""),
-                        "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
-                       for r in items]
-            return {"answer": f"'{best_sub}' 카테고리에 콘텐츠 {len(results)}개가 있어요.",
-                    "results": results, "follow_up_questions": []}
+    if not items:
+        subcats = await get_all_subcategories(user_id)
+        best_sub, sub_ratio = _best_match(clean, subcats)
+        if sub_ratio >= 0.45 and best_sub:
+            items = await get_contents_by_subcategory(user_id, best_sub)
+            found_label = best_sub
 
-    # 3단계: LLM으로 영어↔한글 등 매칭 (컬렉션 + 소분류 통합)
-    all_names = col_names + subcats
-    llm_pick = await _llm_pick_folder(clean, all_names)
-    if llm_pick:
-        if llm_pick in col_names:
-            col = next((c for c in collections if c["name"] == llm_pick), None)
-            items = await get_collection_items(user_id, col["id"]) if col else []
-        else:
-            items = await get_contents_by_subcategory(user_id, llm_pick)
-        if items:
-            results = [{"id": r["id"], "title": r["title"], "url": r["url"],
-                        "one_line_summary": r.get("one_line_summary", ""),
-                        "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
-                       for r in items]
-            return {"answer": f"'{llm_pick}'에 콘텐츠 {len(results)}개가 있어요.",
-                    "results": results, "follow_up_questions": []}
+    # 3단계: AI 대분류 (음악, IT/기술 등)
+    if not items:
+        cats = await get_all_categories(user_id)
+        best_cat, cat_ratio = _best_match(clean, cats)
+        if cat_ratio >= 0.45 and best_cat:
+            items = await get_contents_by_category(user_id, best_cat)
+            found_label = best_cat
 
-    return {"answer": f"'{clean}' 폴더를 찾지 못했어요. 폴더 이름을 다시 확인해주세요.", "results": []}
+    # 4단계: LLM (영어↔한글 등)
+    if not items:
+        if 'subcats' not in locals():
+            subcats = await get_all_subcategories(user_id)
+        if 'cats' not in locals():
+            cats = await get_all_categories(user_id)
+        all_names = col_names + subcats + cats
+        llm_pick = await _llm_pick_folder(clean, all_names)
+        if llm_pick:
+            if llm_pick in col_names:
+                col = next((c for c in collections if c["name"] == llm_pick), None)
+                items = await get_collection_items(user_id, col["id"]) if col else []
+            elif llm_pick in cats:
+                items = await get_contents_by_category(user_id, llm_pick)
+            else:
+                items = await get_contents_by_subcategory(user_id, llm_pick)
+            found_label = llm_pick
+
+    if not items:
+        return {"answer": f"'{clean}' 폴더를 찾지 못했어요. 폴더 이름을 다시 확인해주세요.", "results": []}
+
+    # 추가 검색어가 있으면 폴더 내에서 벡터 검색으로 좁히기
+    if extra_query and extra_query.strip():
+        item_ids = {r["id"] for r in items}
+        expanded = await expand_query(extra_query)
+        embedding = await generate_embedding(expanded)
+        if embedding:
+            raw = await search_contents(user_id, embedding, limit=20, threshold=0.2)
+            narrowed = [r for r in raw if r.get("id") in item_ids]
+            if narrowed:
+                results = _items_to_results(narrowed[:5])
+                return {"answer": f"'{found_label}'에서 '{extra_query}' 관련 콘텐츠 {len(results)}개 찾았어요. 이거 맞나요?",
+                        "results": results, "follow_up_questions": ["맞아요", "아니요, 다른 거예요"]}
+
+    results = _items_to_results(items)
+    return {"answer": f"'{found_label}'에 콘텐츠 {len(results)}개가 있어요.",
+            "results": results[:10], "follow_up_questions": []}
 
 
 async def _resolve_folder_items(user_id: str, source_folder: str | None, shown_ids: list[str]) -> tuple[list[dict], str]:
@@ -535,12 +564,20 @@ async def _resolve_folder_items(user_id: str, source_folder: str | None, shown_i
             items = await get_contents_by_subcategory(user_id, best_sub)
             return items, best_sub
 
-        all_names = col_names + subcats
+        cats = await get_all_categories(user_id)
+        best_cat, cat_ratio = _best_match(clean, cats)
+        if cat_ratio >= 0.45 and best_cat:
+            items = await get_contents_by_category(user_id, best_cat)
+            return items, best_cat
+
+        all_names = col_names + subcats + cats
         llm_pick = await _llm_pick_folder(clean, all_names) if all_names else None
         if llm_pick:
             if llm_pick in col_names:
                 col = next((c for c in collections if c["name"] == llm_pick), None)
                 items = await get_collection_items(user_id, col["id"]) if col else []
+            elif llm_pick in cats:
+                items = await get_contents_by_category(user_id, llm_pick)
             else:
                 items = await get_contents_by_subcategory(user_id, llm_pick)
             return items, llm_pick
@@ -605,28 +642,19 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str, source
                 "results": results,
             }
 
-    # source_folder 명시된 경우 → 해당 폴더 전체 아이템 이동
+    # source_folder 명시된 경우 → 해당 폴더 전체 아이템 이동 (컬렉션→소분류→대분류 순)
     if source_folder:
-        clean_source = _strip_particles(source_folder)
-        best_src, src_ratio = _best_match(clean_source, existing_names)
-
-        if src_ratio < 0.45:
-            hint = f" 혹시 '{best_src}' 폴더를 말씀하시는 건가요?" if best_src and src_ratio >= 0.25 else ""
-            return {"answer": f"'{clean_source}' 폴더를 찾지 못했어요.{hint}", "results": []}
-
-        source_col = next((c for c in collections if c["name"] == best_src), None)
-        if not source_col:
+        src_items, src_label = await _resolve_folder_items(user_id, source_folder, [])
+        if not src_items:
+            clean_source = _strip_particles(source_folder)
             return {"answer": f"'{clean_source}' 폴더를 찾지 못했어요.", "results": []}
-        results = await get_collection_items(user_id, source_col["id"])
-        if not results:
-            return {"answer": f"'{best_src}' 폴더에 콘텐츠가 없어요.", "results": []}
-        titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
+        titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in src_items])
         return {
-            "answer": f"'{best_src}' 폴더의 콘텐츠 {len(results)}개를 '{matched_folder}' 폴더로 이동할까요?\n{titles}",
+            "answer": f"'{src_label}' 폴더의 콘텐츠 {len(src_items)}개를 '{matched_folder}' 폴더로 이동할까요?\n{titles}",
             "needs_confirmation": True,
-            "pending_move_ids": [r["id"] for r in results],
+            "pending_move_ids": [r["id"] for r in src_items],
             "target_folder": matched_folder,
-            "results": results,
+            "results": src_items,
         }
 
     # 키워드 벡터 검색 + LLM 필터
@@ -744,7 +772,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
     elif intent == "search":
         if source_folder:
-            result = await _handle_folder_search(user_id, source_folder)
+            # source_folder 외의 나머지 쿼리를 추가 검색어로 전달
+            result = await _handle_folder_search(user_id, source_folder, extra_query=query)
         else:
             result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":

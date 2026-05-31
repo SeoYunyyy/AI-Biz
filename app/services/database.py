@@ -504,6 +504,48 @@ async def get_contents_by_ids(user_id: str, content_ids: list[str]) -> list[dict
         return []
 
 
+async def get_all_categories(user_id: str) -> list[str]:
+    """유저의 전체 대분류 목록 (중복 제거)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "category",
+                },
+            )
+            response.raise_for_status()
+            return list({r["category"] for r in response.json() if r.get("category")})
+    except httpx.HTTPError as e:
+        print(f"[database] 대분류 목록 조회 오류: {e}")
+        return []
+
+
+async def get_contents_by_category(user_id: str, category: str) -> list[dict]:
+    """대분류로 콘텐츠 조회"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "category": f"eq.{category}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,url,one_line_summary,thumbnail_url",
+                    "order": "saved_at.desc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 대분류 콘텐츠 조회 오류: {e}")
+        return []
+
+
 async def delete_collection(collection_id: str, user_id: str) -> bool:
     """폴더 삭제 — 콘텐츠는 유지하고 collection_id만 해제 후 폴더 삭제"""
     try:
