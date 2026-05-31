@@ -174,16 +174,14 @@ nav {
 .sidebar-emoji-btn:hover { opacity: 1; background: rgba(90,48,2,0.1); }
 
 .emoji-picker-popup {
-    position: absolute;
-    left: 0;
-    top: calc(100% + 4px);
-    z-index: 200;
+    position: fixed;
+    z-index: 9999;
     background: #fff;
     border: 1px solid rgba(90,48,2,0.15);
     border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(44,26,14,0.15);
+    box-shadow: 0 8px 24px rgba(44,26,14,0.18);
     padding: 10px;
-    width: 220px;
+    width: 224px;
 }
 
 .emoji-picker-grid {

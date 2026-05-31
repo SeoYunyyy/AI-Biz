@@ -265,9 +265,19 @@ window.showEmojiPicker = function(btn, collectionId) {
         <div class="emoji-picker-grid">
             ${EMOJI_LIST.map(e => `<button class="emoji-pick-btn" onclick="setCollectionEmoji('${collectionId}', '${e}')">${e}</button>`).join('')}
         </div>
-        <button class="emoji-remove-btn" onclick="setCollectionEmoji('${collectionId}', null)">✕ 제거</button>
+        <button class="emoji-remove-btn" onclick="setCollectionEmoji('${collectionId}', null)">✕ 이모티콘 제거</button>
     `
-    btn.closest('.group-sidebar-item').appendChild(picker)
+
+    // body에 fixed로 붙여서 사이드바 레이아웃 영향 없앰
+    document.body.appendChild(picker)
+
+    // 버튼 위치 기준으로 팝업 좌표 계산
+    const rect = btn.getBoundingClientRect()
+    const pickerW = 224
+    let left = rect.right + 8
+    if (left + pickerW > window.innerWidth) left = rect.left - pickerW - 8
+    picker.style.left = left + 'px'
+    picker.style.top  = Math.min(rect.top, window.innerHeight - 280) + 'px'
 
     setTimeout(() => {
         document.addEventListener('click', function closePicker(e) {
