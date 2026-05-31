@@ -508,10 +508,20 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str, source
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
 
-    # target 폴더: 조사 제거 후 매칭
+    # target 폴더: 조사 제거 → 컬렉션 퍼지 → 소분류 퍼지 → LLM 순으로 해석
     clean_target = _strip_particles(target_folder)
     best_tgt, tgt_ratio = _best_match(clean_target, existing_names)
-    matched_folder = best_tgt if tgt_ratio >= 0.45 else clean_target
+    if tgt_ratio >= 0.45 and best_tgt:
+        matched_folder = best_tgt
+    else:
+        subcats = await get_all_subcategories(user_id)
+        best_sub, sub_ratio = _best_match(clean_target, subcats)
+        if sub_ratio >= 0.45 and best_sub:
+            matched_folder = best_sub
+        else:
+            all_names = existing_names + subcats
+            llm_pick = await _llm_pick_folder(clean_target, all_names) if all_names else None
+            matched_folder = llm_pick if llm_pick else clean_target
 
     # shown_ids 우선: 맥락적 참조("그거", "그 링크" 등)면 source_folder보다 먼저 처리
     is_contextual = (

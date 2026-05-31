@@ -193,33 +193,27 @@ async def get_deadlines(user_id: str) -> list[dict]:
 # ── 컬렉션(폴더) ───────────────────────────────────────────────────────────────
 
 async def get_or_create_collection(user_id: str, name: str) -> str | None:
-    """폴더 이름으로 조회, 없으면 생성해서 collection_id 반환"""
+    """폴더 이름으로 조회(대소문자/공백 무시), 없으면 생성해서 collection_id 반환"""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # 전체 목록을 받아서 대소문자/공백 무시 비교
             response = await client.get(
                 f"{SUPABASE_URL}/rest/v1/collections",
                 headers=_headers(),
-                params={
-                    "user_id": f"eq.{user_id}",
-                    "name": f"eq.{name}",
-                    "select": "id",
-                    "limit": "1",
-                },
+                params={"user_id": f"eq.{user_id}", "select": "id,name"},
             )
             response.raise_for_status()
-            data = response.json()
+            existing = response.json()
 
-            if data:
-                return data[0]["id"]
+            name_key = name.strip().replace(" ", "").lower()
+            for col in existing:
+                if col["name"].strip().replace(" ", "").lower() == name_key:
+                    return col["id"]
 
             response = await client.post(
                 f"{SUPABASE_URL}/rest/v1/collections",
                 headers={**_headers(), "Prefer": "return=representation"},
-                json={
-                    "user_id": user_id,
-                    "name": name,
-                    "is_user_renamed": True,
-                },
+                json={"user_id": user_id, "name": name, "is_user_renamed": True},
             )
             response.raise_for_status()
             created = response.json()
