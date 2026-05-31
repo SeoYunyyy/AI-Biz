@@ -1,16 +1,18 @@
 # app/routes/auth.py
-
 import os
+from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from passlib.context import CryptContext
+from fastapi.responses import RedirectResponse
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+KAKAO_CLIENT_ID     = os.getenv("KAKAO_CLIENT_ID", "")
+KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "")
+KAKAO_REDIRECT_URI  = os.getenv("KAKAO_REDIRECT_URI", "http://localhost:8000/auth/kakao/callback")
 
 
 def _headers():
@@ -21,49 +23,78 @@ def _headers():
     }
 
 
-class AuthRequest(BaseModel):
-    username: str
-    password: str
-
-
-@router.post("/auth/signup")
-async def signup(req: AuthRequest):
-    if len(req.username) < 2:
-        raise HTTPException(400, "아이디는 2자 이상이어야 해요")
-    if len(req.password) < 4:
-        raise HTTPException(400, "비밀번호는 4자 이상이어야 해요")
-
-    async with httpx.AsyncClient(timeout=10) as client:
-        check = await client.get(
-            f"{SUPABASE_URL}/rest/v1/users",
-            headers=_headers(),
-            params={"username": f"eq.{req.username}", "select": "id"},
-        )
-        if check.json():
-            raise HTTPException(400, "이미 사용 중인 아이디예요")
-
-        res = await client.post(
-            f"{SUPABASE_URL}/rest/v1/users",
-            headers={**_headers(), "Prefer": "return=representation"},
-            json={"username": req.username, "password_hash": pwd_context.hash(req.password)},
-        )
-        res.raise_for_status()
-        user = res.json()[0]
-
-    return {"user_id": user["id"], "username": user["username"]}
-
-
-@router.post("/auth/login")
-async def login(req: AuthRequest):
+async def _upsert_oauth_user(provider: str, provider_id: str, display_name: str, email: str = None) -> dict:
+    field = f"{provider}_id"
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.get(
             f"{SUPABASE_URL}/rest/v1/users",
             headers=_headers(),
-            params={"username": f"eq.{req.username}", "select": "id,username,password_hash"},
+            params={field: f"eq.{provider_id}", "select": "id,username"},
         )
         rows = res.json()
+        if rows:
+            return rows[0]
 
-    if not rows or not pwd_context.verify(req.password, rows[0]["password_hash"]):
-        raise HTTPException(401, "아이디 또는 비밀번호가 틀렸어요")
+        user_data = {"username": display_name, field: provider_id}
+        if email:
+            user_data["email"] = email
 
-    return {"user_id": rows[0]["id"], "username": rows[0]["username"]}
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/users",
+            headers={**_headers(), "Prefer": "return=representation"},
+            json=user_data,
+        )
+        if not res.is_success:
+            raise HTTPException(500, f"유저 생성 실패: {res.text}")
+        return res.json()[0]
+
+
+# ── Kakao ───────────────────────────────────────────────────────
+
+@router.get("/auth/kakao")
+async def kakao_login():
+    import logging
+    logging.warning(f"KAKAO_CLIENT_ID 앞 6자리: '{KAKAO_CLIENT_ID[:6]}', 길이: {len(KAKAO_CLIENT_ID)}")
+    logging.warning(f"KAKAO_REDIRECT_URI: '{KAKAO_REDIRECT_URI}'")
+    params = {
+        "client_id": KAKAO_CLIENT_ID,
+        "redirect_uri": KAKAO_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "profile_nickname",
+    }
+    return RedirectResponse("https://kauth.kakao.com/oauth/authorize?" + urlencode(params))
+
+
+@router.get("/auth/kakao/callback")
+async def kakao_callback(code: str):
+    async with httpx.AsyncClient(timeout=15) as client:
+        token_res = await client.post(
+            "https://kauth.kakao.com/oauth/token",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "authorization_code",
+                "client_id": KAKAO_CLIENT_ID,
+                "client_secret": KAKAO_CLIENT_SECRET,
+                "redirect_uri": KAKAO_REDIRECT_URI,
+                "code": code,
+            },
+        )
+        if not token_res.is_success:
+            raise HTTPException(500, f"카카오 토큰 오류: {token_res.status_code} / {token_res.text}")
+        access_token = token_res.json()["access_token"]
+
+        info_res = await client.get(
+            "https://kapi.kakao.com/v2/user/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        info = info_res.json()
+
+    kakao_id = str(info["id"])
+    nickname = (
+        info.get("kakao_account", {}).get("profile", {}).get("nickname")
+        or f"user_{kakao_id[-4:]}"
+    )
+    email = info.get("kakao_account", {}).get("email")
+
+    user = await _upsert_oauth_user("kakao", kakao_id, nickname, email)
+    return RedirectResponse(f"/?user_id={user['id']}&username={user['username']}")

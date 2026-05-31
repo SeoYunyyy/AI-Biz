@@ -3,7 +3,7 @@ fastapi
 uvicorn[standard]
 jinja2
 python-multipart
-passlib[bcrypt]
+bcrypt
 
 # HTTP 클라이언트 (크롤링, API 호출)
 httpx

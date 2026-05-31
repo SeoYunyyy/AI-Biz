@@ -6,70 +6,22 @@ function getCurrentUsername() { return localStorage.getItem('keepit_username') |
 function isLoggedIn()         { return !!getCurrentUserId() }
 
 function initAuth() {
+    // OAuth 콜백: URL에 ?user_id=&username= 붙어서 돌아옴
+    const params = new URLSearchParams(window.location.search)
+    const oauthUserId   = params.get('user_id')
+    const oauthUsername = params.get('username')
+    if (oauthUserId && oauthUsername) {
+        localStorage.setItem('keepit_user_id', oauthUserId)
+        localStorage.setItem('keepit_username', decodeURIComponent(oauthUsername))
+        window.history.replaceState({}, '', '/')
+    }
+
     const overlay = document.getElementById('login-overlay')
     if (isLoggedIn()) {
         overlay.classList.add('hidden')
         document.getElementById('nav-username').textContent = getCurrentUsername()
     } else {
         overlay.classList.remove('hidden')
-    }
-}
-
-window.switchTab = function(tab) {
-    document.getElementById('login-form').classList.toggle('hidden', tab !== 'login')
-    document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup')
-    document.querySelectorAll('.login-tab').forEach((btn, i) => {
-        btn.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'signup'))
-    })
-}
-
-window.handleLogin = async function(e) {
-    e.preventDefault()
-    const username = document.getElementById('login-username').value.trim()
-    const password = document.getElementById('login-password').value
-    const errEl    = document.getElementById('login-error')
-    errEl.textContent = ''
-    try {
-        const res  = await fetch('/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-        })
-        const data = await res.json()
-        if (!res.ok) { errEl.textContent = data.detail || '로그인 실패'; return }
-        localStorage.setItem('keepit_user_id', data.user_id)
-        localStorage.setItem('keepit_username', data.username)
-        document.getElementById('login-overlay').classList.add('hidden')
-        document.getElementById('nav-username').textContent = data.username
-        loadTopFolders()
-        loadCollections()
-    } catch (e) {
-        errEl.textContent = '서버 연결 오류'
-    }
-}
-
-window.handleSignup = async function(e) {
-    e.preventDefault()
-    const username = document.getElementById('signup-username').value.trim()
-    const password = document.getElementById('signup-password').value
-    const errEl    = document.getElementById('signup-error')
-    errEl.textContent = ''
-    try {
-        const res  = await fetch('/auth/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-        })
-        const data = await res.json()
-        if (!res.ok) { errEl.textContent = data.detail || '가입 실패'; return }
-        localStorage.setItem('keepit_user_id', data.user_id)
-        localStorage.setItem('keepit_username', data.username)
-        document.getElementById('login-overlay').classList.add('hidden')
-        document.getElementById('nav-username').textContent = data.username
-        loadTopFolders()
-        loadCollections()
-    } catch (e) {
-        errEl.textContent = '서버 연결 오류'
     }
 }
 
@@ -178,7 +130,7 @@ async function populateFolderDropdown(dropdown, onSelect) {
 // ── Top 5 폴더 로드 ──
 async function loadTopFolders() {
     try {
-        const data = await fetch('/api/categories').then(r => r.json())
+        const data = await fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json())
         const folderGrid = document.getElementById('folder-grid')
 
         let allCats = []
@@ -220,7 +172,7 @@ async function loadTopFolders() {
 async function openCategoryPanel(category, subcategory) {
     openRightPanel(`${category} / ${subcategory}`, '<div class="chat-loading">···</div>')
     try {
-        const params = new URLSearchParams({ category, subcategory })
+        const params = new URLSearchParams({ category, subcategory, user_id: getCurrentUserId() })
         const data = await fetch(`/api/items?${params}`).then(r => r.json())
         if (!data.items.length) {
             panelBody.innerHTML = '<p class="no-result">저장된 자료가 없어요.</p>'
@@ -729,7 +681,7 @@ function handleSubmit() {
 
 // ── 아카이브 모달 ──
 async function showArchiveHome() {
-    const data = await fetch('/api/categories').then(r => r.json())
+    const data = await fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json())
     const keys = Object.keys(data)
     if (!keys.length) {
         openModal('아카이브', '<p class="no-result">저장된 자료가 없어요.</p>')
@@ -750,7 +702,7 @@ async function showArchiveHome() {
 }
 
 async function showArchiveItems(category, subcategory) {
-    const params = new URLSearchParams({ category, subcategory })
+    const params = new URLSearchParams({ category, subcategory, user_id: getCurrentUserId() })
     const data   = await fetch(`/api/items?${params}`).then(r => r.json())
     const cards  = data.items.length
         ? data.items.map(item => {
@@ -794,7 +746,7 @@ submitBtn.addEventListener('click', handleSubmit)
 promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
 
 document.getElementById('btn-reminders').addEventListener('click', async () => {
-    const data = await fetch(`/deadlines/${DEFAULT_USER_ID}`).then(r => r.json())
+    const data = await fetch(`/deadlines/${getCurrentUserId()}`).then(r => r.json())
     if (!data.deadlines || !data.deadlines.length) {
         openModal('리마인더', '<p class="no-result">마감 자료가 없어요.</p>')
         return

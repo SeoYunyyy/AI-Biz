@@ -102,24 +102,14 @@
           <span style="font-size:26px;font-weight:700;color:#5A3002;letter-spacing:-0.5px">Keepit</span>
         </div>
 
-        <div class="login-tabs">
-          <button class="login-tab active" onclick="switchTab('login')">로그인</button>
-          <button class="login-tab" onclick="switchTab('signup')">회원가입</button>
+        <p class="login-desc">로그인하여 나만의 아카이브를 만들어보세요</p>
+
+        <div class="oauth-btns">
+          <a href="/auth/kakao" class="oauth-btn kakao-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#3A1D1D" d="M12 3C6.477 3 2 6.477 2 10.8c0 2.7 1.617 5.078 4.072 6.517L5.1 21l4.682-2.492A11.3 11.3 0 0 0 12 18.6c5.523 0 10-3.477 10-7.8S17.523 3 12 3z"/></svg>
+            카카오로 계속하기
+          </a>
         </div>
-
-        <form id="login-form" class="auth-form" onsubmit="handleLogin(event)">
-          <input type="text" id="login-username" class="auth-input" placeholder="아이디" autocomplete="username" required />
-          <input type="password" id="login-password" class="auth-input" placeholder="비밀번호" autocomplete="current-password" required />
-          <button type="submit" class="auth-btn">로그인</button>
-          <p id="login-error" class="auth-error"></p>
-        </form>
-
-        <form id="signup-form" class="auth-form hidden" onsubmit="handleSignup(event)">
-          <input type="text" id="signup-username" class="auth-input" placeholder="아이디 (2자 이상)" autocomplete="username" required />
-          <input type="password" id="signup-password" class="auth-input" placeholder="비밀번호 (4자 이상)" autocomplete="new-password" required />
-          <button type="submit" class="auth-btn">가입하기</button>
-          <p id="signup-error" class="auth-error"></p>
-        </form>
       </div>
     </div>
 
