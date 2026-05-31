@@ -327,6 +327,15 @@ nav {
 
 .panel-move-option:hover { background: rgba(90,48,2,0.08); }
 
+.panel-move-group-label {
+    padding: 5px 12px 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #9A7055;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 /* ── 채팅 폴더 선택 이동 UI ── */
 .folder-pick-select {
     width: 100%;

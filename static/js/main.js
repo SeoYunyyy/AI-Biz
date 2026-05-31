@@ -801,33 +801,73 @@ async function populateFolderPickSelect(selectId) {
     const sel = document.getElementById(selectId)
     if (!sel) return
     try {
-        const data = await fetch(`/collections/${getCurrentUserId()}`).then(r => r.json())
-        ;(data.collections || []).forEach(c => {
-            const opt = document.createElement('option')
-            opt.value = c.name
-            opt.textContent = (c.emoji ? c.emoji + ' ' : '') + c.name
-            sel.appendChild(opt)
+        const [colData, subData] = await Promise.all([
+            fetch(`/collections/${getCurrentUserId()}`).then(r => r.json()),
+            fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json()),
+        ])
+        const cols = colData.collections || []
+        if (cols.length) {
+            const grp = document.createElement('optgroup')
+            grp.label = '내 폴더'
+            cols.forEach(c => {
+                const opt = document.createElement('option')
+                opt.value = 'col::' + c.name
+                opt.textContent = (c.emoji ? c.emoji + ' ' : '') + c.name
+                grp.appendChild(opt)
+            })
+            sel.appendChild(grp)
+        }
+        // 소분류 추출
+        const subs = []
+        Object.entries(subData).forEach(([cat, list]) => {
+            list.forEach(s => subs.push({ cat, name: s.name }))
         })
+        if (subs.length) {
+            const grp = document.createElement('optgroup')
+            grp.label = '카테고리 (자동분류)'
+            subs.forEach(s => {
+                const opt = document.createElement('option')
+                opt.value = 'sub::' + s.name
+                opt.textContent = s.cat + ' / ' + s.name
+                grp.appendChild(opt)
+            })
+            sel.appendChild(grp)
+        }
     } catch (e) {}
 }
 
 window.executeMoveWithPicker = async function(btn, selectId) {
     const sel = document.getElementById(selectId)
-    const folder = sel ? sel.value : ''
-    if (!folder) { alert('폴더를 선택해주세요.'); return }
+    const val = sel ? sel.value : ''
+    if (!val) { alert('폴더를 선택해주세요.'); return }
     const box = btn.closest('.confirm-box')
     const ids = box.dataset.ids.split(',').filter(Boolean)
+    const [type, name] = val.split('::')
     btn.disabled = true
     btn.textContent = '이동 중···'
     try {
-        const res = await fetch('/contents/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: getCurrentUserId(), content_ids: ids, target_folder: folder })
-        })
-        if (res.ok) {
-            box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${folder}' 폴더로 이동 완료</div>`
-            setTimeout(() => { box.remove(); loadCollections() }, 1500)
+        let ok = false
+        if (type === 'col') {
+            const res = await fetch('/contents/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: getCurrentUserId(), content_ids: ids, target_folder: name })
+            })
+            ok = res.ok
+        } else {
+            // 소분류 변경 (여러 개면 순차 처리)
+            const results = await Promise.all(ids.map(id =>
+                fetch(`/contents/${id}/subcategory`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: getCurrentUserId(), sub_category: name })
+                })
+            ))
+            ok = results.every(r => r.ok)
+        }
+        if (ok) {
+            box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${name}'(으)로 이동 완료</div>`
+            setTimeout(() => { box.remove(); loadCollections(); loadTopFolders() }, 1500)
         } else throw new Error()
     } catch (e) { btn.disabled = false; btn.textContent = '이동' }
 }
@@ -885,14 +925,30 @@ window.showPanelMoveDropdown = async function(btn, contentId) {
     dropdown.classList.add('open')
 
     try {
-        const data = await fetch(`/collections/${getCurrentUserId()}`).then(r => r.json())
-        const cols = data.collections || []
-        dropdown.innerHTML = cols.length
-            ? cols.map(c => `
-                <div class="panel-move-option" onclick="executePanelMove('${esc(contentId)}', '${esc(c.name)}', this)">
+        const [colData, subData] = await Promise.all([
+            fetch(`/collections/${getCurrentUserId()}`).then(r => r.json()),
+            fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json()),
+        ])
+        const cols = colData.collections || []
+        const subs = []
+        Object.entries(subData).forEach(([cat, list]) => list.forEach(s => subs.push({ cat, name: s.name })))
+
+        let html = ''
+        if (cols.length) {
+            html += `<div class="panel-move-group-label">내 폴더</div>`
+            html += cols.map(c => `
+                <div class="panel-move-option" data-type="col" data-name="${esc(c.name)}" onclick="executePanelMove('${esc(contentId)}', this)">
                     ${c.emoji ? c.emoji + ' ' : ''}${c.name}
                 </div>`).join('')
-            : '<div style="padding:6px 10px;font-size:12px;color:#9A7055">폴더 없음</div>'
+        }
+        if (subs.length) {
+            html += `<div class="panel-move-group-label">카테고리</div>`
+            html += subs.map(s => `
+                <div class="panel-move-option" data-type="sub" data-name="${esc(s.name)}" onclick="executePanelMove('${esc(contentId)}', this)">
+                    ${s.cat} / ${s.name}
+                </div>`).join('')
+        }
+        dropdown.innerHTML = html || '<div style="padding:6px 10px;font-size:12px;color:#9A7055">없음</div>'
     } catch (e) {
         dropdown.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#C0392B">불러오기 실패</div>'
     }
@@ -908,24 +964,32 @@ window.showPanelMoveDropdown = async function(btn, contentId) {
     }, 0)
 }
 
-window.executePanelMove = async function(contentId, folderName, optionEl) {
+window.executePanelMove = async function(contentId, optionEl) {
+    const type = optionEl.dataset.type
+    const name = optionEl.dataset.name
     const dropdown = optionEl.closest('.panel-move-dropdown')
     dropdown.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#9A7055">이동 중···</div>'
     try {
-        const res = await fetch('/contents/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: getCurrentUserId(), content_ids: [contentId], target_folder: folderName })
-        })
+        let res
+        if (type === 'col') {
+            res = await fetch('/contents/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: getCurrentUserId(), content_ids: [contentId], target_folder: name })
+            })
+        } else {
+            res = await fetch(`/contents/${contentId}/subcategory`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: getCurrentUserId(), sub_category: name })
+            })
+        }
         if (res.ok) {
             dropdown.classList.remove('open')
             dropdown.innerHTML = ''
             const card = optionEl.closest('.panel-item-card') || dropdown.closest('.panel-item-card')
-            if (card) {
-                card.style.opacity = '0.4'
-                setTimeout(() => card.remove(), 600)
-            }
-            loadCollections()
+            if (card) { card.style.opacity = '0.4'; setTimeout(() => card.remove(), 600) }
+            loadCollections(); loadTopFolders()
         }
     } catch (e) { dropdown.classList.remove('open') }
 }

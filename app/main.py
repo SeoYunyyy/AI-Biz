@@ -281,6 +281,21 @@ async def patch_collection(collection_id: str, req: CollectionUpdateRequest):
     return {"updated": True}
 
 
+class SubcategoryUpdateRequest(BaseModel):
+    user_id: str
+    sub_category: str
+
+
+@app.patch("/contents/{content_id}/subcategory")
+async def patch_content_subcategory(content_id: str, req: SubcategoryUpdateRequest):
+    """소분류 직접 변경 (폴더 이동 UI에서 카테고리 선택 시)"""
+    from app.services.database import update_subcategory as db_update_subcategory
+    success = await db_update_subcategory(content_id, req.sub_category)
+    if not success:
+        raise HTTPException(status_code=500, detail="소분류 업데이트 실패")
+    return {"updated": True}
+
+
 @app.delete("/collections/{collection_id}")
 async def remove_collection(collection_id: str, user_id: str):
     """폴더 삭제 (콘텐츠는 유지, 폴더 배정만 해제)"""
