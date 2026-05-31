@@ -332,39 +332,42 @@ async def reclassify_all(user_id: str):
     # 2단계: 소분류 정규화 (같은 category 내에서 비슷한 소분류 통일)
     if results:
         from collections import defaultdict
-        from openai import AsyncOpenAI
-        oai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+        import json as _json
 
         cat_groups: dict[str, list] = defaultdict(list)
         for r in results:
             cat_groups[r["category"]].append(r)
 
-        for cat, items in cat_groups.items():
-            sub_list = list({i["sub_category"] for i in items if i["sub_category"]})
-            if len(sub_list) <= 1:
-                continue
-            prompt = (
-                f"카테고리: {cat}\n"
-                f"소분류 목록: {sub_list}\n\n"
-                "위 소분류들을 의미가 겹치는 것끼리 하나로 통일해줘. "
-                "결과는 JSON 객체로만 반환해. 형식: {{\"원래소분류\": \"통일된소분류\", ...}}"
-            )
-            try:
-                resp = await oai.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
-                    temperature=0,
+        async with httpx.AsyncClient(timeout=30) as norm_client:
+            for cat, items in cat_groups.items():
+                sub_list = list({i["sub_category"] for i in items if i["sub_category"]})
+                if len(sub_list) <= 1:
+                    continue
+                prompt = (
+                    f"카테고리: {cat}\n"
+                    f"소분류 목록: {sub_list}\n\n"
+                    "위 소분류들을 의미가 겹치는 것끼리 하나로 통일해줘. "
+                    "결과는 JSON 객체로만 반환해. 형식: {\"원래소분류\": \"통일된소분류\", ...}"
                 )
-                import json
-                mapping = json.loads(resp.choices[0].message.content)
-                for item in items:
-                    old_sub = item["sub_category"]
-                    new_sub = mapping.get(old_sub, old_sub)
-                    if new_sub != old_sub:
-                        await update_subcategory(item["id"], new_sub)
-            except Exception as e:
-                print(f"[reclassify] 소분류 정규화 실패: {e}")
+                try:
+                    resp = await norm_client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY', '')}"},
+                        json={
+                            "model": "gpt-4o-mini",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "response_format": {"type": "json_object"},
+                            "temperature": 0,
+                        },
+                    )
+                    mapping = _json.loads(resp.json()["choices"][0]["message"]["content"])
+                    for item in items:
+                        old_sub = item["sub_category"]
+                        new_sub = mapping.get(old_sub, old_sub)
+                        if new_sub != old_sub:
+                            await update_subcategory(item["id"], new_sub)
+                except Exception as e:
+                    print(f"[reclassify] 소분류 정규화 실패: {e}")
 
     return {"updated": updated, "failed": failed, "total": len(contents)}
 
