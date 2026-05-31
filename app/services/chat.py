@@ -431,6 +431,39 @@ async def _handle_cleanup(user_id: str) -> dict:
 
 _CONTEXTUAL_REFS = ["그거", "이거", "저거", "방금", "그것", "이것", "맞아", "그 거", "이 거"]
 
+async def _handle_folder_search(user_id: str, source_folder: str) -> dict:
+    """특정 폴더 내 콘텐츠 전체 조회"""
+    collections = await get_collections(user_id)
+    existing_names = [c["name"] for c in collections]
+
+    clean = _strip_particles(source_folder)
+    best, ratio = _best_match(clean, existing_names)
+
+    if ratio < 0.45:
+        hint = f" 혹시 '{best}' 폴더를 말씀하시는 건가요?" if best and ratio >= 0.25 else ""
+        return {"answer": f"'{clean}' 폴더를 찾지 못했어요.{hint}", "results": []}
+
+    col = next((c for c in collections if c["name"] == best), None)
+    if not col:
+        return {"answer": f"'{clean}' 폴더를 찾지 못했어요.", "results": []}
+
+    items = await get_collection_items(user_id, col["id"])
+    if not items:
+        return {"answer": f"'{best}' 폴더에 저장된 콘텐츠가 없어요.", "results": []}
+
+    results = [
+        {"id": r["id"], "title": r["title"], "url": r["url"],
+         "one_line_summary": r.get("one_line_summary", ""),
+         "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+        for r in items
+    ]
+    return {
+        "answer": f"'{best}' 폴더에 콘텐츠 {len(results)}개가 있어요.",
+        "results": results,
+        "follow_up_questions": [],
+    }
+
+
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
@@ -596,7 +629,10 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     if intent == "deadline_edit" and content_id:
         result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
     elif intent == "search":
-        result = await _handle_search(user_id, query, history, shown_ids)
+        if source_folder:
+            result = await _handle_folder_search(user_id, source_folder)
+        else:
+            result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":
         result = await _handle_deadline(user_id)
     elif intent == "folder" and folder_name:
