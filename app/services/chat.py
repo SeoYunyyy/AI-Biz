@@ -467,7 +467,7 @@ def _items_to_results(items: list[dict]) -> list[dict]:
             for r in items]
 
 
-async def _handle_folder_search(user_id: str, source_folder: str, extra_query: str = "") -> dict:
+async def _handle_folder_search(user_id: str, source_folder: str, extra_query: str = "", shown_ids: list[str] = []) -> dict:
     """컬렉션 → 소분류 → 대분류 → LLM 4단계로 폴더 찾아 콘텐츠 반환.
     extra_query가 있으면 폴더 내에서 벡터 검색으로 좁힘."""
     clean = _strip_particles(source_folder)
@@ -522,22 +522,29 @@ async def _handle_folder_search(user_id: str, source_folder: str, extra_query: s
     if not items:
         return {"answer": f"'{clean}' 폴더를 찾지 못했어요. 폴더 이름을 다시 확인해주세요.", "results": []}
 
+    # 이미 보여준 항목 제외
+    shown_set = set(shown_ids)
+    unseen = [r for r in items if r.get("id") not in shown_set]
+    pool = unseen if unseen else items  # 전부 봤으면 전체 허용
+
     # 추가 검색어가 있으면 폴더 내에서 벡터 검색으로 좁히기
     if extra_query and extra_query.strip():
-        item_ids = {r["id"] for r in items}
+        pool_ids = {r["id"] for r in pool}
         expanded = await expand_query(extra_query)
         embedding = await generate_embedding(expanded)
         if embedding:
-            raw = await search_contents(user_id, embedding, limit=20, threshold=0.2)
-            narrowed = [r for r in raw if r.get("id") in item_ids]
+            raw = await search_contents(user_id, embedding, limit=30, threshold=0.2)
+            narrowed = [r for r in raw if r.get("id") in pool_ids]
             if narrowed:
                 results = _items_to_results(narrowed[:5])
-                return {"answer": f"'{found_label}'에서 '{extra_query}' 관련 콘텐츠 {len(results)}개 찾았어요. 이거 맞나요?",
+                suffix = " (이전에 보여준 것 제외)" if unseen else ""
+                return {"answer": f"'{found_label}'에서 관련 콘텐츠 {len(results)}개 찾았어요{suffix}. 이거 맞나요?",
                         "results": results, "follow_up_questions": ["맞아요", "아니요, 다른 거예요"]}
 
-    results = _items_to_results(items)
-    return {"answer": f"'{found_label}'에 콘텐츠 {len(results)}개가 있어요.",
-            "results": results[:10], "follow_up_questions": []}
+    results = _items_to_results(pool[:10])
+    suffix = f" (이전에 보여준 것 제외, {len(items) - len(unseen)}개 제외)" if shown_set and unseen else ""
+    return {"answer": f"'{found_label}'에 콘텐츠 {len(results)}개가 있어요{suffix}.",
+            "results": results, "follow_up_questions": []}
 
 
 async def _resolve_folder_items(user_id: str, source_folder: str | None, shown_ids: list[str]) -> tuple[list[dict], str]:
@@ -772,8 +779,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
     elif intent == "search":
         if source_folder:
-            # source_folder 외의 나머지 쿼리를 추가 검색어로 전달
-            result = await _handle_folder_search(user_id, source_folder, extra_query=query)
+            result = await _handle_folder_search(user_id, source_folder, extra_query=query, shown_ids=shown_ids)
         else:
             result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":

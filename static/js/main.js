@@ -402,6 +402,7 @@ function openChatPanel(initialText = '') {
                     ${chatPanelCollectionId ? '📁 ' + chatPanelCollectionName : '📁 선택 안 함'}
                 </button>
                 <div class="chat-folder-dropdown folder-dropdown" id="chat-folder-dropdown"></div>
+                <button class="chat-reset-btn" id="chat-reset-btn" title="대화 초기화">↺</button>
             </div>
             <div class="chat-input-wrap">
                 <input type="text" id="chat-input" class="chat-input" placeholder="URL 붙여넣기 또는 메시지 입력" />
@@ -440,6 +441,13 @@ function openChatPanel(initialText = '') {
     })
 
     document.addEventListener('click', () => chatFolderDropdown.classList.remove('open'))
+
+    document.getElementById('chat-reset-btn').addEventListener('click', () => {
+        chatHistory = []
+        shownIds = new Set()
+        const msgs = document.getElementById('chat-messages')
+        if (msgs) msgs.innerHTML = '<div class="chat-msg ai">대화가 초기화됐어요. 새로 질문해주세요!</div>'
+    })
 
     const chatInput = document.getElementById('chat-input')
     const chatSend  = document.getElementById('chat-send')
