@@ -3,6 +3,7 @@
 import os
 import httpx
 import json
+import random
 from difflib import SequenceMatcher
 from datetime import datetime, timezone
 
@@ -16,6 +17,8 @@ from app.services.database import (
     move_content_collection,
     get_recent_contents,
     get_contents_by_ids,
+    get_collections,
+    get_collection_contents,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -29,22 +32,26 @@ INTENT_PROMPT = """너는 Keepit(개인 콘텐츠 아카이브) 비서야. 사�
 - summarize : 저장한 콘텐츠를 요약하거나 설명해 달라는 요청
               ("이거 요약해줘", "방금 저장한 거 설명해줘", "OO 영상 요약해줘", "내용 정리해줘")
 - deadline  : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
-- folder    : 폴더 자체를 새로 만들거나, 지금 보고 있는 특정 링크 하나를 폴더에 지정하는 요청
-              ("OO 폴더 만들어줘", "이 링크 OO 폴더에 저장해줘" 등)
-- move      : 특정 주제·키워드에 해당하는 저장된 콘텐츠 여러 개를 찾아서 폴더로 모으거나 이동하는 요청
-              ("음악 관련 링크들 노래 폴더에 넣어줘", "OO 관련 자료 전부 OO 폴더에 모아줘" 등)
+- folder    : 폴더를 새로 만들거나, 특정 주제의 콘텐츠들을 한 폴더로 묶어/모아 달라는 요청
+              ("OO 폴더 만들어줘", "OO 콘텐츠들끼리 묶어줘", "OO끼리 묶어줘", "OO 관련된 거 묶어줘", "OO끼리 모아줘")
+              → folder_name엔 그 주제(폴더명)를 넣어라. '묶어/모아'는 거의 항상 folder 의도다.
+- move      : 이미 있는 특정 폴더로 '옮겨/이동'하는 요청
+              ("음악 관련 링크들 노래 폴더로 옮겨줘", "OO 폴더로 이동해줘" — 목적지 폴더명이 분명할 때)
 - cleanup   : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청 ("오래된 거 정리해줘", "쌓인 거 뭐 있어")
 - delete    : 특정 콘텐츠 삭제 요청 ("OO 관련 삭제해줘", "이거 지워줘" 등)
 - general   : 그 외 일반 대화 (인사, 잡담, 서비스 무관 질문 포함)
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null, "summarize_query": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "move_query": null, "target_folder": null, "summarize_query": null, "target_collection": null}
 
 folder_name: folder 의도일 때만 폴더명 추출, 없으면 null
 delete_query: delete 의도일 때 삭제 대상 키워드 추출 (예: "딥러닝"), 없으면 null
 move_query: move 의도일 때 이동할 콘텐츠 주제·키워드 (예: "음악"), 없으면 null
 target_folder: move 의도일 때 목적지 폴더명 (예: "노래"), 없으면 null
-summarize_query: summarize 의도일 때 대상이 명시되면 주제 추출(예: "딥러닝 영상"), "이거/방금 거"처럼 모호하면 null"""
+summarize_query: summarize 의도일 때 대상이 명시되면 주제 추출(예: "딥러닝 영상"), "이거/방금 거"처럼 모호하면 null
+target_collection: 사용자가 특정 컬렉션·폴더 안의 콘텐츠를 가리키면 그 컬렉션 이름만 추출
+                   (예: "대선 관련 뉴스 컬렉션에 있는 것들 요약해줘" → "대선 관련 뉴스",
+                    "OO 폴더 안의 거 요약" → "OO"). '컬렉션/폴더' 단어가 없어도 폴더를 가리키는 맥락이면 추출. 아니면 null"""
 
 
 async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500, json_mode: bool = False) -> str:
@@ -138,50 +145,42 @@ async def _handle_search(user_id: str, query: str, shown_ids: list = None, histo
     if not embedding:
         return {"answer": "검색어 처리 중 문제가 생겼어요. 다시 시도해주세요.", "results": [], "follow_up_questions": []}
 
-    # 후보 15개 → shown_ids 제외 → 장르 필터 → 상위 5개
+    # 후보 15개 → shown_ids 제외 → 전체 필드 보강 → detailed_summary 기반 엄격 필터 → 상위 5개
     candidates = await search_contents(user_id, embedding, limit=15)
     candidates = [r for r in candidates if r.get("id") not in shown_ids]
-    candidates = await _genre_filter(query, candidates)
-    top = candidates[:5]
 
-    # 썸네일·요약 등 전체 필드 보강 후 카드화 (검색 결과에도 썸네일 노출)
     results = []
-    if top:
-        ids = [r["id"] for r in top]
+    if candidates:
+        ids = [r["id"] for r in candidates]
         full = await get_contents_by_ids(user_id, ids)
         order = {cid: i for i, cid in enumerate(ids)}
         full.sort(key=lambda r: order.get(r.get("id"), 999))
-        results = _to_cards(full)
+        # 제목만 보던 느슨한 장르 필터 대신, 요약 내용으로 주제에 맞는 것만 선별
+        filtered = await _filter_by_topic(query, full)
+        results = _to_cards(filtered[:5])
 
     if not results:
-        already_guided = any(
-            "유튜브 영상이었나요" in (h.get("content") or "")
-            for h in history if h.get("role") == "assistant"
-        )
-        follow_ups = (
-            ["제목이나 내용에 포함된 단어를 구체적으로 알려주시면 다시 찾아볼게요!"]
-            if already_guided else
-            [
-                "유튜브 영상이었나요, 아니면 블로그나 뉴스 글이었나요?",
-                "어떤 주제였는지 기억나시나요? (예: 요리, 여행, IT 등)",
-                "언제쯤 저장하셨는지 기억나시나요?",
-                "제목에 특정 단어가 포함됐었나요?",
-            ]
-        )
-        return {"answer": "저장된 콘텐츠 중에서 찾지 못했어요.", "results": [], "follow_up_questions": follow_ups}
+        none_msgs = [
+            "저장한 것 중엔 못 찾았어요. 제목이나 키워드를 조금 더 구체적으로 알려주시겠어요?",
+            "관련 콘텐츠를 찾지 못했어요. 어떤 주제·단어였는지 알려주시면 다시 찾아볼게요.",
+            "아직 그런 콘텐츠는 안 보이네요. 키워드를 바꿔서 다시 말씀해 주실래요?",
+        ]
+        return {"answer": random.choice(none_msgs), "results": []}
 
     if len(results) == 1:
-        return {
-            "answer": "아~ 이거 찾으시는 것 같아요! 이거 맞나요?",
-            "results": results,
-            "follow_up_questions": ["맞아요, 요약해줘", "아니요, 다른 거예요 — 키워드를 더 알려줄게요"],
-        }
+        one_msgs = [
+            "이거 찾으시는 것 같아요. 맞나요?",
+            "이거 어떠세요?",
+            "찾았어요! 이거 맞을까요?",
+        ]
+        return {"answer": random.choice(one_msgs), "results": results}
 
-    return {
-        "answer": f"아~ 찾아볼게요! 관련해서 {len(results)}개 찾았어요. 이 중에 있나요?",
-        "results": results,
-        "follow_up_questions": ["이 중에 요약해줘", "다른 키워드로 더 찾아줘", "관련된 것끼리 폴더로 묶어줘"],
-    }
+    multi_msgs = [
+        f"관련해서 {len(results)}개 찾았어요.",
+        f"{len(results)}개 나왔어요. 한번 보세요.",
+        f"이런 게 있네요 — 총 {len(results)}개예요.",
+    ]
+    return {"answer": random.choice(multi_msgs), "results": results}
 
 
 async def _handle_deadline(user_id: str) -> dict:
@@ -246,33 +245,25 @@ async def _handle_deadline(user_id: str) -> dict:
 
 
 async def _handle_folder(user_id: str, folder_name: str, original_query: str = "") -> dict:
-    """폴더 생성 + 관련 콘텐츠를 DB에서 알아서 찾아 자동으로 묶기."""
-    collection_id = await get_or_create_collection(user_id, folder_name)
-    if not collection_id:
-        return {"answer": f"'{folder_name}' 폴더를 만드는 데 실패했어요.", "results": []}
+    """폴더명(주제)에 맞는 콘텐츠를 찾아 '선택/전체 묶기'로 제시 (실제 묶기는 사용자가 결정)."""
+    related = await _find_relevant_contents(user_id, folder_name, limit=12)
 
-    # 폴더명(주제)에 맞는 콘텐츠를 detailed_summary 기반으로 정확히 찾아 자동으로 담는다
-    related = await _find_relevant_contents(user_id, folder_name, limit=10)
-    moved_items = []
-    for r in related:
-        if await move_content_collection(r["id"], user_id, collection_id):
-            moved_items.append(r)
-    moved = len(moved_items)
-    cards = _to_cards(moved_items)
+    if not related:
+        # 후보가 없으면 빈 폴더만 생성
+        collection_id = await get_or_create_collection(user_id, folder_name)
+        return {
+            "answer": f"'{folder_name}' 폴더를 만들었어요! 지금은 묶을 만한 관련 콘텐츠를 찾지 못했어요. 관련 링크를 저장하면 채워드릴게요.",
+            "results": [],
+            "action": "folder_created",
+            "collection_id": collection_id,
+            "collection_name": folder_name,
+        }
 
-    if moved:
-        answer = f"'{folder_name}' 컬렉션이 완성되었어요! 관련 콘텐츠 {moved}개를 찾아 모아 담았어요."
-    else:
-        answer = (
-            f"'{folder_name}' 컬렉션을 만들었어요! 다만 지금 묶을 만한 관련 콘텐츠를 찾지 못했어요. "
-            f"관련 링크를 저장하면 채워드릴게요."
-        )
-
+    # 후보를 카드로 제시 → 사용자가 선택하거나 전체를 묶는다 (일부만 묶이는 문제 해결)
     return {
-        "answer": answer,
-        "results": cards,
-        "action": "folder_created",
-        "collection_id": collection_id,
+        "answer": f"'{folder_name}'(으)로 묶을 만한 콘텐츠 {len(related)}개를 찾았어요! 묶을 항목을 선택하거나 전체를 묶어보세요.",
+        "results": _to_cards(related),
+        "action": "folder_select",
         "collection_name": folder_name,
     }
 
@@ -431,9 +422,49 @@ async def _find_relevant_contents(user_id: str, topic: str, limit: int = 10) -> 
     return filtered[:limit]
 
 
-async def _handle_summarize(user_id: str, query: str, summarize_query: str = None) -> dict:
+def _match_collection(name: str, collections: list[dict]) -> dict | None:
+    """발화 속 폴더명을 실제 컬렉션과 매칭 (공백 무시 정확 매칭 → 유사도 매칭)."""
+    if not name or not collections:
+        return None
+    target = name.replace(" ", "").lower()
+    for c in collections:
+        if (c.get("name") or "").replace(" ", "").lower() == target:
+            return c
+    names = [c.get("name", "") for c in collections]
+    best = _fuzzy_match(name, names, threshold=0.6)
+    if best:
+        for c in collections:
+            if c.get("name") == best:
+                return c
+    return None
+
+
+async def _handle_summarize(user_id: str, query: str, summarize_query: str = None,
+                            target_collection: str = None, recent_saved_ids: list = None) -> dict:
     """요약 대상 후보를 카드로 제시 → 사용자가 선택하면 /summarize 로 실제 요약."""
-    # 주제가 명시되면 detailed_summary 기반으로 정확히 관련 콘텐츠만 찾기
+    recent_saved_ids = recent_saved_ids or []
+
+    # 0) 방금 저장한 콘텐츠를 가리키는 경우("이 콘텐츠/방금 거") → 바로 그것을 요약
+    #    대상이 특정되지 않은(주제·컬렉션 미지정) 모호한 요청일 때만 방금 저장분으로 직행
+    if recent_saved_ids and not summarize_query and not target_collection:
+        return await summarize_contents(user_id, recent_saved_ids)
+
+    # 1) 컬렉션을 가리키면(이름이 실제 컬렉션과 매칭되면) 그 폴더의 멤버를 그대로 요약 대상으로
+    name_hint = target_collection or summarize_query
+    if name_hint:
+        collections = await get_collections(user_id)
+        matched = _match_collection(name_hint, collections)
+        if matched:
+            items = await get_collection_contents(user_id, matched["id"])
+            if items:
+                return {
+                    "answer": f"'{matched['name']}' 컬렉션의 콘텐츠 {len(items)}개예요. 어떤 걸 요약할까요? (여러 개 선택할 수 있어요)",
+                    "results": _to_cards(items),
+                    "action": "summarize_select",
+                }
+            return {"answer": f"'{matched['name']}' 컬렉션이 비어 있어요. 콘텐츠를 먼저 담아주세요!", "results": []}
+
+    # 2) 주제가 명시되면 detailed_summary 기반으로 정확히 관련 콘텐츠만 찾기
     if summarize_query:
         candidates = await _find_relevant_contents(user_id, summarize_query, limit=5)
         if candidates:
@@ -447,7 +478,7 @@ async def _handle_summarize(user_id: str, query: str, summarize_query: str = Non
             "results": [],
         }
 
-    # 모호("이거/방금 거")하거나 검색 결과 없음 → 최근 저장 3개 제시
+    # 3) 모호("이거/방금 거") → 최근 저장 3개 제시
     recent = await get_recent_contents(user_id, limit=3)
     if not recent:
         return {"answer": "아직 저장한 콘텐츠가 없어요. 링크를 먼저 보내주시면 저장하고 요약해드릴게요!", "results": []}
@@ -506,13 +537,19 @@ async def summarize_contents(user_id: str, content_ids: list[str]) -> dict:
             "summary_text": text,
         })
 
-    intro = "아~ 요약해 드릴게요!" if len(items) == 1 else f"아~ 선택하신 {len(items)}개를 하나씩 요약해 드릴게요!"
+    if len(items) == 1:
+        intro = random.choice(["요약해볼게요.", "이 콘텐츠 핵심만 정리했어요.", "내용 정리해드릴게요."])
+    else:
+        intro = random.choice([
+            f"{len(items)}개 하나씩 정리했어요.",
+            f"선택하신 {len(items)}개, 각각 요약했어요.",
+            f"{len(items)}개 핵심만 따로따로 모았어요.",
+        ])
     return {
         "answer": intro,
         "summaries": summaries,
         "action": "summary_result",
         "intent": "summarize",
-        "follow_up_questions": ["다른 콘텐츠도 요약해줘", "관련된 것끼리 폴더로 묶어줘"],
     }
 
 
@@ -521,9 +558,11 @@ GENERAL_PERSONA = (
     "① 링크 저장, ② 저장한 콘텐츠를 폴더로 묶고 정리, ③ 저장한 콘텐츠 요약·설명.\n"
     "사용자의 말과 맥락에 정확히 맞춰 사람처럼 자연스럽게 대화해:\n"
     "- 인사('안녕')엔 그냥 가볍게 인사로만 답해. 묻지도 않은 폴더·콘텐츠 정보를 먼저 꺼내지 마.\n"
-    "- 사용자가 무언가 요청하면 '아~ 그거 말씀이시군요!'처럼 이해한 듯 받은 뒤 도와줘.\n"
+    "- 답변 첫머리를 매번 똑같이 시작하지 마. 특히 '아~'·'~이시군요'·'~해드릴게요' 같은 상투적 패턴을 반복하지 말고 표현을 그때그때 다양하게 바꿔.\n"
     "서비스와 무관한 일반 질문(날씨·코딩·잡담 등)엔 짧게 답하고 부드럽게 본업으로 안내해. "
-    "절대 범용 챗봇처럼 장황하게 답하지 마. 한국어로 1~3문장."
+    "절대 범용 챗봇처럼 장황하게 답하지 마. 한국어로 1~3문장.\n"
+    "중요: '~해드릴게요, 잠시만 기다려주세요, 완료되면 알려드릴게요'처럼 실제로 수행하지도 않을 행동을 약속하지 마. "
+    "행동이 필요한 요청이면 약속만 하지 말고 실제 기능이 처리하도록 둬."
 )
 
 
@@ -546,10 +585,12 @@ async def _handle_general(user_id: str, query: str, history: list = None) -> dic
 
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
-async def process_chat(user_id: str, query: str, history: list = None, shown_ids: list = None) -> dict:
+async def process_chat(user_id: str, query: str, history: list = None, shown_ids: list = None,
+                       recent_saved_ids: list = None) -> dict:
     """의도 파악 후 적절한 핸들러 호출."""
     history = history or []
     shown_ids = shown_ids or []
+    recent_saved_ids = recent_saved_ids or []
 
     intent_data = await _detect_intent(query, history=history)
     intent = intent_data.get("intent", "general")
@@ -558,11 +599,12 @@ async def process_chat(user_id: str, query: str, history: list = None, shown_ids
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
     summarize_query = intent_data.get("summarize_query")
+    target_collection = intent_data.get("target_collection")
 
     if intent == "search":
         result = await _handle_search(user_id, query, shown_ids=shown_ids, history=history)
     elif intent == "summarize":
-        result = await _handle_summarize(user_id, query, summarize_query)
+        result = await _handle_summarize(user_id, query, summarize_query, target_collection, recent_saved_ids)
     elif intent == "deadline":
         result = await _handle_deadline(user_id)
     elif intent == "folder" and folder_name:

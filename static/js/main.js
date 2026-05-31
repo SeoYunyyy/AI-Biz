@@ -6,6 +6,7 @@ const DEFAULT_USER_ID = window.__USER_ID__ || '00000000-0000-0000-0000-000000000
 // 채팅 세션 상태 (패널 열릴 때 초기화)
 let chatHistory = []
 let shownIds = new Set()
+let lastSavedIds = []   // 방금 저장한 콘텐츠 id ("이 콘텐츠 요약" 직행용)
 
 const promptInput = document.getElementById('prompt-input')
 const submitBtn   = document.getElementById('submit-btn')
@@ -46,11 +47,8 @@ function setLoading(on) {
     submitBtn.innerHTML = on ? '&#8230;' : '&#8594;'
 }
 
-// ── 우측 패널 ──
-let lastPanelFullscreen = false   // 닫았다 다시 열 때 모드 복원용
-
+// ── 채팅 패널 (#right-panel — 채팅 전용) ──
 function openRightPanel(title, content, fullscreen = false) {
-    lastPanelFullscreen = fullscreen
     panelTitle.textContent = title
     panelBody.innerHTML = content
     rightPanel.classList.add('open')
@@ -59,20 +57,34 @@ function openRightPanel(title, content, fullscreen = false) {
     if (reopen) reopen.style.display = 'none'
 }
 
+// 채팅 접기 (내용은 유지 → '채팅 열기' 버튼으로 복원)
 function closeRightPanel() {
     rightPanel.classList.remove('open')
     document.querySelector('.page-wrapper').classList.remove('chat-fullscreen')
-    // 내용이 남아 있으면 '다시 열기' 버튼 노출 (대화/패널 복원 가능)
     const reopen = document.getElementById('panel-reopen')
     if (reopen && panelBody.innerHTML.trim()) reopen.style.display = 'flex'
 }
 
-// 닫았던 패널(채팅 등)을 내용 그대로 다시 열기
+// '채팅 열기' — 어느 상황에서든 항상 채팅 화면을 연다
 window.reopenPanel = function () {
     rightPanel.classList.add('open')
-    document.querySelector('.page-wrapper').classList.toggle('chat-fullscreen', lastPanelFullscreen)
+    document.querySelector('.page-wrapper').classList.add('chat-fullscreen')
     const reopen = document.getElementById('panel-reopen')
     if (reopen) reopen.style.display = 'none'
+}
+
+// ── 상세 패널 (#detail-panel — 컬렉션/카테고리, 채팅과 분리) ──
+function openDetailPanel(title, content, headerActions = '') {
+    document.getElementById('detail-title').textContent = title
+    document.getElementById('detail-header-actions').innerHTML = headerActions
+    document.getElementById('detail-body').innerHTML = content
+    document.getElementById('detail-panel').classList.add('open')
+    document.body.classList.add('detail-open')   // 채팅 열기 아이콘을 패널 옆으로 이동
+}
+
+window.closeDetailPanel = function () {
+    document.getElementById('detail-panel').classList.remove('open')
+    document.body.classList.remove('detail-open')
 }
 
 // ── 메인 '자주 보는 컬렉션' 설정 (localStorage) ──
@@ -188,16 +200,37 @@ async function openFolderSettings() {
         </div>
         <div class="fe-body">
             <label class="fe-label">표시 방식</label>
-            <select id="fe-mode" class="fe-select" onchange="feToggleList()">
-                <option value="auto"   ${setting.mode !== 'custom' ? 'selected' : ''}>자주 사용하는 컬렉션</option>
-                <option value="custom" ${setting.mode === 'custom' ? 'selected' : ''}>사용자 설정</option>
-            </select>
+            <div class="fe-dropdown" id="fe-dropdown">
+                <button type="button" class="fe-dd-toggle" onclick="toggleFeDropdown()">
+                    <span id="fe-dd-label">${setting.mode === 'custom' ? '사용자 설정' : '자주 사용하는 컬렉션'}</span>
+                    <svg class="fe-dd-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="fe-dd-menu">
+                    <button type="button" class="fe-dd-item" onclick="selectFeMode('auto','자주 사용하는 컬렉션')">자주 사용하는 컬렉션</button>
+                    <button type="button" class="fe-dd-item" onclick="selectFeMode('custom','사용자 설정')">사용자 설정</button>
+                </div>
+            </div>
+            <input type="hidden" id="fe-mode" value="${setting.mode === 'custom' ? 'custom' : 'auto'}" />
             <div id="fe-list" class="pin-list">${checks}</div>
             <button class="summarize-go-btn" onclick="saveFolderSettings()">저장</button>
         </div>
     `
     document.body.appendChild(panel)
     requestAnimationFrame(() => panel.classList.add('open'))
+    feToggleList()
+}
+
+// 커스텀 드롭다운 토글/선택
+window.toggleFeDropdown = function () {
+    document.getElementById('fe-dropdown')?.classList.toggle('open')
+}
+
+window.selectFeMode = function (mode, label) {
+    const hidden = document.getElementById('fe-mode')
+    if (hidden) hidden.value = mode
+    const lbl = document.getElementById('fe-dd-label')
+    if (lbl) lbl.textContent = label
+    document.getElementById('fe-dropdown')?.classList.remove('open')
     feToggleList()
 }
 
@@ -232,17 +265,18 @@ window.saveFolderSettings = function () {
     loadTopFolders()
 }
 
-// ── 카테고리 패널 열기 ──
+// ── 카테고리 패널 열기 (상세 패널 사용) ──
 async function openCategoryPanel(category, subcategory) {
-    openRightPanel(`${category} / ${subcategory}`, '<div class="chat-loading">···</div>')
+    openDetailPanel(`${category} / ${subcategory}`, '<div class="chat-loading">···</div>')
+    const body = document.getElementById('detail-body')
     try {
         const params = new URLSearchParams({ category, subcategory, user_id: DEFAULT_USER_ID })
         const data = await fetch(`/api/items?${params}`).then(r => r.json())
         if (!data.items.length) {
-            panelBody.innerHTML = '<p class="no-result">저장된 자료가 없어요.</p>'
+            body.innerHTML = '<p class="no-result">저장된 자료가 없어요.</p>'
             return
         }
-        panelBody.innerHTML = data.items.map(item => {
+        body.innerHTML = data.items.map(item => {
             const tags = Array.isArray(item.tags) ? item.tags : []
             const thumbHTML = item.thumbnail
                 ? `<img src="${item.thumbnail}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
@@ -258,7 +292,7 @@ async function openCategoryPanel(category, subcategory) {
             `
         }).join('')
     } catch (e) {
-        panelBody.innerHTML = `<p class="error-msg">${e.message}</p>`
+        body.innerHTML = `<p class="error-msg">${e.message}</p>`
     }
 }
 
@@ -307,32 +341,35 @@ async function loadCollections() {
     }
 }
 
-// ── 컬렉션 상세 패널 열기 (이름 수정 / 폴더 삭제 / 폴더에서 빼기 포함) ──
+const PENCIL_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>'
+const SAVE_SVG   = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+const TRASH_SVG  = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
+
+// ── 컬렉션 상세 패널 열기 (제목 옆 수정·삭제 아이콘 / 콘텐츠 추가·선택·전체삭제) ──
 async function openCollectionPanel(collectionId, name) {
     bumpCollectionClick(collectionId)   // 클릭 횟수 누적 → 메인 자동 정렬에 반영
-    openRightPanel(name, '<div class="chat-loading">···</div>')
+    const headerActions = `
+        <button class="detail-icon-btn" id="coll-edit-btn" title="이름 수정" onclick="startRenameCollection('${esc(collectionId)}')">${PENCIL_SVG}</button>
+        <button class="detail-icon-btn danger" title="폴더 삭제" onclick="deleteCollection('${esc(collectionId)}','${esc(name)}')">${TRASH_SVG}</button>
+    `
+    openDetailPanel(name, '<div class="chat-loading">···</div>', headerActions)
     try {
         const data = await fetch(`/api/collections/${collectionId}/items?user_id=${DEFAULT_USER_ID}`).then(r => r.json())
+        const body = document.getElementById('detail-body')
 
-        // 폴더 관리 헤더 (이름 변경 + 폴더 삭제 + 선택 삭제)
-        const manageHTML = `
-            <div class="collection-manage">
-                <div class="collection-rename-row">
-                    <input id="collection-rename-input" class="collection-rename-input" value="${(name ?? '').replace(/"/g, '&quot;')}" />
-                    <button class="manage-btn" onclick="renameCollection('${esc(collectionId)}')">이름 저장</button>
-                </div>
+        const toolbar = `
+            <div class="collection-toolbar">
                 <button class="manage-btn" onclick="openAddToCollection('${esc(collectionId)}','${esc(name)}')">+ 콘텐츠 추가</button>
                 <button class="manage-btn" onclick="deleteSelectedCollection('${esc(collectionId)}','${esc(name)}')">선택 삭제</button>
                 <button class="manage-btn" onclick="deleteAllCollection('${esc(collectionId)}','${esc(name)}')">전체 삭제</button>
-                <button class="manage-btn danger" onclick="deleteCollection('${esc(collectionId)}','${esc(name)}')">폴더 삭제</button>
             </div>
         `
 
         if (!data.items.length) {
-            panelBody.innerHTML = manageHTML + '<p class="no-result">이 폴더에 자료가 없어요.</p>'
+            body.innerHTML = toolbar + '<p class="no-result">이 폴더에 자료가 없어요.</p>'
             return
         }
-        panelBody.innerHTML = manageHTML + data.items.map(item => {
+        body.innerHTML = toolbar + data.items.map(item => {
             const tags = Array.isArray(item.tags) ? item.tags : []
             const thumbHTML = item.thumbnail
                 ? `<img src="${item.thumbnail}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
@@ -355,13 +392,27 @@ async function openCollectionPanel(collectionId, name) {
             `
         }).join('')
     } catch (e) {
-        panelBody.innerHTML = `<p class="error-msg">${e.message}</p>`
+        document.getElementById('detail-body').innerHTML = `<p class="error-msg">${e.message}</p>`
     }
 }
 
-// ── 컬렉션 이름 변경 ──
-window.renameCollection = async function (collectionId) {
-    const input = document.getElementById('collection-rename-input')
+// 제목 옆 수정 아이콘 클릭 → 제목 입력 활성화 + 아이콘이 저장으로 변경
+window.startRenameCollection = function (collectionId) {
+    const titleEl = document.getElementById('detail-title')
+    const cur = titleEl.textContent
+    titleEl.innerHTML = `<input id="coll-name-input" class="detail-title-input" value="${cur.replace(/"/g, '&quot;')}" />`
+    const btn = document.getElementById('coll-edit-btn')
+    btn.title = '저장'
+    btn.innerHTML = SAVE_SVG
+    btn.setAttribute('onclick', `saveRenameCollection('${esc(collectionId)}')`)
+    const input = document.getElementById('coll-name-input')
+    input.focus()
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') saveRenameCollection(collectionId) })
+}
+
+// 저장 아이콘 클릭 → 수정한 제목 저장
+window.saveRenameCollection = async function (collectionId) {
+    const input = document.getElementById('coll-name-input')
     const name = (input?.value || '').trim()
     if (!name) return
     try {
@@ -371,8 +422,9 @@ window.renameCollection = async function (collectionId) {
             body: JSON.stringify({ user_id: DEFAULT_USER_ID, name }),
         })
         if (!res.ok) throw new Error('이름 변경 실패')
-        panelTitle.textContent = name
         loadCollections()
+        loadTopFolders()
+        openCollectionPanel(collectionId, name)   // 새 이름으로 패널 갱신
     } catch (e) {
         alert('이름 변경 실패: ' + e.message)
     }
@@ -384,7 +436,7 @@ window.deleteCollection = async function (collectionId, name) {
     try {
         const res = await fetch(`/collections/${collectionId}?user_id=${DEFAULT_USER_ID}`, { method: 'DELETE' })
         if (!res.ok) throw new Error('삭제 실패')
-        closeRightPanel()
+        closeDetailPanel()
         loadTopFolders()
         loadCollections()
     } catch (e) {
@@ -515,17 +567,11 @@ async function sendChat() {
     chatInput.value = ''
     chatSend.disabled = true
 
-    const loadingEl = document.createElement('div')
-    loadingEl.className = 'chat-loading'
-    loadingEl.textContent = '···'
-    chatMessages.appendChild(loadingEl)
-    chatMessages.scrollTop = chatMessages.scrollHeight
-
     try {
         const urls = extractUrls(text)
         if (urls.length) {
             // URL(들) → 저장. 자연어 요청(컬렉션 지정·마감)도 함께 해석
-            loadingEl.remove()
+            lastSavedIds = []   // 새 저장 배치 시작 → "이 콘텐츠" 기준 초기화
             const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
             const deadline = deadlineMatch ? deadlineMatch[1] : null
             let nl = text
@@ -536,7 +582,10 @@ async function sendChat() {
             if (deadline) instruction = `${instruction} 마감기한: ${deadline}`.trim()
 
             let saved = 0
-            for (const url of urls) {
+            for (let idx = 0; idx < urls.length; idx++) {
+                const url = urls[idx]
+                const pos = urls.length > 1 ? `(${idx + 1}/${urls.length}) ` : ''
+                showChatStatus([`${pos}링크 저장 중`, `${pos}콘텐츠 분석 중`])
                 try {
                     const res = await fetch('/ingest', {
                         method: 'POST',
@@ -544,6 +593,7 @@ async function sendChat() {
                         body: JSON.stringify({ url, user_id: DEFAULT_USER_ID, instruction, collection_name: collectionName })
                     })
                     const data = await res.json()
+                    hideChatStatus()
                     if (!res.ok || data.error) { appendMsg(chatMessages, 'ai', `저장 실패: ${url}`); continue }
 
                     const aiEl = document.createElement('div')
@@ -557,6 +607,7 @@ async function sendChat() {
                 }
                 chatMessages.scrollTop = chatMessages.scrollHeight
             }
+            hideChatStatus()
             if (urls.length > 1 || collectionName) {
                 const where = collectionName ? ` '${collectionName}' 컬렉션에 담았어요.` : '.'
                 appendMsg(chatMessages, 'ai', `링크 ${saved}개를 저장했어요${where}`)
@@ -565,6 +616,7 @@ async function sendChat() {
             loadCollections()
         } else {
             // 텍스트 → AI 대화
+            showChatStatus(['요청 이해 중', '콘텐츠 찾는 중'])
             chatHistory.push({ role: 'user', content: text })
             const res = await fetch('/chat', {
                 method: 'POST',
@@ -577,7 +629,7 @@ async function sendChat() {
                 })
             })
             const data = await res.json()
-            loadingEl.remove()
+            hideChatStatus()
 
             // 보여준 결과 ID 누적
             if (data.results) {
@@ -592,7 +644,7 @@ async function sendChat() {
             loadCollections()
         }
     } catch (e) {
-        loadingEl.remove()
+        hideChatStatus()
         appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
     } finally {
         chatSend.disabled = false
@@ -627,6 +679,33 @@ function appendMsg(container, role, text) {
     el.textContent = text
     container.appendChild(el)
     container.scrollTop = container.scrollHeight
+}
+
+// ── 작동 로딩 상태 (사용자 말풍선 아래, 멘트만 흐르는 그라데이션) ──
+let chatStatusTimer = null
+function showChatStatus(messages) {
+    const container = document.getElementById('chat-messages')
+    if (!container) return
+    hideChatStatus()
+    const list = Array.isArray(messages) ? messages : [messages]
+    const el = document.createElement('div')
+    el.className = 'chat-loading-ment'
+    el.id = 'chat-loading-ment'
+    el.textContent = list[0]
+    container.appendChild(el)
+    container.scrollTop = container.scrollHeight
+    let i = 0
+    if (list.length > 1) {
+        chatStatusTimer = setInterval(() => {
+            i = (i + 1) % list.length
+            const cur = document.getElementById('chat-loading-ment')
+            if (cur) cur.textContent = list[i]
+        }, 1600)
+    }
+}
+function hideChatStatus() {
+    clearInterval(chatStatusTimer); chatStatusTimer = null
+    document.getElementById('chat-loading-ment')?.remove()
 }
 
 // 검색 결과 카드 HTML
@@ -670,23 +749,139 @@ function buildSelectableCards(items) {
         `
     }).join('')
     return `<div class="sum-cards">${cards}</div>
-        <button class="summarize-go-btn" onclick="summarizeSelected(this)">선택한 콘텐츠 요약하기</button>`
+        <div class="bundle-actions">
+            <button class="summarize-go-btn" onclick="summarizeSelected(this)">선택한 콘텐츠 요약하기</button>
+            <button class="bundle-all-btn" onclick="summarizeAll(this)">전체 콘텐츠 요약하기</button>
+        </div>`
 }
 
-// 선택한 콘텐츠 요약 실행
-window.summarizeSelected = async function (btn) {
+// 묶기 후보 카드 (체크박스 기본 선택) + 선택/전체 묶기
+function buildBundleCards(items, folderName) {
+    const cards = items.map(item => {
+        const thumb = item.thumbnail
+            ? `<img src="${item.thumbnail}" class="sum-card-thumb" onerror="this.style.display='none'" alt="" />`
+            : ''
+        return `
+            <label class="sum-card">
+                <input type="checkbox" class="bundle-check" value="${esc(item.id)}" checked />
+                ${thumb}
+                <div class="sum-card-body">
+                    <div class="sum-card-title">${item.title || '제목 없음'}</div>
+                    ${item.summary ? `<div class="sum-card-summary">${item.summary}</div>` : ''}
+                </div>
+            </label>
+        `
+    }).join('')
+    return `<div class="sum-cards">${cards}</div>
+        <div class="bundle-actions">
+            <button class="summarize-go-btn" onclick="bundleContents(this,'${esc(folderName)}',false)">선택 묶기</button>
+            <button class="bundle-all-btn" onclick="bundleContents(this,'${esc(folderName)}',true)">전체 묶기</button>
+        </div>`
+}
+
+// 선택/전체 묶기 실행
+window.bundleContents = async function (btn, folderName, all) {
     const bubble = btn.closest('.chat-msg')
-    const ids = [...bubble.querySelectorAll('.sum-check:checked')].map(c => c.value)
-    if (!ids.length) { alert('요약할 콘텐츠를 선택해주세요.'); return }
+    const checks = [...bubble.querySelectorAll('.bundle-check')]
+    const ids = (all ? checks : checks.filter(c => c.checked)).map(c => c.value)
+    if (!ids.length) { alert('묶을 콘텐츠를 선택해주세요.'); return }
 
     const chatMessages = document.getElementById('chat-messages')
     btn.disabled = true
-    const loadingEl = document.createElement('div')
-    loadingEl.className = 'chat-loading'
-    loadingEl.textContent = '···'
-    chatMessages.appendChild(loadingEl)
-    chatMessages.scrollTop = chatMessages.scrollHeight
+    showChatStatus(['묶을 콘텐츠 정리 중', '컬렉션에 담는 중'])
 
+    try {
+        const res = await fetch('/collections/bundle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: DEFAULT_USER_ID, name: folderName, content_ids: ids }),
+        })
+        const data = await res.json()
+        hideChatStatus()
+        if (!res.ok) throw new Error('묶기 실패')
+        const aiEl = document.createElement('div')
+        aiEl.className = 'chat-msg ai'
+        aiEl.innerHTML = buildAIContent({
+            answer: `'${folderName}' 컬렉션이 완성되었어요! ${data.moved}개를 담았어요.`,
+            action: 'folder_created',
+            collection_id: data.collection_id,
+            collection_name: folderName,
+        })
+        chatMessages.appendChild(aiEl)
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        hideChatStatus()
+        appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
+    } finally {
+        chatMessages.scrollTop = chatMessages.scrollHeight
+    }
+}
+
+// 선택/전체 콘텐츠 요약 — 클릭한 버튼 멘트를 사용자 말풍선으로 띄우고 바로 진행
+window.summarizeSelected = function (btn) {
+    const bubble = btn.closest('.chat-msg')
+    const ids = [...bubble.querySelectorAll('.sum-check:checked')].map(c => c.value)
+    if (!ids.length) { alert('요약할 콘텐츠를 선택해주세요.'); return }
+    runSummarize(ids, '선택한 콘텐츠 요약하기')
+}
+
+window.summarizeAll = function (btn) {
+    const bubble = btn.closest('.chat-msg')
+    const ids = [...bubble.querySelectorAll('.sum-check')].map(c => c.value)
+    if (!ids.length) { alert('요약할 콘텐츠가 없어요.'); return }
+    runSummarize(ids, '전체 콘텐츠 요약하기')
+}
+
+// 검색 결과 직접 액션 — 요약 / 폴더로 묶기
+window.summarizeResults = function (btn) {
+    const ids = (btn.closest('.bundle-actions')?.dataset.ids || '').split(',').filter(Boolean)
+    if (!ids.length) { alert('요약할 콘텐츠가 없어요.'); return }
+    runSummarize(ids, '이 결과 요약하기')
+}
+
+window.bundleResults = function (btn) {
+    const ids = (btn.closest('.bundle-actions')?.dataset.ids || '').split(',').filter(Boolean)
+    if (!ids.length) { alert('묶을 콘텐츠가 없어요.'); return }
+    const name = prompt('어떤 컬렉션으로 묶을까요? 폴더 이름을 입력하세요.')
+    if (!name || !name.trim()) return
+    bundleResultIds(ids, name.trim())
+}
+
+async function bundleResultIds(ids, name) {
+    const chatMessages = document.getElementById('chat-messages')
+    appendMsg(chatMessages, 'user', `'${name}' 컬렉션으로 묶기`)
+    showChatStatus(['묶을 콘텐츠 정리 중', '컬렉션에 담는 중'])
+    try {
+        const res = await fetch('/collections/bundle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: DEFAULT_USER_ID, name, content_ids: ids }),
+        })
+        const data = await res.json()
+        hideChatStatus()
+        if (!res.ok) throw new Error('묶기 실패')
+        const aiEl = document.createElement('div')
+        aiEl.className = 'chat-msg ai'
+        aiEl.innerHTML = buildAIContent({
+            answer: `'${name}' 컬렉션이 완성되었어요! ${data.moved}개를 담았어요.`,
+            action: 'folder_created', collection_id: data.collection_id, collection_name: name,
+        })
+        chatMessages.appendChild(aiEl)
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        hideChatStatus()
+        appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
+    } finally {
+        chatMessages.scrollTop = chatMessages.scrollHeight
+    }
+}
+
+async function runSummarize(ids, label) {
+    const chatMessages = document.getElementById('chat-messages')
+    appendMsg(chatMessages, 'user', label)
+    showChatStatus('요약 중')
     try {
         const res = await fetch('/summarize', {
             method: 'POST',
@@ -694,13 +889,13 @@ window.summarizeSelected = async function (btn) {
             body: JSON.stringify({ user_id: DEFAULT_USER_ID, content_ids: ids }),
         })
         const data = await res.json()
-        loadingEl.remove()
+        hideChatStatus()
         const aiEl = document.createElement('div')
         aiEl.className = 'chat-msg ai'
         aiEl.innerHTML = buildAIContent(data)
         chatMessages.appendChild(aiEl)
     } catch (e) {
-        loadingEl.remove()
+        hideChatStatus()
         appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
     } finally {
         chatMessages.scrollTop = chatMessages.scrollHeight
@@ -736,11 +931,22 @@ function buildAIContent(data) {
     if (data.action === 'summary_result' && data.summaries && data.summaries.length) {
         // 답변(intro) 다음 줄바꿈 후, 콘텐츠별 요약+카드 분리
         html += buildSummaryBlocks(data.summaries)
+    } else if (data.action === 'folder_select' && data.results && data.results.length) {
+        // 묶기 후보 → 선택/전체 묶기
+        html += buildBundleCards(data.results, data.collection_name)
     } else if (data.action === 'summarize_select' && data.results && data.results.length) {
         // 요약 대상 후보 → 복수 선택 카드 + 요약 버튼
         html += buildSelectableCards(data.results)
     } else if (data.results && data.results.length) {
         html += buildResultCards(data.results)
+        // 검색 결과 → 바로 실행되는 직접 액션 버튼 (불필요한 LLM 재질문 제거)
+        const ids = data.results.map(r => r.id).filter(Boolean)
+        if (ids.length) {
+            html += `<div class="bundle-actions" data-ids="${ids.join(',')}">
+                <button class="summarize-go-btn" onclick="summarizeResults(this)">이 결과 요약하기</button>
+                <button class="bundle-all-btn" onclick="bundleResults(this)">이 결과 폴더로 묶기</button>
+            </div>`
+        }
     }
 
     if (data.follow_up_questions && data.follow_up_questions.length) {
@@ -952,10 +1158,6 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
     overlay.id = 'weekly-report-overlay'
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fdf8f5;'
     overlay.innerHTML = `
-        <button onclick="document.getElementById('weekly-report-overlay').remove()"
-            style="position:fixed;top:16px;right:20px;z-index:10000;background:#6b3a2a;color:#fdf3ec;border:none;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:700;cursor:pointer;">
-            ✕ 닫기
-        </button>
         <iframe src="/weekly-report" style="width:100%;height:100%;border:none;display:block;"></iframe>
     `
     document.body.appendChild(overlay)

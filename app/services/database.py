@@ -231,7 +231,7 @@ async def get_or_create_collection(user_id: str, name: str) -> str | None:
 
 
 async def get_collections(user_id: str) -> list[dict]:
-    """사용자 폴더 목록 전체 조회"""
+    """사용자 폴더 목록 전체 조회 (content_count는 실제 콘텐츠 수로 집계)"""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -244,7 +244,27 @@ async def get_collections(user_id: str) -> list[dict]:
                 },
             )
             response.raise_for_status()
-            return response.json()
+            collections = response.json()
+
+            # 실제 콘텐츠 개수 집계 (collections.content_count 컬럼이 0/미갱신이어도 정확히)
+            cresp = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "collection_id": "not.is.null",
+                    "analysis_status": "eq.completed",
+                    "select": "collection_id",
+                },
+            )
+            counts: dict = {}
+            for row in cresp.json():
+                cid = row.get("collection_id")
+                if cid:
+                    counts[cid] = counts.get(cid, 0) + 1
+            for c in collections:
+                c["content_count"] = counts.get(c.get("id"), 0)
+            return collections
     except httpx.HTTPError as e:
         print(f"[database] 폴더 목록 조회 오류: {e}")
         return []
@@ -442,6 +462,28 @@ async def update_ai_fields(content_id: str, analysis: dict) -> bool:
     except httpx.HTTPError as e:
         print(f"[database] AI 필드 업데이트 오류: {e}")
         return False
+
+
+async def get_collection_contents(user_id: str, collection_id: str) -> list[dict]:
+    """특정 컬렉션(폴더)에 속한 콘텐츠 전체 조회 — 컬렉션 지정 요약용"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "collection_id": f"eq.{collection_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,url,one_line_summary,detailed_summary,description,thumbnail_url,topics,thumbnail_description",
+                    "order": "saved_at.desc",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 컬렉션 콘텐츠 조회 오류: {e}")
+        return []
 
 
 async def get_recent_contents(user_id: str, limit: int = 3) -> list[dict]:

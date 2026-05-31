@@ -106,6 +106,7 @@ class ChatRequest(BaseModel):
     user_id: str = DEFAULT_USER_ID
     history: list[dict] = []
     shown_ids: list[str] = []
+    recent_saved_ids: list[str] = []   # 방금 저장한 콘텐츠("이 콘텐츠 요약") 직행용
 
 
 class SummarizeRequest(BaseModel):
@@ -329,6 +330,25 @@ async def delete_subcategory(category: str, subcategory: str, user_id: str = DEF
     return {"deleted": True, "category": category, "subcategory": subcategory}
 
 
+class BundleRequest(BaseModel):
+    user_id: str = DEFAULT_USER_ID
+    name: str
+    content_ids: list[str]
+
+
+@app.post("/collections/bundle")
+async def bundle_collection(req: BundleRequest):
+    # 선택/전체 콘텐츠를 해당 이름의 컬렉션으로 묶기 (없으면 생성, 있으면 그대로)
+    collection_id = await get_or_create_collection(req.user_id, req.name)
+    if not collection_id:
+        raise HTTPException(status_code=500, detail="폴더 생성 실패")
+    moved = 0
+    for cid in req.content_ids:
+        if await move_content_collection(cid, req.user_id, collection_id):
+            moved += 1
+    return {"collection_id": collection_id, "name": req.name, "moved": moved}
+
+
 @app.post("/contents/move")
 async def move_contents(req: MoveRequest):
     collection_id = await get_or_create_collection(req.user_id, req.target_folder)
@@ -376,7 +396,11 @@ async def reclassify_all(user_id: str):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    result = await process_chat(req.user_id, req.query, history=req.history, shown_ids=req.shown_ids)
+    result = await process_chat(
+        req.user_id, req.query,
+        history=req.history, shown_ids=req.shown_ids,
+        recent_saved_ids=req.recent_saved_ids,
+    )
     return result
 
 
