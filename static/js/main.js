@@ -343,47 +343,60 @@ async function sendChat(chatCollectionId) {
     chatMessages.scrollTop = chatMessages.scrollHeight
 
     try {
-        if (isURL(text.split(' ')[0])) {
-            // URL → 저장
-            const { url, deadline } = parseInput(text)
+        const urlMatches = text.match(/https?:\/\/[^\s]+/gi) || []
+        if (urlMatches.length > 0) {
+            // URL → 저장 (단일 또는 복수)
+            const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
+            const deadline = deadlineMatch ? deadlineMatch[1] : null
             const instruction = deadline ? `마감기한: ${deadline}` : ''
-            const res = await fetch('/ingest', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    url,
-                    user_id: getCurrentUserId(),
-                    instruction,
-                    collection_id: chatCollectionId || null,
+            const urls = urlMatches
+            loadingEl.textContent = urls.length > 1 ? `0 / ${urls.length} 저장 중···` : '···'
+
+            let savedCount = 0
+            for (const url of urls) {
+                const res = await fetch('/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url,
+                        user_id: getCurrentUserId(),
+                        instruction,
+                        collection_id: chatCollectionId || null,
+                    })
                 })
-            })
-            const data = await res.json()
-            loadingEl.remove()
-            if (!res.ok || data.error) throw new Error(data.error || '저장 실패')
-
-            // 저장된 콘텐츠 ID 추적 (마감기한 수정용)
-            if (!data.duplicate && data.id) currentContentId = data.id
-
-            const aiEl = document.createElement('div')
-            aiEl.className = 'chat-msg ai'
-
-            if (data.duplicate) {
-                aiEl.innerHTML = buildSavedItemContent(data.content, true, null)
-            } else {
-                aiEl.innerHTML = buildSavedItemContent(data, false, data.deadline_confirmation)
-                if (data.reminder_message) {
-                    const reminderEl = document.createElement('div')
-                    reminderEl.className = 'chat-msg ai'
-                    reminderEl.textContent = data.reminder_message
-                    chatMessages.appendChild(aiEl)
-                    chatMessages.appendChild(reminderEl)
-                    chatMessages.scrollTop = chatMessages.scrollHeight
-                    loadTopFolders()
-                    loadCollections()
-                    return
+                const data = await res.json()
+                if (!res.ok || data.error) {
+                    const errEl = document.createElement('div')
+                    errEl.className = 'chat-msg ai'
+                    errEl.textContent = `저장 실패: ${url}`
+                    chatMessages.appendChild(errEl)
+                    continue
                 }
+
+                if (!data.duplicate && data.id) currentContentId = data.id
+                savedCount++
+                if (urls.length > 1) loadingEl.textContent = `${savedCount} / ${urls.length} 저장 중···`
+
+                const aiEl = document.createElement('div')
+                aiEl.className = 'chat-msg ai'
+
+                if (data.duplicate) {
+                    aiEl.innerHTML = buildSavedItemContent(data.content, true, null)
+                    chatMessages.appendChild(aiEl)
+                } else {
+                    aiEl.innerHTML = buildSavedItemContent(data, false, urls.length === 1 ? data.deadline_confirmation : null)
+                    chatMessages.appendChild(aiEl)
+                    if (data.reminder_message && urls.length === 1) {
+                        const reminderEl = document.createElement('div')
+                        reminderEl.className = 'chat-msg ai'
+                        reminderEl.textContent = data.reminder_message
+                        chatMessages.appendChild(reminderEl)
+                    }
+                }
+                chatMessages.scrollTop = chatMessages.scrollHeight
             }
-            chatMessages.appendChild(aiEl)
+
+            loadingEl.remove()
             loadTopFolders()
             loadCollections()
         } else {
