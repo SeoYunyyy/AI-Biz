@@ -149,14 +149,31 @@ async def _build_context_query(query: str, history: list[dict[str, Any]]) -> str
         return query
 
 
-def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> str | None:
+# 긴 것 먼저 — "에서"를 먼저 제거해야 "에"가 남지 않음
+_KO_PARTICLES = ["에게서", "으로부터", "로부터", "에서", "에게", "으로", "로", "이랑", "에", "의", "을", "를", "과", "와", "랑", "도", "이", "가", "는", "은"]
+
+def _strip_particles(name: str) -> str:
+    name = name.strip()
+    for p in _KO_PARTICLES:
+        if name.endswith(p) and len(name) > len(p):
+            return name[:-len(p)].strip()
+    return name
+
+def _best_match(name: str, candidates: list[str]) -> tuple[str | None, float]:
+    """가장 유사한 후보와 유사도 점수 반환 (임계값 없음)"""
+    if not candidates:
+        return None, 0.0
     name_norm = name.replace(" ", "").lower()
     best_ratio, best_match = 0.0, None
     for c in candidates:
         ratio = SequenceMatcher(None, name_norm, c.replace(" ", "").lower()).ratio()
         if ratio > best_ratio:
             best_ratio, best_match = ratio, c
-    return best_match if best_ratio >= threshold else None
+    return best_match, best_ratio
+
+def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> str | None:
+    best, ratio = _best_match(name, candidates)
+    return best if ratio >= threshold else None
 
 
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
@@ -417,20 +434,30 @@ _CONTEXTUAL_REFS = ["그거", "이거", "저거", "방금", "그것", "이것", 
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
-    matched_folder = _fuzzy_match(target_folder, existing_names) or target_folder
+
+    # target 폴더: 조사 제거 후 매칭
+    clean_target = _strip_particles(target_folder)
+    best_tgt, tgt_ratio = _best_match(clean_target, existing_names)
+    matched_folder = best_tgt if tgt_ratio >= 0.45 else clean_target
 
     # source_folder 명시된 경우 → 해당 폴더 전체 아이템 이동
     if source_folder:
-        matched_source = _fuzzy_match(source_folder, existing_names) or source_folder
-        source_col = next((c for c in collections if c["name"] == matched_source), None)
+        clean_source = _strip_particles(source_folder)
+        best_src, src_ratio = _best_match(clean_source, existing_names)
+
+        if src_ratio < 0.45:
+            hint = f" 혹시 '{best_src}' 폴더를 말씀하시는 건가요?" if best_src and src_ratio >= 0.25 else ""
+            return {"answer": f"'{clean_source}' 폴더를 찾지 못했어요.{hint}", "results": []}
+
+        source_col = next((c for c in collections if c["name"] == best_src), None)
         if not source_col:
-            return {"answer": f"'{source_folder}' 폴더를 찾지 못했어요.", "results": []}
+            return {"answer": f"'{clean_source}' 폴더를 찾지 못했어요.", "results": []}
         results = await get_collection_items(user_id, source_col["id"])
         if not results:
-            return {"answer": f"'{matched_source}' 폴더에 콘텐츠가 없어요.", "results": []}
+            return {"answer": f"'{best_src}' 폴더에 콘텐츠가 없어요.", "results": []}
         titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
         return {
-            "answer": f"'{matched_source}' 폴더의 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n'{matched_folder}' 폴더로 이동할까요?",
+            "answer": f"'{best_src}' 폴더의 콘텐츠 {len(results)}개를 '{matched_folder}' 폴더로 이동할까요?\n{titles}",
             "needs_confirmation": True,
             "pending_move_ids": [r["id"] for r in results],
             "target_folder": matched_folder,
@@ -499,7 +526,9 @@ async def _handle_delete(user_id: str, delete_query: str, source_folder: str | N
     if source_folder:
         collections = await get_collections(user_id)
         existing_names = [c["name"] for c in collections]
-        matched_folder = _fuzzy_match(source_folder, existing_names)
+        clean_sf = _strip_particles(source_folder)
+        best_sf, sf_ratio = _best_match(clean_sf, existing_names)
+        matched_folder = best_sf if sf_ratio >= 0.45 else None
         if matched_folder:
             col = next(c for c in collections if c["name"] == matched_folder)
             folder_items = await get_collection_items(user_id, col["id"])
