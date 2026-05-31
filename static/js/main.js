@@ -210,14 +210,47 @@ async function loadCollections() {
             return
         }
         sidebar.classList.add('open')
-        list.innerHTML = data.collections.map(c => `
-            <div class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
-                <span class="group-sidebar-name">${c.emoji ? c.emoji + ' ' : ''}${c.name}</span>
+        list.innerHTML = `
+            <div class="group-sidebar-add">
+                <button class="sidebar-add-btn" onclick="showSidebarFolderInput(this)" title="새 폴더">＋</button>
             </div>
-        `).join('')
+            ${data.collections.map(c => `
+                <div class="group-sidebar-item" onclick="openCollectionPanel('${esc(c.id)}','${esc(c.name)}')">
+                    <span class="group-sidebar-name">${c.emoji ? c.emoji + ' ' : ''}${c.name}</span>
+                </div>
+            `).join('')}
+        `
     } catch (e) {
         console.error('컬렉션 로드 실패:', e)
     }
+}
+
+window.showSidebarFolderInput = function(btn) {
+    const wrap = btn.closest('.group-sidebar-add')
+    if (wrap.querySelector('.sidebar-folder-input')) return
+    btn.style.display = 'none'
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'sidebar-folder-input'
+    input.placeholder = '폴더 이름'
+    wrap.appendChild(input)
+    input.focus()
+
+    const done = async () => {
+        const name = input.value.trim()
+        if (name) {
+            await fetch(`/collections?user_id=${getCurrentUserId()}&name=${encodeURIComponent(name)}`, { method: 'POST' })
+            loadCollections()
+        } else {
+            input.remove()
+            btn.style.display = ''
+        }
+    }
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') done()
+        if (e.key === 'Escape') { input.remove(); btn.style.display = '' }
+    })
+    input.addEventListener('blur', () => setTimeout(() => { if (document.contains(input)) { input.remove(); btn.style.display = '' } }, 150))
 }
 
 // ── 컬렉션 상세 패널 열기 ──

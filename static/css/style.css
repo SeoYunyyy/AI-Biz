@@ -116,6 +116,45 @@ nav {
     text-overflow: ellipsis;
 }
 
+.group-sidebar-add {
+    padding: 6px 10px 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-add-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1.5px solid rgba(90,48,2,0.2);
+    background: transparent;
+    color: #9A7055;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-add-btn:hover { background: rgba(90,48,2,0.08); color: #5A3002; }
+
+.sidebar-folder-input {
+    flex: 1;
+    border: 1.5px solid rgba(90,48,2,0.25);
+    border-radius: 7px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fff;
+    color: #2C1A0E;
+    outline: none;
+}
+
+.sidebar-folder-input:focus { border-color: #5A3002; }
+
 .group-sidebar-count {
     font-size: 11px;
     color: #9A7055;

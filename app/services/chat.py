@@ -411,7 +411,30 @@ async def _handle_cleanup(user_id: str) -> dict:
     }
 
 
-async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
+async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None) -> dict:
+    collections = await get_collections(user_id)
+    existing_names = [c["name"] for c in collections]
+    matched_folder = _fuzzy_match(target_folder, existing_names) or target_folder
+
+    # source_folder 명시된 경우 → 해당 폴더 전체 아이템 이동
+    if source_folder:
+        matched_source = _fuzzy_match(source_folder, existing_names) or source_folder
+        source_col = next((c for c in collections if c["name"] == matched_source), None)
+        if not source_col:
+            return {"answer": f"'{source_folder}' 폴더를 찾지 못했어요.", "results": []}
+        results = await get_collection_items(user_id, source_col["id"])
+        if not results:
+            return {"answer": f"'{matched_source}' 폴더에 콘텐츠가 없어요.", "results": []}
+        titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
+        return {
+            "answer": f"'{matched_source}' 폴더의 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n'{matched_folder}' 폴더로 이동할까요?",
+            "needs_confirmation": True,
+            "pending_move_ids": [r["id"] for r in results],
+            "target_folder": matched_folder,
+            "results": results,
+        }
+
+    # source_folder 없는 경우 → 키워드 벡터 검색
     expanded = await expand_query(move_query)
     embedding = await generate_embedding(expanded)
     if not embedding:
@@ -421,16 +444,9 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dic
     if not results:
         return {"answer": f"'{move_query}' 관련 콘텐츠를 찾지 못했어요.", "results": []}
 
-    collections = await get_collections(user_id)
-    existing_names = [c["name"] for c in collections]
-    matched_folder = _fuzzy_match(target_folder, existing_names) or target_folder
-
     titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
     return {
-        "answer": (
-            f"'{move_query}' 관련 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n"
-            f"'{matched_folder}' 폴더로 이동할까요?"
-        ),
+        "answer": f"'{move_query}' 관련 콘텐츠 {len(results)}개를 찾았어요:\n{titles}\n\n'{matched_folder}' 폴더로 이동할까요?",
         "needs_confirmation": True,
         "pending_move_ids": [r["id"] for r in results],
         "target_folder": matched_folder,
@@ -535,8 +551,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         result = await _handle_folder(user_id, folder_name)
     elif intent == "cleanup":
         result = await _handle_cleanup(user_id)
-    elif intent == "move" and move_query and target_folder:
-        result = await _handle_move(user_id, move_query, target_folder)
+    elif intent == "move" and target_folder:
+        result = await _handle_move(user_id, move_query or "", target_folder, source_folder)
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query, source_folder)
     else:
