@@ -30,6 +30,7 @@ from app.services.database import (
     get_all_contents_for_reclassify,
     update_ai_fields,
     move_content_collection,
+    update_subcategory,
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
@@ -299,13 +300,15 @@ async def move_contents(req: MoveRequest):
 @app.post("/admin/reclassify/{user_id}")
 async def reclassify_all(user_id: str):
     """
-    기존 저장 콘텐츠 전체를 AI로 재분류.
-    category, sub_category, 요약, 태그 등 AI 필드만 업데이트.
+    1단계: AI 재분류 (category, sub_category, 요약, 태그)
+    2단계: 같은 category 내 소분류 정규화 (비슷한 이름 통일)
     """
     contents = await get_all_contents_for_reclassify(user_id)
     if not contents:
         return {"updated": 0, "message": "재분류할 콘텐츠가 없어요."}
 
+    # 1단계: 개별 AI 재분류
+    results = []
     updated, failed = 0, 0
     for c in contents:
         try:
@@ -318,12 +321,50 @@ async def reclassify_all(user_id: str):
             analysis = await classify(metadata)
             success = await update_ai_fields(c["id"], analysis)
             if success:
+                results.append({"id": c["id"], "category": analysis.get("category", ""), "sub_category": analysis.get("sub_category", "")})
                 updated += 1
             else:
                 failed += 1
         except Exception as e:
             print(f"[reclassify] {c.get('id')} 실패: {e}")
             failed += 1
+
+    # 2단계: 소분류 정규화 (같은 category 내에서 비슷한 소분류 통일)
+    if results:
+        from collections import defaultdict
+        from openai import AsyncOpenAI
+        oai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+        cat_groups: dict[str, list] = defaultdict(list)
+        for r in results:
+            cat_groups[r["category"]].append(r)
+
+        for cat, items in cat_groups.items():
+            sub_list = list({i["sub_category"] for i in items if i["sub_category"]})
+            if len(sub_list) <= 1:
+                continue
+            prompt = (
+                f"카테고리: {cat}\n"
+                f"소분류 목록: {sub_list}\n\n"
+                "위 소분류들을 의미가 겹치는 것끼리 하나로 통일해줘. "
+                "결과는 JSON 객체로만 반환해. 형식: {{\"원래소분류\": \"통일된소분류\", ...}}"
+            )
+            try:
+                resp = await oai.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0,
+                )
+                import json
+                mapping = json.loads(resp.choices[0].message.content)
+                for item in items:
+                    old_sub = item["sub_category"]
+                    new_sub = mapping.get(old_sub, old_sub)
+                    if new_sub != old_sub:
+                        await update_subcategory(item["id"], new_sub)
+            except Exception as e:
+                print(f"[reclassify] 소분류 정규화 실패: {e}")
 
     return {"updated": updated, "failed": failed, "total": len(contents)}
 

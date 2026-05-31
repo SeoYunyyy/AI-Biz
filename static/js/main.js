@@ -776,6 +776,24 @@ document.getElementById('btn-reminders').addEventListener('click', async () => {
     `).join(''))
 })
 
+document.getElementById('btn-reclassify').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-reclassify')
+    btn.disabled = true
+    btn.textContent = '재분류 중···'
+    try {
+        const res  = await fetch(`/admin/reclassify/${getCurrentUserId()}`, { method: 'POST' })
+        const data = await res.json()
+        alert(`재분류 완료! ${data.updated}개 업데이트, ${data.failed}개 실패`)
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        alert('재분류 실패: ' + e.message)
+    } finally {
+        btn.disabled = false
+        btn.textContent = '재분류'
+    }
+})
+
 document.getElementById('btn-weekly-report').addEventListener('click', () => {
     const overlay = document.createElement('div')
     overlay.id = 'weekly-report-overlay'

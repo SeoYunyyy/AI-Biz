@@ -297,6 +297,43 @@ async def find_similar_contents(user_id: str, embedding: list[float], threshold:
         return []
 
 
+async def get_user_contents(user_id: str) -> list[dict]:
+    """유저의 완료된 콘텐츠 전체 조회 (재분류용)"""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "analysis_status": "eq.completed",
+                    "select": "id,title,category,sub_category,one_line_summary",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        print(f"[database] 전체 콘텐츠 조회 오류: {e}")
+        return []
+
+
+async def update_subcategory(content_id: str, sub_category: str) -> bool:
+    """소분류 업데이트"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{content_id}"},
+                json={"sub_category": sub_category},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] 소분류 업데이트 오류: {e}")
+        return False
+
+
 # ── 삭제 ──────────────────────────────────────────────────────────────────────
 
 async def delete_content(content_id: str, user_id: str) -> bool:
