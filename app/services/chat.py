@@ -431,7 +431,7 @@ async def _handle_cleanup(user_id: str) -> dict:
     }
 
 
-_CONTEXTUAL_REFS = ["그거", "이거", "저거", "방금", "그것", "이것", "맞아", "그 거", "이 거"]
+_CONTEXTUAL_REFS = ["그거", "이거", "저거", "방금", "그것", "이것", "맞아", "그 거", "이 거", "그 링크", "이 링크", "그링크", "그걸", "이걸"]
 
 async def _llm_pick_folder(query: str, candidates: list[str]) -> str | None:
     """영어↔한글 등 퍼지 매칭 실패 시 LLM이 목록에서 골라줌"""
@@ -513,6 +513,24 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str, source
     best_tgt, tgt_ratio = _best_match(clean_target, existing_names)
     matched_folder = best_tgt if tgt_ratio >= 0.45 else clean_target
 
+    # shown_ids 우선: 맥락적 참조("그거", "그 링크" 등)면 source_folder보다 먼저 처리
+    is_contextual = (
+        not move_query
+        or any(ref in move_query for ref in _CONTEXTUAL_REFS)
+        or len(move_query.replace(" ", "")) <= 5
+    )
+    if shown_ids and is_contextual:
+        results = await get_contents_by_ids(user_id, list(shown_ids))
+        if results:
+            titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
+            return {
+                "answer": f"이전에 찾은 콘텐츠 {len(results)}개를 '{matched_folder}' 폴더로 이동할까요?\n{titles}",
+                "needs_confirmation": True,
+                "pending_move_ids": [r["id"] for r in results],
+                "target_folder": matched_folder,
+                "results": results,
+            }
+
     # source_folder 명시된 경우 → 해당 폴더 전체 아이템 이동
     if source_folder:
         clean_source = _strip_particles(source_folder)
@@ -536,24 +554,6 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str, source
             "target_folder": matched_folder,
             "results": results,
         }
-
-    # 이전 검색에서 확인한 콘텐츠가 있고, 이동 대상이 맥락적 참조("그거", "이거" 등)인 경우
-    is_contextual = (
-        not move_query
-        or any(ref in move_query for ref in _CONTEXTUAL_REFS)
-        or len(move_query.replace(" ", "")) <= 3
-    )
-    if shown_ids and is_contextual:
-        results = await get_contents_by_ids(user_id, list(shown_ids))
-        if results:
-            titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
-            return {
-                "answer": f"이전에 찾은 콘텐츠 {len(results)}개를 '{matched_folder}' 폴더로 이동할까요?\n{titles}",
-                "needs_confirmation": True,
-                "pending_move_ids": [r["id"] for r in results],
-                "target_folder": matched_folder,
-                "results": results,
-            }
 
     # 키워드 벡터 검색 + LLM 필터
     expanded = await expand_query(move_query)
