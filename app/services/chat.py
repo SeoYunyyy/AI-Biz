@@ -18,6 +18,7 @@ from app.services.database import (
     move_content_collection,
     update_deadline,
     get_collection_items,
+    get_contents_by_ids,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -411,7 +412,9 @@ async def _handle_cleanup(user_id: str) -> dict:
     }
 
 
-async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None) -> dict:
+_CONTEXTUAL_REFS = ["그거", "이거", "저거", "방금", "그것", "이것", "맞아", "그 거", "이 거"]
+
+async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
     matched_folder = _fuzzy_match(target_folder, existing_names) or target_folder
@@ -434,13 +437,33 @@ async def _handle_move(user_id: str, move_query: str, target_folder: str, source
             "results": results,
         }
 
-    # source_folder 없는 경우 → 키워드 벡터 검색
+    # 이전 검색에서 확인한 콘텐츠가 있고, 이동 대상이 맥락적 참조("그거", "이거" 등)인 경우
+    is_contextual = (
+        not move_query
+        or any(ref in move_query for ref in _CONTEXTUAL_REFS)
+        or len(move_query.replace(" ", "")) <= 3
+    )
+    if shown_ids and is_contextual:
+        results = await get_contents_by_ids(user_id, list(shown_ids))
+        if results:
+            titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in results])
+            return {
+                "answer": f"이전에 찾은 콘텐츠 {len(results)}개를 '{matched_folder}' 폴더로 이동할까요?\n{titles}",
+                "needs_confirmation": True,
+                "pending_move_ids": [r["id"] for r in results],
+                "target_folder": matched_folder,
+                "results": results,
+            }
+
+    # 키워드 벡터 검색 + LLM 필터
     expanded = await expand_query(move_query)
     embedding = await generate_embedding(expanded)
     if not embedding:
         return {"answer": "이동할 콘텐츠를 찾지 못했어요.", "results": []}
 
-    results = await search_contents(user_id, embedding, limit=5)
+    raw = await search_contents(user_id, embedding, limit=10)
+    results = await _filter_results(move_query, raw)
+    results = results[:5]
     if not results:
         return {"answer": f"'{move_query}' 관련 콘텐츠를 찾지 못했어요.", "results": []}
 
@@ -552,7 +575,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "cleanup":
         result = await _handle_cleanup(user_id)
     elif intent == "move" and target_folder:
-        result = await _handle_move(user_id, move_query or "", target_folder, source_folder)
+        result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query, source_folder)
     else:

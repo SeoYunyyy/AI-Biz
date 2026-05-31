@@ -445,6 +445,29 @@ async def get_old_contents(user_id: str, days: int = 365) -> list[dict]:
         return []
 
 
+async def get_contents_by_ids(user_id: str, content_ids: list[str]) -> list[dict]:
+    """ID 목록으로 콘텐츠 조회 (이동 확인용)"""
+    if not content_ids:
+        return []
+    try:
+        ids_str = ','.join(content_ids)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers=_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "id": f"in.({ids_str})",
+                    "select": "id,title,url,one_line_summary,thumbnail_url",
+                },
+            )
+            response.raise_for_status()
+            return [{**d, "similarity": 1.0} for d in response.json()]
+    except httpx.HTTPError as e:
+        print(f"[database] ID 조회 오류: {e}")
+        return []
+
+
 async def update_collection_emoji(collection_id: str, user_id: str, emoji: str | None) -> bool:
     """컬렉션 이모티콘 업데이트"""
     try:
