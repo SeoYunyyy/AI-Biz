@@ -353,6 +353,20 @@ nav {
 
 .folder-pick-select:focus { border-color: #5A3002; }
 
+.merge-picker-wrap { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.chat-action-btn {
+    align-self: flex-end;
+    background: #5A3002;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.chat-action-btn:hover { background: #7a4515; }
+
 .group-sidebar-count {
     font-size: 11px;
     color: #9A7055;

@@ -618,13 +618,11 @@ async def _handle_move_no_target(user_id: str, source_folder: str | None, shown_
 
 
 async def _handle_merge(user_id: str, merge_target: str) -> dict:
-    """여러 대분류에 흩어진 같은 소분류명 콘텐츠를 하나의 컬렉션으로 합치기"""
+    """여러 대분류에 흩어진 같은 소분류명 콘텐츠를 하나의 폴더로 합치기"""
     clean = _strip_particles(merge_target)
 
-    # 소분류에서 찾기
     items = await get_contents_by_subcategory(user_id, clean)
 
-    # 퍼지 매칭 시도
     if not items:
         subcats = await get_all_subcategories(user_id)
         best, ratio = _best_match(clean, subcats)
@@ -639,13 +637,26 @@ async def _handle_merge(user_id: str, merge_target: str) -> dict:
                 "one_line_summary": r.get("one_line_summary", ""),
                 "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
                for r in items]
-    titles = "\n".join([f"- {r.get('title', '제목 없음')}" for r in items])
+
+    # 현재 흩어진 대분류 목록 (중복 제거)
+    existing_categories = sorted({r.get("category", "") for r in items if r.get("category")})
+    n_cats = len(existing_categories)
+
+    if n_cats <= 1:
+        # 이미 한 분류에 있음
+        return {
+            "answer": f"'{clean}' 콘텐츠 {len(items)}개는 이미 '{existing_categories[0] if existing_categories else '?'}' 분류에 함께 있어요.",
+            "results": results, "follow_up_questions": [],
+        }
+
     return {
-        "answer": f"여러 분류에 흩어진 '{clean}' 콘텐츠 {len(items)}개를 찾았어요:\n{titles}\n\n이 항목들을 '{clean}' 폴더 하나로 합칠까요?",
-        "needs_confirmation": True,
+        "answer": f"'{clean}' 콘텐츠 {len(items)}개가 {n_cats}개 분류에 흩어져 있어요. 어느 분류로 합칠까요?",
+        "merge_mode": True,
+        "merge_target": clean,
+        "merge_categories": existing_categories,
         "pending_move_ids": [r["id"] for r in items],
-        "target_folder": clean,
         "results": results,
+        "follow_up_questions": [],
     }
 
 

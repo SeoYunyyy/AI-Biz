@@ -470,7 +470,7 @@ async def get_contents_by_subcategory(user_id: str, sub_category: str) -> list[d
                     "user_id": f"eq.{user_id}",
                     "sub_category": f"eq.{sub_category}",
                     "analysis_status": "eq.completed",
-                    "select": "id,title,url,one_line_summary,thumbnail_url",
+                    "select": "id,title,url,one_line_summary,thumbnail_url,category",
                     "order": "saved_at.desc",
                 },
             )
@@ -479,6 +479,29 @@ async def get_contents_by_subcategory(user_id: str, sub_category: str) -> list[d
     except httpx.HTTPError as e:
         print(f"[database] 소분류 콘텐츠 조회 오류: {e}")
         return []
+
+
+async def batch_update_category(user_id: str, content_ids: list[str], new_category: str) -> bool:
+    """여러 콘텐츠의 category 일괄 업데이트"""
+    if not content_ids:
+        return False
+    try:
+        ids_str = ','.join(content_ids)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/contents",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "id": f"in.({ids_str})",
+                },
+                json={"category": new_category},
+            )
+            response.raise_for_status()
+            return True
+    except httpx.HTTPError as e:
+        print(f"[database] category 일괄 업데이트 오류: {e}")
+        return False
 
 
 async def get_contents_by_ids(user_id: str, content_ids: list[str]) -> list[dict]:

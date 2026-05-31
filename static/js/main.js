@@ -880,6 +880,64 @@ window.executeMoveWithPicker = async function(btn, selectId) {
     } catch (e) { btn.disabled = false; btn.textContent = '이동' }
 }
 
+function buildMergePicker(data) {
+    const ids = JSON.stringify(data.pending_move_ids || [])
+    const target = data.merge_target || ''
+    const cats = data.merge_categories || []
+    const uid = 'mp-' + Date.now()
+
+    const opts = cats.map(cat =>
+        `<option value="cat::${cat}">${cat} &gt; ${target}</option>`
+    ).join('')
+
+    return `
+        <div class="merge-picker-wrap" id="${uid}-wrap">
+            <select class="folder-pick-select" id="${uid}-sel">
+                <option value="">분류 선택...</option>
+                ${opts}
+                <option value="new::${target}">+ 새 폴더 만들기 (${target})</option>
+            </select>
+            <button class="chat-action-btn" onclick="executeMerge(${ids},'${uid}-sel','${target}','${uid}-wrap')">합치기</button>
+        </div>`
+}
+
+window.executeMerge = async function(ids, selId, subCategory, wrapId) {
+    const sel = document.getElementById(selId)
+    const val = sel?.value
+    if (!val) return alert('분류를 선택해주세요.')
+    const uid = getCurrentUserId()
+    const wrap = document.getElementById(wrapId)
+
+    try {
+        if (val.startsWith('new::')) {
+            const name = val.replace('new::', '')
+            const collRes = await fetch(`/collections?user_id=${uid}&name=${encodeURIComponent(name)}`, { method: 'POST' })
+            if (!collRes.ok) throw new Error()
+            const coll = await collRes.json()
+            await Promise.all(ids.map(id =>
+                fetch('/contents/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content_id: id, collection_id: coll.id, user_id: uid })
+                })
+            ))
+            if (wrap) wrap.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${name}' 새 폴더로 합쳤어요!</div>`
+        } else {
+            const newCategory = val.replace('cat::', '')
+            const res = await fetch('/contents/batch/category', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: uid, content_ids: ids, category: newCategory })
+            })
+            if (!res.ok) throw new Error()
+            if (wrap) wrap.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${newCategory} &gt; ${subCategory}'로 합쳤어요!</div>`
+        }
+        setTimeout(() => loadCollections(), 1000)
+    } catch (e) {
+        alert('합치기에 실패했어요. 다시 시도해주세요.')
+    }
+}
+
 // AI 응답 HTML 빌드 (삭제/이동/폴더 확인 UI 포함)
 function buildAIContent(data) {
     let html = data.answer ? `<div>${data.answer}</div>` : ''
@@ -888,8 +946,13 @@ function buildAIContent(data) {
         html += buildResultCards(data.results)
     }
 
+    // 합치기 UI
+    if (data.merge_mode && data.pending_move_ids && data.pending_move_ids.length) {
+        html += buildMergePicker(data)
+    }
+
     // 폴더 선택 이동 (target 없는 경우)
-    if (data.needs_folder_pick && data.pending_move_ids && data.pending_move_ids.length) {
+    if (!data.merge_mode && data.needs_folder_pick && data.pending_move_ids && data.pending_move_ids.length) {
         const pickId = 'fps-' + Date.now()
         html += buildFolderPickForMove(data.results || [], data.pending_move_ids).replace(/fps-\d+/g, pickId)
         setTimeout(() => populateFolderPickSelect(pickId), 0)

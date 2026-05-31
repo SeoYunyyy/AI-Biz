@@ -35,6 +35,7 @@ from app.services.database import (
     update_subcategory,
     update_collection_emoji as db_update_collection_emoji,
     delete_collection as db_delete_collection,
+    batch_update_category as db_batch_update_category,
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
@@ -293,6 +294,21 @@ async def patch_content_subcategory(content_id: str, req: SubcategoryUpdateReque
     success = await db_update_subcategory(content_id, req.sub_category)
     if not success:
         raise HTTPException(status_code=500, detail="소분류 업데이트 실패")
+    return {"updated": True}
+
+
+class BatchCategoryUpdateRequest(BaseModel):
+    user_id: str
+    content_ids: list[str]
+    category: str
+
+
+@app.patch("/contents/batch/category")
+async def batch_update_category_endpoint(req: BatchCategoryUpdateRequest):
+    """여러 콘텐츠의 category 일괄 업데이트 (합치기 기능)"""
+    success = await db_batch_update_category(req.user_id, req.content_ids, req.category)
+    if not success:
+        raise HTTPException(status_code=500, detail="일괄 업데이트 실패")
     return {"updated": True}
 
 
