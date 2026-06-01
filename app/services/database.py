@@ -127,7 +127,7 @@ async def check_duplicate(user_id: str, url: str) -> dict | None:
                 params={
                     "user_id": f"eq.{user_id}",
                     "url": f"eq.{url}",
-                    "select": "id,title,analysis_status,hashtags",
+                    "select": "id,title,url,thumbnail_url,one_line_summary,category,sub_category,topics,hashtags,analysis_status",
                     "limit": "1",
                 },
             )

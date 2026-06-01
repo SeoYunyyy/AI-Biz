@@ -586,13 +586,21 @@ async function sendChat(chatCollectionId) {
 // URL 저장 결과를 채팅 버블로 표시
 function buildSavedItemContent(item, isDuplicate = false, deadlineConfirmation = null) {
     const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? JSON.parse(item.tags) : [])
-    const thumbHTML = item.thumbnail
-        ? `<img src="${item.thumbnail}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
+    const thumb = item.thumbnail_url || item.thumbnail || ''
+    const thumbHTML = thumb
+        ? `<img src="${thumb}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
         : ''
-    const statusText  = isDuplicate ? '이미 저장된 콘텐츠예요' : '✓ 저장 완료'
+    const statusText  = isDuplicate ? '이미 저장된 콘텐츠예요 📌' : '✓ 저장 완료'
     const statusColor = isDuplicate ? '#9A7055' : '#5A9A60'
+    const statusBg    = isDuplicate ? 'rgba(154,112,85,0.08)' : 'transparent'
     const summary = item.one_line_summary || item.description || ''
     const subcat  = item.sub_category || item.subcategory || ''
+    const itemUrl = item.url || '#'
+
+    const duplicateBanner = isDuplicate ? `
+        <div style="background:rgba(154,112,85,0.1);border:1px solid rgba(154,112,85,0.25);border-radius:8px;padding:7px 11px;margin-bottom:10px;font-size:12px;color:#7A5030;line-height:1.5">
+            이미 저장되어 있는 링크예요. 아카이브에서 확인할 수 있어요.
+        </div>` : ''
 
     const deadlineHTML = deadlineConfirmation ? `
         <div class="deadline-confirm-box">
@@ -605,13 +613,14 @@ function buildSavedItemContent(item, isDuplicate = false, deadlineConfirmation =
     ` : ''
 
     return `
-        <div style="font-size:11px;font-weight:700;color:${statusColor};margin-bottom:8px;letter-spacing:0.3px">${statusText}</div>
+        <div style="font-size:11px;font-weight:700;color:${statusColor};background:${statusBg};border-radius:6px;padding:${isDuplicate?'4px 8px':'0'};margin-bottom:8px;letter-spacing:0.3px;display:inline-block">${statusText}</div>
+        ${duplicateBanner}
         ${thumbHTML}
-        <div style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px;line-height:1.4">${item.title}</div>
+        <div style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px;line-height:1.4">${item.title || ''}</div>
         <div style="font-size:12px;color:#9A7055;margin-bottom:8px">${item.category || ''}${subcat ? ' / ' + subcat : ''}</div>
         ${summary ? `<div style="font-size:13px;color:#6B4E3A;line-height:1.55;margin-bottom:8px">${summary}</div>` : ''}
         ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
-        <a href="${item.url}" target="_blank" class="panel-item-link" style="margin-top:4px;display:inline-block">링크 열기 &rarr;</a>
+        <a href="${itemUrl}" target="_blank" class="panel-item-link" style="margin-top:4px;display:inline-block">링크 열기 &rarr;</a>
         ${deadlineHTML}
     `
 }
