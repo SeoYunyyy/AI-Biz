@@ -41,7 +41,10 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
              → 반드시 cleanup으로 분류할 것. delete와 혼동하지 말 것.
 - delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등).
              단, "기간 마감된", "만료된" 같은 표현은 cleanup으로 분류할 것.
-- deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정
+- deadline_edit : 콘텐츠의 마감기한을 수정·변경·추가하고 싶은 요청.
+                 "마감 바꾸고 싶음", "마감기한 수정", "마감일 변경", "그 링크 마감 바꿔줘",
+                 "마감기한 추가하고 싶어", "마감 설정", "마감 다시 잡아줘" 등 포함.
+                 "그 링크", "그거", "방금 거" 등 이전 검색 결과를 지칭하는 경우도 포함.
 - merge    : 같은 이름의 소분류/카테고리가 여러 대분류에 흩어져 있을 때 하나로 합치기.
              "합치다", "합쳐줘", "통합", "하나로", "합쳐", "묶어" 등 포함.
 - general  : 그 외
@@ -55,7 +58,7 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - merge_target: 합칠 대상 이름 (예: "주식")
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null, "content_deadline_date": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
@@ -65,10 +68,11 @@ target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
 merge_target: 합칠 대상 이름 (예: "주식")
 deadline_filter_date: deadline 의도에서 특정 날짜가 언급된 경우 YYYY-MM-DD. 없으면 null.
 deadline_filter_mode: "before" (해당 날짜 이전), "on" (해당 날짜), "after" (해당 날짜 이후). 날짜 없으면 null.
+content_deadline_date: deadline_edit 의도에서 수정할 콘텐츠를 기존 마감일로 지칭할 때 그 날짜 YYYY-MM-DD. (예: "마감기한 6월 24일인 거 바꿔줘" → "2026-06-24"). 없으면 null.
 second_intent: 두 번째 의도, 없으면 null
 second_query: 두 번째 요청 키워드, 없으면 null
 deadline_edit_type: "remove" 또는 "update"
-deadline_edit_date: YYYY-MM-DD
+deadline_edit_date: 새로 설정할 마감일 YYYY-MM-DD
 deadline_edit_note: 마감 설명"""
 
 
@@ -865,11 +869,28 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     deadline_edit_type = intent_data.get("deadline_edit_type")
     deadline_edit_date = intent_data.get("deadline_edit_date")
     deadline_edit_note = intent_data.get("deadline_edit_note")
+    content_deadline_date = intent_data.get("content_deadline_date")
     second_intent = intent_data.get("second_intent")
     second_query = intent_data.get("second_query")
 
     if intent == "deadline_edit":
         effective_id = content_id or (list(shown_ids)[0] if len(shown_ids) == 1 else None)
+
+        # 기존 마감일로 콘텐츠 식별 (예: "마감기한 6월 24일인 거 바꿔줘")
+        if not effective_id and content_deadline_date:
+            all_deadlines = await get_deadlines(user_id)
+            matched_by_date = [d for d in all_deadlines if d.get("deadline_date") == content_deadline_date]
+            if len(matched_by_date) == 1:
+                effective_id = matched_by_date[0]["id"]
+            elif len(matched_by_date) > 1:
+                results = [{"id": d["id"], "title": d.get("title", ""), "url": d.get("url", ""),
+                            "one_line_summary": f"마감: {d.get('deadline_date', '')} | {d.get('deadline_note', '')}",
+                            "thumbnail_url": d.get("thumbnail_url", ""), "similarity": 1.0}
+                           for d in matched_by_date[:5]]
+                result = {"answer": f"마감기한이 {content_deadline_date}인 콘텐츠가 {len(matched_by_date)}개 있어요. 어떤 건가요?",
+                          "results": results, "follow_up_questions": [], "intent": "deadline_edit"}
+                return result
+
         if effective_id:
             result = await _handle_deadline_edit(user_id, effective_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
         else:
