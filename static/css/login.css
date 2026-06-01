@@ -1,0 +1,354 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --primary:     #5A3002;
+  --primary-lt:  #7A4515;
+  --primary-dim: rgba(90, 48, 2, 0.15);
+  --bg:          #F5EFE6;
+  --surface:     rgba(255, 255, 255, 0.75);
+  --border:      rgba(90, 48, 2, 0.12);
+  --border-acc:  rgba(90, 48, 2, 0.28);
+  --text:        #2C1A0E;
+  --muted:       #9A7055;
+  --error-bg:    rgba(220, 53, 69, 0.08);
+  --error-bd:    rgba(220, 53, 69, 0.28);
+  --error-tx:    #C0392B;
+  --success-bg:  rgba(39, 174, 96, 0.08);
+  --success-bd:  rgba(39, 174, 96, 0.28);
+  --success-tx:  #1E8449;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard', 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 캔버스 배경 ── */
+#bg-canvas {
+  position: fixed;
+  inset: 0; z-index: 0;
+  width: 100%; height: 100%;
+}
+
+/* ════════════════════════════════════════
+   네비게이션
+════════════════════════════════════════ */
+.login-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 52px;
+  background: #5A3002;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(90,48,2,0.2);
+  opacity: 0;
+  transform: translateY(-12px);
+}
+
+.nav-logo {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none;
+}
+.nav-logo-icon { width: 34px; height: 34px; }
+.nav-logo-text {
+  font-size: 20px; font-weight: 700;
+  color: #fff; letter-spacing: 0.06em;
+}
+.nav-logo-text span { color: #EDD9C0; }
+
+.nav-badge {
+  font-size: 10px; font-weight: 600;
+  color: rgba(255,255,255,0.65); letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 4px 12px; border-radius: 100px;
+}
+
+/* ════════════════════════════════════════
+   메인 레이아웃
+════════════════════════════════════════ */
+.login-page {
+  position: relative; z-index: 10;
+  width: 100%; height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 480px;
+  align-items: center;
+  padding: 96px 52px 52px;
+  max-width: 1360px;
+  margin: 0 auto;
+  gap: 48px;
+}
+
+/* ════════════════════════════════════════
+   브랜드 섹션 (좌측)
+════════════════════════════════════════ */
+.brand-section {
+  display: flex; flex-direction: column; gap: 32px;
+  padding-right: 32px;
+  opacity: 0;
+}
+
+.brand-eyebrow {
+  display: flex; align-items: center; gap: 14px;
+  opacity: 0; transform: translateY(16px);
+}
+.eyebrow-line {
+  width: 28px; height: 1px; background: var(--primary);
+}
+.eyebrow-text {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.32em; text-transform: uppercase;
+  color: var(--primary);
+}
+
+.brand-title {
+  font-size: clamp(56px, 6vw, 88px);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  color: var(--text);
+  opacity: 0; transform: translateY(24px);
+}
+.brand-title .gold-char {
+  color: var(--primary);
+  text-shadow: 0 0 48px rgba(90, 48, 2, 0.2);
+}
+
+.brand-lead {
+  font-size: 19px; font-weight: 500;
+  line-height: 1.7; color: var(--text);
+  opacity: 0; transform: translateY(16px);
+}
+
+.brand-desc {
+  font-size: 14px; font-weight: 300;
+  line-height: 1.9; color: var(--muted);
+  opacity: 0; transform: translateY(16px);
+}
+
+.brand-features {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 18px 20px;
+  border-left: 2px solid rgba(90,48,2,0.25);
+  background: rgba(90,48,2,0.05);
+  border-radius: 0 10px 10px 0;
+  opacity: 0; transform: translateY(16px);
+}
+.brand-features li {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; color: var(--muted); font-weight: 400;
+}
+.brand-features li::before {
+  content: '';
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--primary); flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════
+   로그인 카드 (우측)
+════════════════════════════════════════ */
+.login-card-wrapper {
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: translateY(24px) scale(0.98);
+}
+
+.login-card {
+  width: 100%;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow:
+    0 0 0 1px var(--border-acc) inset,
+    0 24px 64px rgba(90, 48, 2, 0.12);
+  padding: 36px 36px 30px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 카드 상단 강조 라인 */
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 15%; right: 15%; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(90,48,2,0.35), transparent);
+}
+
+/* ── 탭 ── */
+.auth-tabs {
+  display: flex; gap: 4px;
+  background: rgba(90,48,2,0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px; padding: 4px;
+  margin-bottom: 26px;
+}
+.auth-tab {
+  flex: 1; padding: 8px 0;
+  border: none; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-family: inherit;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+}
+.auth-tab.active {
+  background: #5A3002;
+  color: #fff; font-weight: 600;
+  box-shadow: 0 2px 8px rgba(90,48,2,0.18);
+}
+
+/* ── 폼 ── */
+.form-group { margin-bottom: 14px; }
+
+.form-label {
+  display: block; font-size: 12px;
+  font-weight: 500; color: var(--muted);
+  letter-spacing: 0.07em; text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+.form-input {
+  width: 100%;
+  background: rgba(255,255,255,0.65);
+  border: 1.5px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+  font-size: 14px; font-family: inherit;
+  color: var(--text); outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.form-input::placeholder { color: #C4A98A; }
+.form-input:focus {
+  border-color: #5A3002;
+  box-shadow: 0 0 0 3px rgba(90,48,2,0.08);
+  background: #fff;
+}
+.form-input.error { border-color: var(--error-bd); }
+
+/* ── 제출 버튼 ── */
+.btn-submit {
+  width: 100%; margin-top: 6px;
+  padding: 13px; border-radius: 10px;
+  border: none; cursor: pointer;
+  font-family: inherit;
+  font-size: 15px; font-weight: 600; color: #fff;
+  background: #5A3002;
+  border: 1px solid #5A3002;
+  transition: background 0.2s, transform 0.15s;
+  min-height: 48px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-submit:hover {
+  background: #7A4515;
+  border-color: #7A4515;
+  transform: translateY(-1px);
+}
+.btn-submit:active  { transform: translateY(0); }
+.btn-submit:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.email-btn-spinner {
+  display: none; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: var(--text); border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.btn-submit.loading .email-btn-text    { display: none; }
+.btn-submit.loading .email-btn-spinner { display: block; }
+
+/* ── 메시지 ── */
+.auth-message {
+  display: none; margin-top: 12px;
+  padding: 10px 14px; border-radius: 8px;
+  font-size: 13px; line-height: 1.55;
+}
+.auth-message.is-error   { display: block; background: var(--error-bg);   border: 1px solid var(--error-bd);   color: var(--error-tx);   }
+.auth-message.is-success { display: block; background: var(--success-bg); border: 1px solid var(--success-bd); color: var(--success-tx); }
+
+/* ── 구분선 ── */
+.divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 20px 0;
+}
+.divider-line  { flex: 1; height: 1px; background: var(--border); }
+.divider-text  { font-size: 11px; color: var(--muted); }
+
+/* ── Google 버튼 ── */
+.btn-google {
+  width: 100%; display: flex;
+  align-items: center; justify-content: center; gap: 10px;
+  padding: 13px; border-radius: 10px;
+  border: 1.5px solid var(--border-acc); cursor: pointer;
+  font-family: inherit;
+  font-size: 14px; font-weight: 600;
+  color: var(--text);
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 2px 8px rgba(90,48,2,0.08);
+  transition: box-shadow 0.2s, transform 0.2s, background 0.2s;
+  min-height: 48px;
+}
+.btn-google:hover {
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(90,48,2,0.14);
+  transform: translateY(-1px);
+}
+.btn-google:active  { transform: translateY(0); }
+.btn-google:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.google-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.google-btn-spinner {
+  display: none; width: 16px; height: 16px;
+  border: 2px solid rgba(0,0,0,0.15);
+  border-top-color: #0C0C0C; border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.btn-google.loading .google-btn-text,
+.btn-google.loading .google-icon        { display: none; }
+.btn-google.loading .google-btn-spinner { display: block; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 카드 하단 ── */
+.card-footer-text {
+  margin-top: 18px; text-align: center;
+  font-size: 13px; color: var(--muted);
+}
+.switch-mode-btn {
+  background: none; border: none;
+  color: var(--primary); font-family: inherit;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  margin-left: 4px; text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(90,48,2,0.3);
+}
+.switch-mode-btn:hover { color: var(--primary-lt); }
+
+/* ════════════════════════════════════════
+   반응형
+════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .login-page { grid-template-columns: 1fr 420px; padding: 88px 36px 36px; }
+  .brand-section { padding-right: 0; }
+}
+
+@media (max-width: 768px) {
+  html, body { overflow-y: auto; }
+  .login-page {
+    grid-template-columns: 1fr; height: auto;
+    min-height: 100vh; padding: 80px 20px 40px;
+    gap: 32px; align-items: flex-start;
+  }
+  .brand-section { padding-right: 0; gap: 20px; }
+  .brand-title   { font-size: 52px; }
+  .login-nav     { padding: 16px 20px; }
+  .login-card    { padding: 28px 24px; }
+}
