@@ -951,8 +951,15 @@ window.showDeadlineAddPopup = function(btn, contentId) {
             <button class="reminder-cancel-btn" onclick="this.closest('.card-deadline-popup').remove()">취소</button>
         </div>`
     const rect = btn.getBoundingClientRect()
-    popup.style.cssText = `position:fixed;top:${rect.bottom+4}px;left:${rect.left}px;z-index:9999;background:#fff;border:1px solid rgba(90,48,2,0.18);border-radius:10px;padding:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:200px`
     document.body.appendChild(popup)
+    const popW = popup.offsetWidth || 210
+    const popH = popup.offsetHeight || 160
+    let top = rect.bottom + 4
+    let left = rect.left
+    if (left + popW > window.innerWidth - 8) left = rect.right - popW
+    if (left < 8) left = 8
+    if (top + popH > window.innerHeight - 8) top = rect.top - popH - 4
+    popup.style.cssText = `position:fixed;top:${top}px;left:${left}px;z-index:9999;background:#fff;border:1px solid rgba(90,48,2,0.18);border-radius:10px;padding:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:200px`
     setTimeout(() => document.addEventListener('click', function handler(e) {
         if (!popup.contains(e.target) && e.target !== btn) { popup.remove(); document.removeEventListener('click', handler) }
     }), 0)
