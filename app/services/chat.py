@@ -32,7 +32,7 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 
 의도 종류:
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
-- deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야" 등)
+- deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야", "7월 3일 전에 마감하는 거", "몇월 며칠 마감 뭐였지" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
 - move     : 콘텐츠를 다른 폴더로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
              목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null
@@ -55,7 +55,7 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - merge_target: 합칠 대상 이름 (예: "주식")
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "second_intent": null, "second_query": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
@@ -63,6 +63,8 @@ source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
 target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
 merge_target: 합칠 대상 이름 (예: "주식")
+deadline_filter_date: deadline 의도에서 특정 날짜가 언급된 경우 YYYY-MM-DD. 없으면 null.
+deadline_filter_mode: "before" (해당 날짜 이전), "on" (해당 날짜), "after" (해당 날짜 이후). 날짜 없으면 null.
 second_intent: 두 번째 의도, 없으면 null
 second_query: 두 번째 요청 키워드, 없으면 null
 deadline_edit_type: "remove" 또는 "update"
@@ -313,7 +315,7 @@ async def _handle_search(user_id: str, query: str, history: list[dict[str, Any]]
     return {"answer": answer, "results": results, "follow_up_questions": follow_up}
 
 
-async def _handle_deadline(user_id: str) -> dict:
+async def _handle_deadline(user_id: str, filter_date: str | None = None, filter_mode: str | None = None) -> dict:
     from datetime import timedelta
 
     deadlines = await get_deadlines(user_id)
@@ -321,6 +323,46 @@ async def _handle_deadline(user_id: str) -> dict:
     today_str = today.isoformat()
     week_later = (today + timedelta(days=7)).isoformat()
 
+    # 날짜 필터가 있으면 해당 조건으로 먼저 검색
+    if filter_date:
+        if filter_mode == "before":
+            matched = [d for d in deadlines if (d.get("deadline_date") or "9999") <= filter_date]
+        elif filter_mode == "after":
+            matched = [d for d in deadlines if (d.get("deadline_date") or "9999") >= filter_date]
+        else:  # "on" or None
+            matched = [d for d in deadlines if d.get("deadline_date") == filter_date]
+
+        if matched:
+            results = [{"id": d["id"], "title": d.get("title", ""), "url": d.get("url", ""),
+                        "one_line_summary": f"마감: {d.get('deadline_date','')} | {d.get('deadline_note','')}",
+                        "thumbnail_url": d.get("thumbnail_url", ""), "similarity": 1.0}
+                       for d in matched[:10]]
+            mode_label = {"before": "이전", "after": "이후", "on": "당일"}.get(filter_mode or "on", "")
+            answer = await _llm(
+                [{"role": "system", "content": "마감기한 목록을 친근하게 안내해줘. 한국어. 2~3문장."},
+                 {"role": "user", "content": f"{filter_date} {mode_label} 마감:\n" +
+                  "\n".join(f"- {d.get('title','')}: {d.get('deadline_date','')} ({d.get('deadline_note','')})" for d in matched[:10])}],
+                model="gpt-4o-mini", max_tokens=150,
+            )
+            return {"answer": answer, "results": results, "follow_up_questions": []}
+
+        # 해당 날짜에 마감 없으면 → 가장 가까운 날짜 제안
+        all_sorted = sorted(deadlines, key=lambda d: d.get("deadline_date") or "9999")
+        nearby = all_sorted[:3]
+        if nearby:
+            nearby_results = [{"id": d["id"], "title": d.get("title", ""), "url": d.get("url", ""),
+                                "one_line_summary": f"마감: {d.get('deadline_date','')} | {d.get('deadline_note','')}",
+                                "thumbnail_url": d.get("thumbnail_url", ""), "similarity": 1.0}
+                               for d in nearby]
+            titles = "\n".join(f"- {d.get('title','')}: {d.get('deadline_date','')}" for d in nearby)
+            return {
+                "answer": f"{filter_date} 기준으로 해당하는 마감이 없어요. 가장 가까운 마감들이에요:\n{titles}\n\n혹시 이 중에 찾으시는 게 있나요?",
+                "results": nearby_results,
+                "follow_up_questions": ["맞아요", "아니요, 다시 검색해줘"],
+            }
+        return {"answer": "마감기한이 있는 콘텐츠가 없어요.", "results": []}
+
+    # 날짜 필터 없으면 기존 전체 목록
     urgent   = [d for d in deadlines if today_str <= (d.get("deadline_date") or "9999") <= week_later]
     relaxed  = [d for d in deadlines if (d.get("deadline_date") or "9999") > week_later]
     expired  = [d for d in deadlines if (d.get("deadline_date") or "9999") < today_str]
@@ -331,47 +373,23 @@ async def _handle_deadline(user_id: str) -> dict:
     context_parts = []
     if urgent:
         context_parts.append("[ 🚨 마감 임박 — 7일 이내 ]")
-        context_parts += [
-            f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})"
-            for d in urgent
-        ]
+        context_parts += [f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})" for d in urgent]
     if relaxed:
         context_parts.append("\n[ 📅 여유 있음 — 7일 초과 ]")
-        context_parts += [
-            f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})"
-            for d in relaxed[:5]
-        ]
+        context_parts += [f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})" for d in relaxed[:5]]
     if expired:
         context_parts.append("\n[ 만료됨 ]")
-        context_parts += [
-            f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})"
-            for d in expired[:3]
-        ]
+        context_parts += [f"- {d.get('title', '')}: {d.get('deadline_date', '')} ({d.get('deadline_note', '')})" for d in expired[:3]]
 
     answer = await _llm(
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "사용자의 마감기한 목록입니다. "
-                    "7일 이내 임박한 것은 긴박하게 강조하고, "
-                    "여유 있는 것은 가볍게 언급하고, "
-                    "만료된 것은 정리를 권유하세요. "
-                    "친근하게. 한국어로. 3~4문장."
-                ),
-            },
+            {"role": "system", "content": "사용자의 마감기한 목록입니다. 7일 이내 임박한 것은 긴박하게 강조하고, 여유 있는 것은 가볍게, 만료된 것은 정리를 권유하세요. 친근하게. 한국어로. 3~4문장."},
             {"role": "user", "content": "\n".join(context_parts)},
         ],
-        model="gpt-4o",
-        max_tokens=220,
+        model="gpt-4o", max_tokens=220,
     )
 
-    return {
-        "answer": answer,
-        "urgent": urgent,
-        "relaxed": relaxed[:5],
-        "expired": expired[:3],
-    }
+    return {"answer": answer, "urgent": urgent, "relaxed": relaxed[:5], "expired": expired[:3]}
 
 
 async def _handle_folder(user_id: str, folder_name: str) -> dict:
@@ -835,6 +853,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
     merge_target = intent_data.get("merge_target")
+    deadline_filter_date = intent_data.get("deadline_filter_date")
+    deadline_filter_mode = intent_data.get("deadline_filter_mode")
     deadline_edit_type = intent_data.get("deadline_edit_type")
     deadline_edit_date = intent_data.get("deadline_edit_date")
     deadline_edit_note = intent_data.get("deadline_edit_note")
@@ -849,7 +869,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         else:
             result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":
-        result = await _handle_deadline(user_id)
+        result = await _handle_deadline(user_id, filter_date=deadline_filter_date, filter_mode=deadline_filter_mode)
     elif intent == "folder" and folder_name:
         result = await _handle_folder(user_id, folder_name)
     elif intent == "cleanup":

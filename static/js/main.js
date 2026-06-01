@@ -1196,14 +1196,69 @@ document.getElementById('btn-reminders').addEventListener('click', async () => {
         return
     }
     openModal('리마인더', data.deadlines.map(r => `
-        <div class="reminder-item">
-            <span class="reminder-deadline">마감: ${r.deadline_date}</span>
+        <div class="reminder-item" id="ri-${r.id}">
+            <div class="reminder-date-row">
+                <span class="reminder-deadline">마감: ${r.deadline_date}</span>
+                <button class="reminder-edit-btn" onclick="toggleDeadlineEdit('${esc(r.id)}', '${esc(r.deadline_date)}', '${esc(r.deadline_note || '')}')">수정</button>
+                <button class="reminder-remove-btn" onclick="removeDeadline('${esc(r.id)}')">삭제</button>
+            </div>
+            <div class="reminder-edit-form" id="ref-${r.id}" style="display:none">
+                <input type="date" class="reminder-date-input" id="rdi-${r.id}" value="${r.deadline_date}" />
+                <input type="text" class="reminder-note-input" id="rni-${r.id}" value="${esc(r.deadline_note || '')}" placeholder="메모 (선택)" />
+                <div class="reminder-edit-btns">
+                    <button class="reminder-save-btn" onclick="saveDeadlineEdit('${esc(r.id)}')">저장</button>
+                    <button class="reminder-cancel-btn" onclick="toggleDeadlineEdit('${esc(r.id)}')">취소</button>
+                </div>
+            </div>
             <p class="reminder-title">${r.title}</p>
             ${r.deadline_note ? `<span class="reminder-cat">${r.deadline_note}</span>` : ''}
             <a href="${r.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
         </div>
     `).join(''))
 })
+
+window.toggleDeadlineEdit = function(id, date, note) {
+    const form = document.getElementById('ref-' + id)
+    if (!form) return
+    const isOpen = form.style.display !== 'none'
+    form.style.display = isOpen ? 'none' : 'block'
+    if (!isOpen && date) {
+        document.getElementById('rdi-' + id).value = date
+        document.getElementById('rni-' + id).value = note || ''
+    }
+}
+
+window.saveDeadlineEdit = async function(id) {
+    const dateVal = document.getElementById('rdi-' + id)?.value
+    const noteVal = document.getElementById('rni-' + id)?.value
+    if (!dateVal) return alert('날짜를 선택해주세요.')
+    try {
+        const res = await fetch(`/deadlines/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), deadline_date: dateVal, deadline_note: noteVal })
+        })
+        if (!res.ok) throw new Error()
+        const row = document.querySelector(`#ri-${id} .reminder-deadline`)
+        if (row) row.textContent = '마감: ' + dateVal
+        const cat = document.querySelector(`#ri-${id} .reminder-cat`)
+        if (cat && noteVal) cat.textContent = noteVal
+        document.getElementById('ref-' + id).style.display = 'none'
+    } catch (e) { alert('수정에 실패했어요.') }
+}
+
+window.removeDeadline = async function(id) {
+    if (!confirm('마감일을 삭제할까요?')) return
+    try {
+        const res = await fetch(`/deadlines/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), remove: true })
+        })
+        if (!res.ok) throw new Error()
+        document.getElementById('ri-' + id)?.remove()
+    } catch (e) { alert('삭제에 실패했어요.') }
+}
 
 document.getElementById('btn-reclassify').addEventListener('click', async () => {
     const btn = document.getElementById('btn-reclassify')

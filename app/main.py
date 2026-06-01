@@ -36,6 +36,7 @@ from app.services.database import (
     update_collection_emoji as db_update_collection_emoji,
     delete_collection as db_delete_collection,
     batch_update_category as db_batch_update_category,
+    update_deadline as db_update_deadline,
 )
 from app.routes.archive import router as archive_router
 from app.routes.report import router as report_router
@@ -251,6 +252,25 @@ async def search(req: SearchRequest):
 async def list_deadlines(user_id: str):
     results = await db_get_deadlines(user_id)
     return {"deadlines": results}
+
+
+class DeadlineUpdateRequest(BaseModel):
+    user_id: str
+    deadline_date: str | None = None
+    deadline_note: str | None = None
+    remove: bool = False
+
+
+@app.patch("/deadlines/{content_id}")
+async def patch_deadline(content_id: str, req: DeadlineUpdateRequest):
+    """리마인더에서 마감일 직접 수정"""
+    if req.remove:
+        success = await db_update_deadline(content_id, req.user_id, False, None, None)
+    else:
+        success = await db_update_deadline(content_id, req.user_id, True, req.deadline_date, req.deadline_note)
+    if not success:
+        raise HTTPException(status_code=500, detail="마감일 업데이트 실패")
+    return {"updated": True}
 
 @app.get("/collections/{user_id}")
 async def get_user_collections(user_id: str):

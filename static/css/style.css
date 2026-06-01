@@ -1198,7 +1198,17 @@ nav {
     margin-bottom: 14px;
 }
 
-.reminder-deadline { font-size: 12px; font-weight: 700; color: #C0392B; display: block; margin-bottom: 6px; }
+.reminder-date-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.reminder-deadline { font-size: 12px; font-weight: 700; color: #C0392B; }
+.reminder-edit-btn { background: none; border: 1px solid rgba(90,48,2,0.2); border-radius: 6px; font-size: 11px; color: #7A5030; padding: 2px 8px; cursor: pointer; }
+.reminder-edit-btn:hover { background: rgba(90,48,2,0.07); }
+.reminder-remove-btn { background: none; border: 1px solid rgba(180,60,60,0.25); border-radius: 6px; font-size: 11px; color: #c04040; padding: 2px 8px; cursor: pointer; margin-left: auto; }
+.reminder-remove-btn:hover { background: rgba(180,60,60,0.08); }
+.reminder-edit-form { margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.reminder-date-input, .reminder-note-input { border: 1.5px solid rgba(90,48,2,0.18); border-radius: 7px; padding: 6px 10px; font-size: 13px; font-family: inherit; background: #fdf8f5; color: #2C1A0E; outline: none; }
+.reminder-edit-btns { display: flex; gap: 6px; }
+.reminder-save-btn { background: #5A3002; color: #fff; border: none; border-radius: 7px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.reminder-cancel-btn { background: none; border: 1px solid rgba(90,48,2,0.2); border-radius: 7px; padding: 5px 12px; font-size: 12px; color: #7A5030; cursor: pointer; }
 .reminder-title { font-size: 15px; font-weight: 600; color: #2C1A0E; margin-bottom: 6px; }
 .reminder-cat { font-size: 12px; color: #9A7055; display: block; margin-bottom: 8px; }
 
