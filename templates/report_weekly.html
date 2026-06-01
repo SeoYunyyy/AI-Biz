@@ -26,7 +26,7 @@
   .hero-right { flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; padding-top: 12px; }
   .hero-emoji-main { font-size: 120px; line-height: 1; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35)); }
   .hero-emoji-sub { font-size: 96px; line-height: 1; margin-top: 28px; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.3)); }
-  .hero-keepi { width: 300px; height: 300px; object-fit: contain; filter: drop-shadow(0 10px 32px rgba(0,0,0,0.28)); }
+  .hero-keepi { width: 420px; height: 420px; object-fit: contain; filter: drop-shadow(0 10px 32px rgba(0,0,0,0.28)); }
 
   /* ── 통계 행 (히어로 아래) ── */
   .stats-row-wrap { background: #fdf8f5; padding: 32px 48px; }
@@ -341,19 +341,20 @@ function getUserId() {
     || localStorage.getItem('keepit_user_id')
     || '';
 }
-// 취향 유형에 맞는 키피 이미지 반환
-function personalityImage(type) {
-  type = (type || '').toLowerCase()
-  let src
-  if (/음악|노래|뮤직|재즈|k-pop/.test(type))       src = 'keepi_music.png'
-  else if (/기술|개발|ai|디지털|코딩/.test(type))    src = 'keepi_tech.png'
-  else if (/건강|운동|웰니스|헬스/.test(type))       src = 'keepi_health.png'
-  else if (/여행|탐험|모험/.test(type))             src = 'keepi_travel.png'
-  else if (/카페|미식|푸드|요리/.test(type))         src = 'keepi_food.png'
-  else if (/독서|공부|학습/.test(type))             src = 'keepi_book.png'
-  else if (/영상|영화|드라마|콘텐츠/.test(type))     src = 'keepi_video.png'
-  else if (/패션|뷰티|스타일/.test(type))           src = 'keepi_fashion.png'
-  else                                             src = 'keepi_default.png'
+// 이번 주 가장 많이 저장한 카테고리(top_category)로 키피 이미지 결정
+const CATEGORY_IMAGE = {
+  'IT/기술':     'keepi_tech.png',
+  '영상/엔터':   'keepi_video.png',
+  '음악':        'keepi_music.png',
+  '독서/책':     'keepi_book.png',
+  '요리/식품':   'keepi_food.png',
+  '여행':        'keepi_travel.png',
+  '패션/뷰티':   'keepi_fashion.png',
+  '운동/헬스':   'keepi_health.png',
+  '교육/학습':   'keepi_book.png',
+}
+function categoryImage(topCategory) {
+  const src = CATEGORY_IMAGE[topCategory] || 'keepi_default.png'
   return `<img src="/static/images/keepi/${src}" class="hero-keepi" alt="keepi" onerror="this.style.display='none'" />`
 }
 
@@ -541,7 +542,7 @@ async function loadReport() {
     // 히어로 키피 이미지 (취향 유형에 맞는 이미지, 없으면 이모지 fallback)
     const mainEmoji = rep.personality_emoji || '✨';
     const heroRight = document.getElementById('hero-right');
-    heroRight.innerHTML = personalityImage(rep.personality_type || rep.nickname || '');
+    heroRight.innerHTML = categoryImage(rep.top_category || '');
     // 키피 이미지 로드 실패 시 이모지로 대체
     const keepiImg = heroRight.querySelector('img');
     if (keepiImg) {
