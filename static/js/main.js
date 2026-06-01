@@ -953,7 +953,6 @@ window.showDeadlineAddPopup = function(btn, contentId) {
     if (existing) { existing.remove(); return }
     document.querySelectorAll('.card-deadline-popup').forEach(p => p.remove())
 
-    const card = btn.closest('.panel-item-card')
     const wrap = document.createElement('div')
     wrap.id = 'cdp-wrap-' + contentId
     wrap.className = 'card-deadline-popup'
@@ -965,10 +964,8 @@ window.showDeadlineAddPopup = function(btn, contentId) {
             <button class="reminder-save-btn" onclick="saveCardDeadline('${contentId}')">저장</button>
             <button class="reminder-cancel-btn" onclick="document.getElementById('cdp-wrap-${contentId}')?.remove()">취소</button>
         </div>`
-    const actions = btn.closest('.panel-card-actions')
-    if (actions) {
-        actions.after(wrap)
-    } else if (card) {
+    const card = btn.closest('.panel-item-card, .archive-item-card')
+    if (card) {
         card.appendChild(wrap)
     } else {
         document.body.appendChild(wrap)
