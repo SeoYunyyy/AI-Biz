@@ -39,6 +39,12 @@ let currentContentId = null      // 마지막 저장 콘텐츠 ID (deadline_edit
 let selectedCollectionId = null  // 폴더 선택 (메인 입력창)
 let selectedCollectionName = null
 
+// ── 리마인더 캘린더 상태 ──
+let calYear         = new Date().getFullYear()
+let calMonth        = new Date().getMonth()
+let calDeadlines    = []
+let calSelectedDate = null
+
 const promptInput = document.getElementById('prompt-input')
 const submitBtn   = document.getElementById('submit-btn')
 const resultsDiv  = document.getElementById('results')
@@ -1195,27 +1201,121 @@ document.getElementById('btn-reminders').addEventListener('click', async () => {
         openModal('리마인더', '<p class="no-result">마감 자료가 없어요.</p>')
         return
     }
-    openModal('리마인더', data.deadlines.map(r => `
-        <div class="reminder-item" id="ri-${r.id}">
-            <div class="reminder-date-row">
-                <span class="reminder-deadline">마감: ${r.deadline_date}</span>
-                <button class="reminder-edit-btn" onclick="toggleDeadlineEdit('${esc(r.id)}', '${esc(r.deadline_date)}', '${esc(r.deadline_note || '')}')">수정</button>
-                <button class="reminder-remove-btn" onclick="removeDeadline('${esc(r.id)}')">삭제</button>
-            </div>
-            <div class="reminder-edit-form" id="ref-${r.id}" style="display:none">
-                <input type="date" class="reminder-date-input" id="rdi-${r.id}" value="${r.deadline_date}" />
-                <input type="text" class="reminder-note-input" id="rni-${r.id}" value="${esc(r.deadline_note || '')}" placeholder="메모 (선택)" />
-                <div class="reminder-edit-btns">
-                    <button class="reminder-save-btn" onclick="saveDeadlineEdit('${esc(r.id)}')">저장</button>
-                    <button class="reminder-cancel-btn" onclick="toggleDeadlineEdit('${esc(r.id)}')">취소</button>
+    const now = new Date()
+    calYear      = now.getFullYear()
+    calMonth     = now.getMonth()
+    calDeadlines = data.deadlines
+    calSelectedDate = null
+    renderReminderCalendar()
+})
+
+function renderReminderCalendar() {
+    const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const monthPad = String(calMonth + 1).padStart(2, '0')
+
+    const dateMap = {}
+    calDeadlines.forEach(r => {
+        if (r.deadline_date) {
+            if (!dateMap[r.deadline_date]) dateMap[r.deadline_date] = []
+            dateMap[r.deadline_date].push(r)
+        }
+    })
+
+    const firstDow    = new Date(calYear, calMonth, 1).getDay()
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
+    const weekdays    = ['일','월','화','수','목','금','토']
+
+    let cellsHTML = weekdays.map((d, i) =>
+        `<div class="cal-weekday ${i===0?'sun':i===6?'sat':''}">${d}</div>`
+    ).join('')
+
+    const prevDays = new Date(calYear, calMonth, 0).getDate()
+    for (let i = firstDow - 1; i >= 0; i--)
+        cellsHTML += `<div class="cal-cell other-month"><div class="cal-dots"></div><div class="cal-date-num">${prevDays - i}</div></div>`
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${calYear}-${monthPad}-${String(d).padStart(2,'0')}`
+        const dow   = (firstDow + d - 1) % 7
+        const items = dateMap[dateStr] || []
+        const dots  = Array(Math.min(items.length, 4)).fill('<div class="cal-dot"></div>').join('')
+        const cls   = [dateStr === todayStr ? 'today' : '', dow === 0 ? 'sunday' : '', dow === 6 ? 'saturday' : ''].join(' ')
+        const isSel = dateStr === calSelectedDate ? 'selected' : ''
+        cellsHTML += `
+            <div class="cal-cell ${cls} ${isSel}" onclick="window.calSelectDate('${dateStr}')">
+                <div class="cal-dots">${dots}</div>
+                <div class="cal-date-num">${d}</div>
+            </div>`
+    }
+
+    const total    = firstDow + daysInMonth
+    const trailing = total % 7 === 0 ? 0 : 7 - (total % 7)
+    for (let i = 1; i <= trailing; i++)
+        cellsHTML += `<div class="cal-cell other-month"><div class="cal-dots"></div><div class="cal-date-num">${i}</div></div>`
+
+    const monthStart = `${calYear}-${monthPad}-01`
+    const monthEnd   = `${calYear}-${monthPad}-${String(daysInMonth).padStart(2,'0')}`
+    const listItems  = calSelectedDate
+        ? calDeadlines.filter(r => r.deadline_date === calSelectedDate)
+        : calDeadlines
+            .filter(r => r.deadline_date >= monthStart && r.deadline_date <= monthEnd)
+            .sort((a, b) => a.deadline_date.localeCompare(b.deadline_date))
+
+    const filterBarHTML = calSelectedDate ? `
+        <div class="cal-filter-bar">
+            <span>📌 ${calSelectedDate} 마감 콘텐츠</span>
+            <button class="cal-filter-clear" onclick="window.calClearFilter()">전체 보기 ✕</button>
+        </div>` : ''
+
+    const noMsg = calSelectedDate ? '이 날 마감 콘텐츠가 없어요.' : '이 달에 마감 자료가 없어요.'
+    const eventListHTML = filterBarHTML + (listItems.length
+        ? listItems.map(r => {
+            const exp = r.deadline_date < todayStr
+            return `
+                <div class="cal-event-item ${exp ? 'expired' : ''}">
+                    <div class="cal-event-deadline">${exp ? '⏰ 만료 · ' : '📌 '}${r.deadline_date}</div>
+                    <div class="cal-event-title">${r.title}</div>
+                    ${r.deadline_note ? `<div class="cal-event-note">${r.deadline_note}</div>` : ''}
+                    <a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>
+                </div>`
+        }).join('')
+        : `<div class="cal-no-events">${noMsg}</div>`)
+
+    openModal('리마인더', `
+        <div class="cal-container">
+            <div class="cal-header">
+                <span class="cal-month-title">${calYear}년 ${MONTHS[calMonth]}</span>
+                <div class="cal-nav">
+                    <button class="cal-nav-btn cal-today-btn" onclick="window.calNavigate(0)">오늘</button>
+                    <button class="cal-nav-btn" onclick="window.calNavigate(-1)">‹</button>
+                    <button class="cal-nav-btn" onclick="window.calNavigate(1)">›</button>
                 </div>
             </div>
-            <p class="reminder-title">${r.title}</p>
-            ${r.deadline_note ? `<span class="reminder-cat">${r.deadline_note}</span>` : ''}
-            <a href="${r.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
-        </div>
-    `).join(''))
-})
+            <div class="cal-grid">${cellsHTML}</div>
+            <div class="cal-event-list">${eventListHTML}</div>
+        </div>`)
+}
+
+window.calNavigate = function(dir) {
+    calSelectedDate = null
+    if (dir === 0) {
+        const now = new Date()
+        calYear = now.getFullYear(); calMonth = now.getMonth()
+    } else {
+        calMonth += dir
+        if (calMonth < 0)  { calMonth = 11; calYear-- }
+        if (calMonth > 11) { calMonth = 0;  calYear++ }
+    }
+    renderReminderCalendar()
+}
+window.calSelectDate = function(dateStr) {
+    calSelectedDate = calSelectedDate === dateStr ? null : dateStr
+    renderReminderCalendar()
+}
+window.calClearFilter = function() {
+    calSelectedDate = null
+    renderReminderCalendar()
+}
 
 window.toggleDeadlineEdit = function(id, date, note) {
     const form = document.getElementById('ref-' + id)
@@ -1276,6 +1376,20 @@ document.getElementById('btn-reclassify').addEventListener('click', async () => 
         btn.disabled = false
         btn.textContent = '재분류'
     }
+})
+
+document.getElementById('btn-report').addEventListener('click', () => {
+    const overlay = document.createElement('div')
+    overlay.id = 'monthly-report-overlay'
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fdf8f5;'
+    overlay.innerHTML = `
+        <button onclick="document.getElementById('monthly-report-overlay').remove()"
+            style="position:fixed;top:16px;right:20px;z-index:10000;background:#6b3a2a;color:#fdf3ec;border:none;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:700;cursor:pointer;">
+            ✕ 닫기
+        </button>
+        <iframe src="/monthly-report?user_id=${getCurrentUserId()}" style="width:100%;height:100%;border:none;display:block;"></iframe>
+    `
+    document.body.appendChild(overlay)
 })
 
 document.getElementById('btn-weekly-report').addEventListener('click', () => {

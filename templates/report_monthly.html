@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keepit - 월간 리포트</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #fdf8f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #2c1206; }
+
+  .top-nav { background: #1e0c04; display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; }
+  .nav-brand { font-size: 20px; font-weight: 800; color: #fdf3ec; letter-spacing: -0.5px; }
+
+  .hero-section { background: #2c1206; padding: 52px 48px 56px; display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; min-height: 320px; }
+  .hero-left { flex: 1; display: flex; flex-direction: column; gap: 0; }
+  .hero-badge { font-size: 12px; color: #c8874a; letter-spacing: 3px; font-weight: 700; text-transform: uppercase; margin-bottom: 18px; display: flex; align-items: center; gap: 6px; }
+  .hero-week-title { font-size: 52px; font-weight: 900; color: #fdf3ec; line-height: 1.1; margin-bottom: 10px; letter-spacing: -1px; }
+  .hero-daterange { font-size: 13px; color: rgba(253,243,236,0.45); margin-bottom: 28px; }
+  .hero-type-label { font-size: 11px; color: rgba(253,243,236,0.5); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .hero-type-name { font-size: 38px; font-weight: 800; color: #fdf3ec; line-height: 1.15; margin-bottom: 14px; }
+  .hero-type-desc { font-size: 14px; color: rgba(253,243,236,0.72); line-height: 1.75; max-width: 500px; }
+  .hero-right { flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; padding-top: 12px; }
+  .hero-emoji-main { font-size: 120px; line-height: 1; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35)); }
+
+  .stats-row-wrap { background: #fdf8f5; padding: 32px 48px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stat-card { background: #fff; border-radius: 20px; padding: 22px 24px; border: 1px solid #ede0d4; display: flex; align-items: center; gap: 16px; }
+  .stat-card .stat-emoji { font-size: 32px; flex-shrink: 0; }
+  .stat-card .stat-text .value { font-size: 28px; font-weight: 800; color: #2c1206; line-height: 1.1; }
+  .stat-card .stat-text .unit { font-size: 12px; color: #b08060; margin-top: 2px; }
+  .stat-card.highlight { background: #7a3b1e; border-color: #7a3b1e; }
+  .stat-card.highlight .stat-text .value { color: #fdf3ec; }
+  .stat-card.highlight .stat-text .unit { color: rgba(253,243,236,0.7); }
+
+  .ai-section-wrap { background: #fdf8f5; padding: 0 48px 36px; }
+  .ai-card { background: #fff; border-radius: 20px; padding: 24px 28px; border: 1px solid #ede0d4; display: flex; align-items: flex-start; gap: 18px; }
+  .ai-icon { font-size: 36px; flex-shrink: 0; }
+  .ai-inner { flex: 1; }
+  .ai-nickname { font-size: 18px; font-weight: 800; color: #2c1206; margin-bottom: 8px; }
+  .ai-body { font-size: 14px; color: #6b4c38; line-height: 1.75; }
+  .ai-tag { display: inline-block; background: #f5e6d8; color: #8b4513; font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-top: 12px; font-weight: 700; }
+
+  .content { padding: 36px 48px; display: flex; flex-direction: column; gap: 36px; }
+  .section-title { font-size: 12px; font-weight: 700; color: #c8a890; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 16px; }
+
+  /* 콘텐츠 유형 — 3열 카드 */
+  .type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .type-card { background: #fff9f5; border-radius: 18px; padding: 22px 18px 18px; border: 1px solid #ede0d4; position: relative; overflow: hidden; }
+  .type-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .ct-emoji { font-size: 28px; }
+  .ct-name { font-size: 13px; color: #b08060; font-weight: 600; }
+  .ct-count { font-size: 36px; font-weight: 800; color: #2c1206; margin-bottom: 10px; }
+  .ct-bar-bg { height: 5px; background: #f0e0d0; border-radius: 4px; overflow: hidden; }
+  .ct-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #c8874a, #6b3a2a); }
+
+  /* 주제 TOP 5 */
+  .topic-list { display: flex; flex-direction: column; gap: 14px; }
+  .topic-item { display: flex; align-items: center; gap: 14px; }
+  .topic-rank { font-size: 18px; font-weight: 800; color: #e0c8b8; width: 26px; flex-shrink: 0; }
+  .topic-rank.gold { color: #c8874a; }
+  .topic-rank.silver { color: #a0917f; }
+  .topic-rank.bronze { color: #8b6040; }
+  .topic-bar-wrap { flex: 1; }
+  .topic-name { font-size: 14px; font-weight: 600; color: #2c1206; margin-bottom: 6px; }
+  .topic-bar { height: 7px; background: #f0e0d0; border-radius: 10px; overflow: hidden; }
+  .topic-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, #c8874a, #6b3a2a); }
+  .topic-count { font-size: 13px; color: #b08060; min-width: 32px; text-align: right; flex-shrink: 0; }
+
+  /* 콘텐츠 총량 */
+  .estimate-card { background: #2c1206; border-radius: 20px; padding: 32px 36px; color: #fdf3ec; }
+  .estimate-label { font-size: 11px; color: rgba(253,243,236,0.45); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+  .estimate-big { font-size: 60px; font-weight: 800; line-height: 1.05; margin-bottom: 28px; font-variant-numeric: tabular-nums; }
+  .estimate-big span { font-size: 26px; font-weight: 600; opacity: 0.6; margin-left: 4px; }
+  .estimate-rows { display: flex; flex-direction: column; gap: 14px; }
+  .estimate-row { display: flex; align-items: center; gap: 14px; }
+  .estimate-type-icon { font-size: 18px; width: 26px; flex-shrink: 0; }
+  .estimate-type-name { font-size: 13px; color: rgba(253,243,236,0.65); width: 64px; flex-shrink: 0; }
+  .estimate-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+  .estimate-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #c8874a, #e8a870); }
+  .estimate-mins { font-size: 13px; color: rgba(253,243,236,0.5); min-width: 40px; text-align: right; flex-shrink: 0; }
+
+  .footer { padding: 40px; text-align: center; }
+  .footer p { font-size: 13px; color: #c8a890; line-height: 1.8; }
+  .footer strong { color: #6b3a2a; }
+
+  /* 기간 선택 네비 */
+  .period-nav { background: #1e0c04; display: flex; align-items: center; justify-content: center; gap: 28px; padding: 10px 48px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .period-nav-btn { background: transparent; border: 1px solid rgba(255,255,255,0.22); color: rgba(253,243,236,0.85); font-size: 13px; font-weight: 600; padding: 6px 18px; border-radius: 18px; cursor: pointer; }
+  .period-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+  .period-nav-btn:disabled { opacity: 0.28; cursor: default; }
+  .period-nav-label { font-size: 14px; font-weight: 700; color: #c8874a; min-width: 150px; text-align: center; }
+  .period-picker { background: rgba(255,255,255,0.06); border: 1px solid rgba(200,135,74,0.5); color: #c8874a; font-size: 14px; font-weight: 700; padding: 5px 14px; border-radius: 18px; cursor: pointer; outline: none; min-width: 160px; }
+  .period-picker::-webkit-calendar-picker-indicator { filter: invert(65%) sepia(40%) saturate(600%) hue-rotate(5deg); cursor: pointer; }
+</style>
+</head>
+<body>
+
+  <nav class="top-nav">
+    <div class="nav-brand">Keepit</div>
+  </nav>
+
+  <!-- 월 선택 네비 -->
+  <div class="period-nav">
+    <button class="period-nav-btn" id="btn-month-prev" onclick="changeMonth(-1)">◀ 이전 달</button>
+    <input type="month" id="month-picker" class="period-picker" onchange="onMonthPick(this.value)" />
+    <button class="period-nav-btn" id="btn-month-next" onclick="changeMonth(1)" disabled>다음 달 ▶</button>
+  </div>
+
+  <div class="hero-section">
+    <div class="hero-left">
+      <div class="hero-badge">✦ MONTHLY RECAP</div>
+      <h1 class="hero-week-title" id="hero-month">월간 레포트</h1>
+      <div class="hero-daterange" id="hero-daterange">로딩 중...</div>
+      <div class="hero-type-label">이번 달 취향 유형</div>
+      <div class="hero-type-name" id="type-name">분석 중...</div>
+      <div class="hero-type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-emoji-main" id="hero-emoji-main">📅</div>
+    </div>
+  </div>
+
+  <div class="stats-row-wrap">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-emoji">🔗</div>
+        <div class="stat-text"><div class="value" id="stat-total">-</div><div class="unit">저장한 링크</div></div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-emoji">⏱️</div>
+        <div class="stat-text"><div class="value" id="stat-time">-</div><div class="unit">예상 소비 시간</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">🗂️</div>
+        <div class="stat-text"><div class="value" id="stat-types">-</div><div class="unit">콘텐츠 유형</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ai-section-wrap">
+    <div class="ai-card">
+      <div class="ai-icon">🤖</div>
+      <div class="ai-inner">
+        <div class="ai-nickname">이번 달 AI 총평</div>
+        <div class="ai-body" id="ai-body">데이터를 분석하는 중이에요...</div>
+        <span class="ai-tag">GPT-4o mini 분석</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div>
+      <div class="section-title">🏆 이번 달 주요 주제</div>
+      <div class="topic-list" id="topic-list"><p style="color:#b08060;font-size:14px">데이터를 불러오는 중...</p></div>
+    </div>
+
+    <div>
+      <div class="section-title">⏱️ 이번 달 콘텐츠 총량</div>
+      <div class="estimate-card">
+        <div class="estimate-label">예상 소비 시간</div>
+        <div class="estimate-big" id="estimate-num">-</div>
+        <div class="estimate-rows" id="estimate-rows"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">📱 콘텐츠 유형</div>
+      <div class="type-grid" id="type-grid"></div>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <p>Powered by <strong>Keepit</strong> × GPT-4o mini &nbsp;·&nbsp; 매월 자동으로 생성돼요 ✨</p>
+  </div>
+
+<script>
+const AVG_MIN = {youtube:12, blog:5, naver_blog:5, news:3, naver_news:3, instagram:2, other:5, web:5};
+
+const _now = new Date();
+let reportYear = _now.getFullYear();
+let reportMonth = _now.getMonth() + 1;
+
+function getMonthDateRange(year, month) {
+  const lastDay = new Date(year, month, 0).getDate();
+  const pad = n => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-01 ~ ${year}-${pad(month)}-${pad(lastDay)}`;
+}
+
+function updateMonthNav() {
+  const cur = new Date();
+  const isCurrent = reportYear === cur.getFullYear() && reportMonth === cur.getMonth() + 1;
+  const btnNext = document.getElementById('btn-month-next');
+  if (btnNext) btnNext.disabled = isCurrent;
+  const picker = document.getElementById('month-picker');
+  if (picker) {
+    const pad = n => String(n).padStart(2, '0');
+    picker.value = `${reportYear}-${pad(reportMonth)}`;
+  }
+}
+function onMonthPick(value) {
+  if (!value) return;
+  const [y, m] = value.split('-').map(Number);
+  const cur = new Date();
+  if (y > cur.getFullYear() || (y === cur.getFullYear() && m > cur.getMonth() + 1)) return;
+  reportYear = y;
+  reportMonth = m;
+  updateMonthNav();
+  loadReport();
+}
+
+function changeMonth(delta) {
+  reportMonth += delta;
+  if (reportMonth > 12) { reportMonth = 1; reportYear++; }
+  if (reportMonth < 1)  { reportMonth = 12; reportYear--; }
+  const cur = new Date();
+  if (reportYear > cur.getFullYear() ||
+      (reportYear === cur.getFullYear() && reportMonth > cur.getMonth() + 1)) {
+    reportMonth -= delta;
+    if (reportMonth > 12) { reportMonth = 1; reportYear++; }
+    if (reportMonth < 1)  { reportMonth = 12; reportYear--; }
+    return;
+  }
+  updateMonthNav();
+  loadReport();
+}
+
+function getUserId() {
+  return new URLSearchParams(window.location.search).get('user_id') || '';
+}
+
+function renderTopics(stats) {
+  const ranks = ['gold','silver','bronze','',''];
+  const el = document.getElementById('topic-list');
+  if (!stats || !stats.length) {
+    el.innerHTML = '<p style="color:#b08060;font-size:14px">저장된 콘텐츠가 없어요.</p>';
+    return;
+  }
+  const maxCnt = stats[0]?.count || 1;
+  el.innerHTML = '';
+  stats.slice(0,5).forEach((t, i) => {
+    el.innerHTML += `
+      <div class="topic-item">
+        <div class="topic-rank ${ranks[i]}">${i+1}</div>
+        <div class="topic-bar-wrap">
+          <div class="topic-name">${t.category}</div>
+          <div class="topic-bar"><div class="topic-fill" style="width:${Math.round(t.count/maxCnt*100)}%"></div></div>
+        </div>
+        <div class="topic-count">${t.count}개</div>
+      </div>`;
+  });
+}
+
+function renderContentTypes(stats) {
+  const el = document.getElementById('type-grid');
+  const emojiMap = {youtube:'▶️', blog:'📝', naver_blog:'📝', news:'📰', naver_news:'📰', instagram:'📸', web:'🔗', other:'🔗'};
+  const labelMap = {youtube:'YouTube', blog:'블로그', naver_blog:'블로그', news:'뉴스', naver_news:'뉴스', instagram:'Instagram', web:'웹', other:'기타'};
+  if (!stats || !stats.length) { el.innerHTML = ''; return; }
+  const maxCnt = Math.max(...stats.map(t => t.count), 1);
+  stats.forEach(t => {
+    const pct = Math.round((t.count / maxCnt) * 100);
+    const emoji = emojiMap[t.category] || '🔗';
+    const label = labelMap[t.category] || t.category;
+    el.innerHTML += `
+      <div class="type-card">
+        <div class="type-card-top">
+          <div class="ct-emoji">${emoji}</div>
+          <div class="ct-name">${label}</div>
+        </div>
+        <div class="ct-count">${t.count}</div>
+        <div class="ct-bar-bg"><div class="ct-bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+  });
+}
+
+function renderEstimate(stats) {
+  const totalMins = stats.reduce((s, t) => s + (AVG_MIN[t.category]||5) * t.count, 0) || 0;
+  const h = Math.floor(totalMins / 60), m = totalMins % 60;
+  const timeStr = h ? `${h}시간 ${m}분` : `${m}분`;
+  document.getElementById('stat-time').textContent = timeStr;
+  document.getElementById('estimate-num').innerHTML = h
+    ? `${h}<span>시간</span> ${m}<span>분</span>`
+    : `${m}<span>분</span>`;
+
+  const el = document.getElementById('estimate-rows');
+  const labelMap = {youtube:'YouTube', blog:'블로그', naver_blog:'블로그', news:'뉴스', naver_news:'뉴스', instagram:'Instagram', web:'웹', other:'기타'};
+  const emojiMap = {youtube:'▶️', blog:'📝', naver_blog:'📝', news:'📰', naver_news:'📰', instagram:'📸', web:'🔗', other:'🔗'};
+  const denom = totalMins || 1;
+  stats.slice(0,6).forEach(t => {
+    const mins = (AVG_MIN[t.category]||5) * t.count;
+    const pct = Math.round((mins / denom) * 100);
+    const th = Math.floor(mins/60), tm = mins%60;
+    const tStr = th ? `${th}h ${tm}m` : `${tm}m`;
+    el.innerHTML += `
+      <div class="estimate-row">
+        <div class="estimate-type-icon">${emojiMap[t.category]||'🔗'}</div>
+        <div class="estimate-type-name">${labelMap[t.category]||t.category}</div>
+        <div class="estimate-bar-wrap"><div class="estimate-bar-fill" style="width:${pct}%"></div></div>
+        <div class="estimate-mins">${tStr}</div>
+      </div>`;
+  });
+}
+
+async function loadReport() {
+  const uid = getUserId();
+  const params = new URLSearchParams({ year: reportYear, month: reportMonth });
+  if (uid) params.set('user_id', uid);
+  const qs = '?' + params.toString();
+  if (!reportMonth || reportMonth < 1 || reportMonth > 12) reportMonth = new Date().getMonth() + 1;
+  document.getElementById('hero-month').textContent = `${reportYear}년 ${reportMonth}월 레포트`;
+  document.getElementById('hero-daterange').textContent = getMonthDateRange(reportYear, reportMonth);
+
+  try {
+    const res = await fetch(`/api/monthly-report${qs}`);
+    const data = await res.json();
+
+    document.getElementById('ai-body').textContent = data.report || '분석 내용이 없어요.';
+
+    const stats = data.stats || [];
+    const total = stats.reduce((s, t) => s + t.count, 0);
+    document.getElementById('stat-total').textContent = total + '개';
+    document.getElementById('stat-types').textContent = stats.length + '종';
+
+    if (data.personality_type) {
+      document.getElementById('type-name').textContent = data.personality_type;
+      document.getElementById('type-desc').textContent = data.personality_desc || '';
+      document.getElementById('hero-emoji-main').textContent = data.personality_emoji || '📅';
+    } else {
+      const topCat = stats[0]?.category || '';
+      document.getElementById('type-name').textContent = total ? (topCat + ' 탐험가') : '저장된 콘텐츠 없음';
+      document.getElementById('type-desc').textContent = total ? '이번 달 가장 많이 저장한 콘텐츠 유형이에요.' : '이번 달 콘텐츠를 저장해보세요!';
+    }
+
+    if (stats.length) {
+      renderTopics(stats);
+      renderContentTypes(stats);
+      renderEstimate(stats);
+    }
+
+  } catch(e) {
+    console.error('월간 리포트 로드 실패:', e);
+    document.getElementById('ai-body').textContent = '데이터를 불러오는 중 오류가 발생했어요.';
+  }
+}
+
+window.addEventListener('load', function() {
+  const picker = document.getElementById('month-picker');
+  if (picker) {
+    const cur = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const curStr = `${cur.getFullYear()}-${pad(cur.getMonth() + 1)}`;
+    picker.value = curStr;
+    picker.max = curStr;
+    picker.min = `${cur.getFullYear() - 2}-${pad(cur.getMonth() + 1)}`;
+  }
+  loadReport();
+});
+</script>
+</body>
+</html>

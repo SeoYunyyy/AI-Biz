@@ -252,10 +252,17 @@ async def weekly_stats(user_id: str = Query("")):
 
 
 @router.get("/api/monthly-report")
-async def monthly_report(user_id: str = Query(DEFAULT_USER_ID)):
+async def monthly_report(
+    user_id: str = Query(DEFAULT_USER_ID),
+    year: int = Query(0),
+    month: int = Query(0),
+):
     now = datetime.utcnow()
-    since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    contents = await _fetch(user_id, since)
+    y = year or now.year
+    m = month or now.month
+    since = datetime(y, m, 1).isoformat()
+    until = datetime(y + 1, 1, 1).isoformat() if m == 12 else datetime(y, m + 1, 1).isoformat()
+    contents = await _fetch(user_id, since, until)
 
     if not contents:
         return {'report': '이번 달 저장된 자료가 아직 없어요.', 'stats': []}
