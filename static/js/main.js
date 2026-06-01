@@ -19,7 +19,10 @@ function initAuth() {
     const overlay = document.getElementById('login-overlay')
     if (isLoggedIn()) {
         overlay.classList.add('hidden')
-        document.getElementById('nav-username').textContent = getCurrentUsername()
+        const name = getCurrentUsername()
+        document.getElementById('nav-username').textContent = name
+        const avatarEl = document.getElementById('nav-avatar')
+        if (avatarEl) avatarEl.textContent = name ? name.charAt(0) : '👤'
     } else {
         overlay.classList.remove('hidden')
     }
