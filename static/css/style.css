@@ -1210,6 +1210,24 @@ nav {
 .reminder-save-btn { background: #5A3002; color: #fff; border: none; border-radius: 7px; padding: 5px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .reminder-cancel-btn { background: none; border: 1px solid rgba(90,48,2,0.2); border-radius: 7px; padding: 5px 12px; font-size: 12px; color: #7A5030; cursor: pointer; }
 .reminder-title { font-size: 15px; font-weight: 600; color: #2C1A0E; margin-bottom: 6px; }
+
+.deadline-picker-wrap { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.deadline-picker-wrap label { font-size: 12px; color: #7A5030; margin-bottom: 2px; }
+.deadline-picker-wrap input { border: 1px solid rgba(90,48,2,0.2); border-radius: 8px; padding: 6px 10px; font-size: 13px; color: #2C1A0E; background: #fff; outline: none; }
+.deadline-picker-wrap input:focus { border-color: #7A5030; }
+.deadline-set-btn { margin-top: 4px; background: linear-gradient(135deg, #7A5030, #A0703A); color: #fff; border: none; border-radius: 9px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; align-self: flex-start; }
+.deadline-set-btn:hover { opacity: 0.88; }
+
+.panel-deadline-btn { background: none; border: 1px solid rgba(90,48,2,0.2); border-radius: 7px; color: #7A5030; font-size: 14px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.panel-deadline-btn:hover { background: rgba(90,48,2,0.08); }
+
+.deadline-add-popup { position: fixed; background: #fff; border: 1px solid rgba(90,48,2,0.18); border-radius: 14px; padding: 14px 16px; box-shadow: 0 4px 20px rgba(90,48,2,0.12); z-index: 9999; display: flex; flex-direction: column; gap: 7px; min-width: 220px; }
+.deadline-add-popup label { font-size: 12px; color: #7A5030; }
+.deadline-add-popup input { border: 1px solid rgba(90,48,2,0.2); border-radius: 8px; padding: 5px 9px; font-size: 13px; color: #2C1A0E; background: #fdfaf7; outline: none; }
+.deadline-add-popup input:focus { border-color: #7A5030; }
+.deadline-popup-btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px; }
+.deadline-popup-save { background: #7A5030; color: #fff; border: none; border-radius: 8px; padding: 5px 13px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.deadline-popup-cancel { background: none; border: 1px solid rgba(90,48,2,0.2); border-radius: 8px; padding: 5px 10px; font-size: 12px; color: #7A5030; cursor: pointer; }
 .reminder-cat { font-size: 12px; color: #9A7055; display: block; margin-bottom: 8px; }
 
 .report-text {

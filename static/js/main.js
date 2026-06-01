@@ -196,6 +196,7 @@ async function openCategoryPanel(category, subcategory) {
                             <div class="panel-move-dropdown"></div>
                         </div>
                         <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                        <button class="panel-deadline-btn" onclick="showDeadlineAddPopup(this,'${esc(item.id)}')" title="마감 추가">📅</button>
                     </div>
                 </div>
             `
@@ -375,6 +376,7 @@ async function openCollectionPanel(collectionId, name) {
                             <div class="panel-move-dropdown"></div>
                         </div>
                         <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                        <button class="panel-deadline-btn" onclick="showDeadlineAddPopup(this,'${esc(item.id)}')" title="마감 추가">📅</button>
                     </div>
                 </div>
             `
@@ -902,6 +904,76 @@ window.panelDeleteItem = async function(contentId, btn) {
     }
 }
 
+window._deadlinePending = {}
+
+function buildDeadlinePicker(contentId) {
+    const uid = 'dlp-' + Date.now()
+    window._deadlinePending[uid] = contentId
+    return `
+        <div class="deadline-picker-wrap" id="${uid}-wrap">
+            <input type="date" class="reminder-date-input" id="${uid}-date" />
+            <input type="text" class="reminder-note-input" id="${uid}-note" placeholder="메모 (예: 원서 마감)" />
+            <button class="chat-action-btn" onclick="executeSetDeadline('${uid}')">마감 설정</button>
+        </div>`
+}
+
+window.executeSetDeadline = async function(uid) {
+    const contentId = window._deadlinePending?.[uid]
+    const dateVal = document.getElementById(uid + '-date')?.value
+    const noteVal = document.getElementById(uid + '-note')?.value || ''
+    if (!dateVal) return alert('날짜를 선택해주세요.')
+    const wrap = document.getElementById(uid + '-wrap')
+    try {
+        const res = await fetch(`/deadlines/${contentId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), deadline_date: dateVal, deadline_note: noteVal })
+        })
+        if (!res.ok) throw new Error()
+        if (wrap) wrap.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ 마감일 ${dateVal} 설정 완료!</div>`
+        delete window._deadlinePending[uid]
+    } catch (e) {
+        alert('설정에 실패했어요.')
+    }
+}
+
+// 패널/아카이브 카드 - 마감 추가 팝업
+window.showDeadlineAddPopup = function(btn, contentId) {
+    document.querySelectorAll('.card-deadline-popup').forEach(p => p.remove())
+    const popup = document.createElement('div')
+    popup.className = 'card-deadline-popup'
+    popup.innerHTML = `
+        <div style="font-size:12px;font-weight:600;color:#5A3002;margin-bottom:6px">마감일 설정</div>
+        <input type="date" class="reminder-date-input" id="cdp-date-${contentId}" style="width:100%;margin-bottom:5px" />
+        <input type="text" class="reminder-note-input" id="cdp-note-${contentId}" placeholder="메모 (선택)" style="width:100%;margin-bottom:8px" />
+        <div style="display:flex;gap:6px">
+            <button class="reminder-save-btn" onclick="saveCardDeadline('${contentId}')">저장</button>
+            <button class="reminder-cancel-btn" onclick="this.closest('.card-deadline-popup').remove()">취소</button>
+        </div>`
+    const rect = btn.getBoundingClientRect()
+    popup.style.cssText = `position:fixed;top:${rect.bottom+4}px;left:${rect.left}px;z-index:9999;background:#fff;border:1px solid rgba(90,48,2,0.18);border-radius:10px;padding:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:200px`
+    document.body.appendChild(popup)
+    setTimeout(() => document.addEventListener('click', function handler(e) {
+        if (!popup.contains(e.target) && e.target !== btn) { popup.remove(); document.removeEventListener('click', handler) }
+    }), 0)
+}
+
+window.saveCardDeadline = async function(contentId) {
+    const dateVal = document.getElementById('cdp-date-' + contentId)?.value
+    const noteVal = document.getElementById('cdp-note-' + contentId)?.value || ''
+    if (!dateVal) return alert('날짜를 선택해주세요.')
+    try {
+        const res = await fetch(`/deadlines/${contentId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), deadline_date: dateVal, deadline_note: noteVal })
+        })
+        if (!res.ok) throw new Error()
+        document.querySelectorAll('.card-deadline-popup').forEach(p => p.remove())
+        alert(`마감일 ${dateVal} 설정 완료!`)
+    } catch (e) { alert('설정에 실패했어요.') }
+}
+
 window._mergePending = {}
 
 function buildMergePicker(data) {
@@ -978,6 +1050,11 @@ function buildAIContent(data) {
 
     if (data.results && data.results.length) {
         html += buildResultCards(data.results)
+    }
+
+    // 마감일 날짜 피커
+    if (data.needs_deadline_pick && data.pending_deadline_id) {
+        html += buildDeadlinePicker(data.pending_deadline_id)
     }
 
     // 합치기 UI
@@ -1159,6 +1236,7 @@ async function showArchiveItems(category, subcategory) {
                                 <div class="panel-move-dropdown"></div>
                             </div>
                             <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                            <button class="panel-deadline-btn" onclick="showDeadlineAddPopup(this,'${esc(item.id)}')" title="마감 추가">📅</button>
                         </div>
                     </div>
                 </div>

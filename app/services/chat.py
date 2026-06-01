@@ -96,8 +96,9 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
 
 async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
     try:
-        messages = [{"role": "system", "content": INTENT_PROMPT}]
-        messages += history[-20:]  # 최근 6개 메시지로 맥락 파악
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        messages = [{"role": "system", "content": INTENT_PROMPT + f"\n\n오늘 날짜: {today_str} (날짜 파싱 시 이 연도를 기준으로 할 것)"}]
+        messages += history[-20:]
         messages += [{"role": "user", "content": query}]
         raw = await _llm(messages, model="gpt-4o-mini", max_tokens=80, json_mode=True)
         return json.loads(raw)
@@ -776,14 +777,20 @@ async def _handle_deadline_edit(user_id: str, content_id: str, edit_type: str, d
             return {"answer": "마감기한을 삭제했어요.", "results": []}
         return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
 
-    if edit_type == "update" and deadline_date:
+    if deadline_date:
         note = deadline_note or f"마감 {deadline_date[5:]}"
         success = await update_deadline(content_id, user_id, True, deadline_date, note)
         if success:
-            return {"answer": f"마감기한을 '{note}'으로 수정했어요.", "results": []}
+            return {"answer": f"마감기한을 '{note}'으로 설정했어요.", "results": []}
         return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
 
-    return {"answer": "마감일을 어떻게 바꿔드릴까요? '마감 없어' 또는 '7월 15일이야'처럼 말해주세요.", "results": []}
+    # 날짜 미지정 → 채팅 내 날짜 피커 표시
+    return {
+        "answer": "마감일을 설정할게요. 날짜를 선택해주세요.",
+        "needs_deadline_pick": True,
+        "pending_deadline_id": content_id,
+        "results": [],
+    }
 
 
 async def _handle_delete(user_id: str, delete_query: str, source_folder: str | None = None) -> dict:
@@ -861,8 +868,12 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     second_intent = intent_data.get("second_intent")
     second_query = intent_data.get("second_query")
 
-    if intent == "deadline_edit" and content_id:
-        result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+    if intent == "deadline_edit":
+        effective_id = content_id or (list(shown_ids)[0] if len(shown_ids) == 1 else None)
+        if effective_id:
+            result = await _handle_deadline_edit(user_id, effective_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+        else:
+            result = {"answer": "마감기한을 추가할 콘텐츠를 먼저 찾아드릴게요. 제목이나 내용 키워드를 알려주세요.", "results": []}
     elif intent == "search":
         if source_folder:
             result = await _handle_folder_search(user_id, source_folder, extra_query=query, shown_ids=shown_ids)
