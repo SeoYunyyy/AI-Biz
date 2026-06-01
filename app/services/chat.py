@@ -34,8 +34,10 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야", "7월 3일 전에 마감하는 거", "몇월 며칠 마감 뭐였지" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
-- move     : 콘텐츠를 다른 폴더로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
-             목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null
+- move     : 콘텐츠를 다른 폴더/카테고리로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
+             목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null.
+             아카이브 대분류(음악, IT/기술 등)로 옮기는 경우도 포함.
+             소분류 이름 변경 요청이 함께 있으면 target_sub_category에 기록.
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청.
              "기간 마감된", "만료된 링크", "기한 지난", "마감 지난", "기한 넘긴", "expired" 포함.
              → 반드시 cleanup으로 분류할 것. delete와 혼동하지 말 것.
@@ -66,6 +68,7 @@ source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
 target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
 merge_target: 합칠 대상 이름 (예: "주식")
+target_sub_category: move 의도에서 이동 후 소분류 이름을 변경할 때 그 이름 (예: "피크민"). 없으면 null.
 deadline_filter_date: deadline 의도에서 특정 날짜가 언급된 경우 YYYY-MM-DD. 없으면 null.
 deadline_filter_mode: "before" (해당 날짜 이전), "on" (해당 날짜), "after" (해당 날짜 이후). 날짜 없으면 null.
 content_deadline_date: deadline_edit 의도에서 수정할 콘텐츠를 기존 마감일로 지칭할 때 그 날짜 YYYY-MM-DD. (예: "마감기한 6월 24일인 거 바꿔줘" → "2026-06-24"). 없으면 null.
@@ -700,6 +703,47 @@ async def _handle_merge(user_id: str, merge_target: str) -> dict:
     }
 
 
+async def _handle_reclassify(user_id: str, move_query: str, target_category: str, target_sub_category: str | None, source_folder: str | None, shown_ids: list[str]) -> dict:
+    """아카이브 대분류(category) 변경 + 선택적 소분류(sub_category) 변경"""
+    # 이동할 콘텐츠 특정
+    items: list[dict] = []
+    is_contextual = not move_query or any(ref in move_query for ref in _CONTEXTUAL_REFS) or len(move_query.replace(" ", "")) <= 5
+
+    if shown_ids and is_contextual:
+        items = await get_contents_by_ids(user_id, list(shown_ids))
+
+    if not items and source_folder:
+        items, _ = await _resolve_folder_items(user_id, source_folder, [])
+
+    if not items and move_query and not is_contextual:
+        expanded = await expand_query(move_query)
+        embedding = await generate_embedding(expanded)
+        if embedding:
+            raw = await search_contents(user_id, embedding, limit=10)
+            items = await _filter_results(move_query, raw)
+            items = items[:5]
+
+    if not items:
+        return {"answer": "이동할 콘텐츠를 찾지 못했어요. 제목이나 키워드를 알려주세요.", "results": []}
+
+    content_ids = [r["id"] for r in items]
+    results = [{"id": r["id"], "title": r.get("title", ""), "url": r.get("url", ""),
+                "one_line_summary": r.get("one_line_summary", ""),
+                "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+               for r in items]
+
+    sub_label = f" / 소분류 '{target_sub_category}'" if target_sub_category else ""
+    titles = "\n".join(f"- {r['title']}" for r in results)
+    return {
+        "answer": f"콘텐츠 {len(results)}개를 '{target_category}'{sub_label}(으)로 이동할까요?\n{titles}",
+        "needs_confirmation": True,
+        "pending_move_ids": content_ids,
+        "target_category": target_category,
+        "target_sub_category": target_sub_category,
+        "results": results,
+    }
+
+
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
@@ -864,6 +908,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
     merge_target = intent_data.get("merge_target")
+    target_sub_category = intent_data.get("target_sub_category")
     deadline_filter_date = intent_data.get("deadline_filter_date")
     deadline_filter_mode = intent_data.get("deadline_filter_mode")
     deadline_edit_type = intent_data.get("deadline_edit_type")
@@ -910,7 +955,14 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "merge" and merge_target:
         result = await _handle_merge(user_id, merge_target)
     elif intent == "move" and target_folder:
-        result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
+        # target_folder가 아카이브 대분류인지 확인 → 맞으면 category 업데이트
+        cats = await get_all_categories(user_id)
+        clean_target = _strip_particles(target_folder)
+        best_cat, cat_ratio = _best_match(clean_target, cats)
+        if cat_ratio >= 0.45 and best_cat:
+            result = await _handle_reclassify(user_id, move_query or "", best_cat, target_sub_category, source_folder, shown_ids)
+        else:
+            result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
     elif intent == "move" and (source_folder or shown_ids):
         result = await _handle_move_no_target(user_id, source_folder, shown_ids)
     elif intent == "delete" and delete_query:

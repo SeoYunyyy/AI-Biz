@@ -481,12 +481,15 @@ async def get_contents_by_subcategory(user_id: str, sub_category: str) -> list[d
         return []
 
 
-async def batch_update_category(user_id: str, content_ids: list[str], new_category: str) -> bool:
-    """여러 콘텐츠의 category 일괄 업데이트"""
+async def batch_update_category(user_id: str, content_ids: list[str], new_category: str, new_sub_category: str | None = None) -> bool:
+    """여러 콘텐츠의 category (및 선택적으로 sub_category) 일괄 업데이트"""
     if not content_ids:
         return False
     try:
         ids_str = ','.join(content_ids)
+        body: dict = {"category": new_category}
+        if new_sub_category:
+            body["sub_category"] = new_sub_category
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/contents",
@@ -495,7 +498,7 @@ async def batch_update_category(user_id: str, content_ids: list[str], new_catego
                     "user_id": f"eq.{user_id}",
                     "id": f"in.({ids_str})",
                 },
-                json={"category": new_category},
+                json=body,
             )
             response.raise_for_status()
             return True

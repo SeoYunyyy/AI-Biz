@@ -706,6 +706,54 @@ function buildMoveConfirm(items, ids, targetFolder) {
     `
 }
 
+function buildReclassifyConfirm(items, ids, targetCategory, targetSubCategory) {
+    const titleList = items.map(i => `<div class="confirm-item-title">${i.title}</div>`).join('')
+    const subLabel = targetSubCategory ? ` / 소분류 '${targetSubCategory}'` : ''
+    return `
+        <div class="confirm-box move-confirm-box"
+             data-ids="${ids.join(',')}"
+             data-category="${esc(targetCategory)}"
+             data-sub="${esc(targetSubCategory || '')}">
+            <div class="confirm-items">${titleList}</div>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel" onclick="this.closest('.confirm-box').remove()">취소</button>
+                <button class="confirm-btn confirm-move" onclick="executeReclassify(this)">'${targetCategory}'${subLabel}(으)로 이동</button>
+            </div>
+        </div>
+    `
+}
+
+window.executeReclassify = async function(btn) {
+    const box = btn.closest('.confirm-box')
+    const ids = box.dataset.ids.split(',').filter(Boolean)
+    const category = box.dataset.category
+    const subCategory = box.dataset.sub || null
+
+    btn.disabled = true
+    btn.textContent = '이동 중···'
+
+    try {
+        const body = { user_id: getCurrentUserId(), content_ids: ids, category }
+        if (subCategory) body.sub_category = subCategory
+        const res = await fetch('/contents/batch/category', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        if (res.ok) {
+            const subMsg = subCategory ? ` / ${subCategory}` : ''
+            box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${category}${subMsg}'(으)로 이동 완료</div>`
+            setTimeout(() => { box.remove(); loadTopFolders() }, 1500)
+        } else {
+            throw new Error()
+        }
+    } catch (e) {
+        btn.disabled = false
+        btn.textContent = `'${category}'으로 이동`
+        appendMsg(document.getElementById('chat-messages') || document.body, 'ai', '이동에 실패했어요. 다시 시도해주세요.')
+    }
+}
+
 window.executeDelete = async function(btn) {
     const box    = btn.closest('.confirm-box')
     const checks = box.querySelectorAll('.delete-check:checked')
@@ -1093,8 +1141,12 @@ function buildAIContent(data) {
         html += buildDeleteConfirm(data.results || [], data.pending_delete_ids)
     }
 
-    // 이동 확인
-    if (data.needs_confirmation && data.pending_move_ids && data.pending_move_ids.length) {
+    // 아카이브 대분류 이동 확인 (category + 선택적 sub_category 업데이트)
+    if (data.needs_confirmation && data.pending_move_ids && data.pending_move_ids.length && data.target_category) {
+        html += buildReclassifyConfirm(data.results || [], data.pending_move_ids, data.target_category, data.target_sub_category || null)
+    }
+    // 일반 컬렉션 이동 확인
+    else if (data.needs_confirmation && data.pending_move_ids && data.pending_move_ids.length) {
         html += buildMoveConfirm(data.results || [], data.pending_move_ids, data.target_folder || '')
     }
 
