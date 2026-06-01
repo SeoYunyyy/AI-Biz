@@ -39,6 +39,10 @@ let currentContentId = null      // 마지막 저장 콘텐츠 ID (deadline_edit
 let selectedCollectionId = null  // 폴더 선택 (메인 입력창)
 let selectedCollectionName = null
 
+// ── 아카이브 상태 ──
+let archiveData     = {}
+let archiveExpanded = {}
+
 // ── 리마인더 캘린더 상태 ──
 let calYear         = new Date().getFullYear()
 let calMonth        = new Date().getMonth()
@@ -193,7 +197,7 @@ async function openCategoryPanel(category, subcategory) {
                 <div class="panel-item-card">
                     ${thumbHTML}
                     <p class="panel-item-title">${item.title}</p>
-                    ${item.content_type !== 'music' && item.summary ? `<p class="panel-item-summary">${item.summary}</p>` : ''}
+                    ${item.content_type !== 'music' && item.summary ? buildCollapsibleSummary(item.summary, 'panel-item-summary') : ''}
                     ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <div class="panel-card-actions">
                         <a href="${item.url}" target="_blank" class="panel-item-link">링크 열기 &rarr;</a>
@@ -1124,24 +1128,70 @@ function handleSubmit() {
 
 // ── 아카이브 모달 ──
 async function showArchiveHome() {
-    const data = await fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json())
-    const keys = Object.keys(data)
-    if (!keys.length) {
+    archiveData     = await fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json())
+    archiveExpanded = {}
+    if (!Object.keys(archiveData).length) {
         openModal('아카이브', '<p class="no-result">저장된 자료가 없어요.</p>')
         return
     }
-    const html = keys.map(cat => `
-        <div class="archive-cat">
-            <h3 class="cat-name">${cat}</h3>
-            ${data[cat].map(s => `
-                <div class="sub-item" onclick="showArchiveItems('${esc(cat)}','${esc(s.name)}')">
-                    <span>${s.name ?? '미분류'}</span>
-                    <span class="sub-count">${s.count}개 &rsaquo;</span>
-                </div>
-            `).join('')}
+    openModal('아카이브', `
+        <div class="archive-search-wrap">
+            <input type="text" id="archive-search" class="archive-search"
+                placeholder="🔍 카테고리나 항목 검색..."
+                oninput="renderArchiveCats(this.value)" />
         </div>
-    `).join('')
-    openModal('아카이브', html)
+        <div id="archive-cat-list"></div>
+    `)
+    renderArchiveCats('')
+}
+
+function _subItemHTML(cat, s) {
+    return `
+        <div class="sub-item" onclick="showArchiveItems('${esc(cat)}','${esc(s.name)}')">
+            <span>${s.name ?? '미분류'}</span>
+            <span class="sub-right">
+                <span class="sub-count">${s.count}개 &rsaquo;</span>
+            </span>
+        </div>`
+}
+
+function renderArchiveCats(query) {
+    const el = document.getElementById('archive-cat-list')
+    if (!el) return
+    const q = query.toLowerCase().trim()
+    let html = '', hasAny = false
+
+    Object.entries(archiveData).forEach(([cat, items]) => {
+        const catMatch = cat.toLowerCase().includes(q)
+        const filtered = q
+            ? (catMatch ? items : items.filter(s => s.name?.toLowerCase().includes(q)))
+            : items
+        if (!filtered.length) return
+        hasAny = true
+
+        const sorted   = [...filtered].sort((a, b) => b.count - a.count)
+        const visible  = q ? sorted : sorted.filter(s => s.count >= 2)
+        const hidden   = q ? []     : sorted.filter(s => s.count < 2)
+        const expanded = archiveExpanded[cat]
+
+        html += `<div class="archive-cat"><h3 class="cat-name">${cat}</h3>`
+        html += visible.map(s => _subItemHTML(cat, s)).join('')
+        if (hidden.length) {
+            if (expanded) {
+                html += hidden.map(s => _subItemHTML(cat, s)).join('')
+                html += `<button class="archive-more-btn" onclick="window.toggleArchiveCat('${esc(cat)}',false)">접기 ▴</button>`
+            } else {
+                html += `<button class="archive-more-btn" onclick="window.toggleArchiveCat('${esc(cat)}',true)">더보기 ${hidden.length}개 ▾</button>`
+            }
+        }
+        html += `</div>`
+    })
+    el.innerHTML = hasAny ? html : '<p class="no-result">검색 결과가 없어요.</p>'
+}
+
+window.toggleArchiveCat = function(cat, expand) {
+    archiveExpanded[cat] = expand
+    renderArchiveCats(document.getElementById('archive-search')?.value || '')
 }
 
 async function showArchiveItems(category, subcategory) {
@@ -1151,20 +1201,21 @@ async function showArchiveItems(category, subcategory) {
         ? data.items.map(item => {
             const tags = Array.isArray(item.tags) ? item.tags : []
             const date = item.saved_at ? item.saved_at.slice(0, 10) : ''
+            const thumbHTML = item.thumbnail
+                ? `<img src="${item.thumbnail}" class="archive-item-thumb" onerror="this.style.display='none'" alt="" />`
+                : ''
             return `
                 <div class="archive-item-card">
-                    ${item.content_type !== 'music' && item.summary ? `<p class="archive-item-summary">${item.summary}</p>` : ''}
+                    ${thumbHTML}
+                    ${item.content_type !== 'music' && item.summary ? buildCollapsibleSummary(item.summary, 'archive-item-summary') : ''}
                     <p class="archive-item-title">${item.title}</p>
                     ${tags.length ? `<div class="archive-item-tags">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
                         <span class="archive-item-meta">${date}</span>
-                        <div style="display:flex;align-items:center;gap:8px">
+                        <div class="archive-item-btns">
                             <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
-                            <div class="panel-move-wrap">
-                                <button class="panel-move-btn" onclick="showPanelMoveDropdown(this, '${esc(item.id)}')">폴더 이동 ▾</button>
-                                <div class="panel-move-dropdown"></div>
-                            </div>
-                            <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                            <button class="archive-del-btn"
+                                onclick="deleteArchiveContent('${esc(item.id)}','${esc(category)}','${esc(subcategory)}')">삭제</button>
                         </div>
                     </div>
                 </div>
@@ -1172,6 +1223,31 @@ async function showArchiveItems(category, subcategory) {
           }).join('')
         : '<p class="no-result">저장된 자료가 없어요.</p>'
     openModal(`${category} / ${subcategory}`, `<button class="back-btn" onclick="showArchiveHome()">&#8592; 전체 카테고리</button>${cards}`)
+}
+
+window.deleteArchiveContent = async function(contentId, category, subcategory) {
+    if (!confirm('이 콘텐츠를 영구 삭제할까요?')) return
+    try {
+        const res = await fetch(`/contents/${contentId}?user_id=${getCurrentUserId()}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error('삭제 실패')
+        showArchiveItems(category, subcategory)
+        loadTopFolders()
+    } catch (e) { alert('삭제 실패: ' + e.message) }
+}
+
+// 긴 요약 접기/펼치기 헬퍼
+function buildCollapsibleSummary(summary, className, threshold = 80) {
+    if (!summary) return ''
+    if (summary.length <= threshold) return `<p class="${className}">${summary}</p>`
+    const id = 'sum-' + Math.random().toString(36).slice(2, 8)
+    return `<p class="${className} summary-collapsed" id="${id}">${summary}</p><button class="summary-toggle" onclick="toggleSummary('${id}',this)">더 보기</button>`
+}
+
+window.toggleSummary = function(id, btn) {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.classList.toggle('summary-collapsed')
+    btn.textContent = el.classList.contains('summary-collapsed') ? '더 보기' : '접기'
 }
 
 function openModal(title, content) {

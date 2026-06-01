@@ -1939,3 +1939,23 @@ nav {
 .cal-filter-bar span { font-size: 12px; font-weight: 700; color: #6b3a2a; }
 .cal-filter-clear { background: none; border: 1px solid #d4a574; border-radius: 10px; padding: 3px 10px; font-size: 11px; color: #9A7055; cursor: pointer; font-family: inherit; }
 .cal-filter-clear:hover { background: #ede0d4; color: #5A3002; }
+
+/* ── 아카이브 검색 + 더보기/접기 ── */
+.sub-right { display: inline-flex; align-items: center; gap: 8px; }
+.archive-search-wrap { position: sticky; top: 0; background: #F5EFE6; padding-bottom: 10px; margin-bottom: 4px; z-index: 1; }
+.archive-search { width: 100%; padding: 9px 14px; border: 1px solid #EAD9CC; border-radius: 10px; font-family: inherit; font-size: 14px; color: #2C1A0E; background: #fdf8f5; outline: none; transition: border-color 0.15s; }
+.archive-search:focus { border-color: #c8874a; box-shadow: 0 0 0 3px rgba(200,135,74,0.1); }
+.archive-more-btn { display: block; width: 100%; background: none; border: 1px dashed #D4C4B0; color: #9A7055; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; margin: 4px 0 8px; text-align: center; transition: background 0.15s, color 0.15s; }
+.archive-more-btn:hover { background: #F4EBE0; color: #5A3002; border-color: #c8874a; }
+
+/* ── 아카이브 카드 썸네일·삭제 ── */
+.archive-item-thumb { width: 100%; height: 150px; object-fit: cover; border-radius: 10px; margin-bottom: 12px; display: block; }
+.archive-item-btns { display: inline-flex; align-items: center; gap: 12px; }
+.archive-del-btn { background: none; border: 1px solid rgba(220,53,69,0.3); color: #C0392B; font-family: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 7px; cursor: pointer; transition: background 0.15s; }
+.archive-del-btn:hover { background: rgba(220,53,69,0.12); }
+
+/* ── 요약 접기/펼치기 ── */
+.panel-item-summary.summary-collapsed,
+.archive-item-summary.summary-collapsed { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.summary-toggle { font-size: 11px; color: #5A3002; background: none; border: none; cursor: pointer; padding: 2px 0 6px; font-family: inherit; font-weight: 600; display: block; }
+.summary-toggle:hover { text-decoration: underline; }
