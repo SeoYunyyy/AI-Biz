@@ -1,6 +1,15 @@
 # app/services/metadata/dispatcher.py
 
+import httpx
 from app.services.metadata import youtube, web, news, naver_blog, map, shopping
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
 
 
 def _detect_type(url: str) -> str:
@@ -12,8 +21,6 @@ def _detect_type(url: str) -> str:
         return "naver_news"
     elif "blog.naver.com" in url_lower or "m.blog.naver.com" in url_lower:
         return "naver_blog"
-    elif "naver.me" in url_lower:
-        return "naver_map"
     elif "map.naver.com" in url_lower:
         return "naver_map"
     elif "map.kakao.com" in url_lower or "place.map.kakao.com" in url_lower:
@@ -32,21 +39,35 @@ def _detect_type(url: str) -> str:
         return "web"
 
 
+async def _resolve_url(url: str) -> str:
+    """단축 URL(naver.me 등)의 실제 목적지 URL을 반환. 실패 시 원본 반환."""
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=8.0, headers=_HEADERS
+        ) as client:
+            resp = await client.head(url)
+            return str(resp.url)
+    except Exception:
+        return url
+
+
 async def extract(url: str) -> dict:
     """URL 종류 판단 후 적절한 추출기 실행"""
-    platform = _detect_type(url)
+    # naver.me 단축 URL은 리다이렉트 목적지를 먼저 확인
+    resolved = await _resolve_url(url) if "naver.me" in url.lower() else url
+    platform = _detect_type(resolved)
 
     if platform == "youtube":
-        return await youtube.extract(url)
+        return await youtube.extract(resolved)
     elif platform == "naver_news":
-        return await news.extract(url)
+        return await news.extract(resolved)
     elif platform == "naver_blog":
-        return await naver_blog.extract(url)
+        return await naver_blog.extract(resolved)
     elif platform in ("naver_map", "kakao_map"):
-        return await map.extract(url)
+        return await map.extract(url)   # 지도는 원본 단축 URL 유지
     elif platform == "shopping":
-        return await shopping.extract(url)
+        return await shopping.extract(resolved)
     elif platform == "news":
-        return await news.extract(url)
+        return await news.extract(resolved)
     else:
-        return await web.extract(url)
+        return await web.extract(resolved)
