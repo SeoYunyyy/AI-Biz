@@ -22,6 +22,10 @@ USERS_FILE  = Path("telegram_users.json")
 TG_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 URL_RE  = re.compile(r'https?://[^\s]+')
 
+# 대화 맥락 (메모리 내 유지, 재시작 시 초기화)
+chat_histories: dict[str, list] = {}   # chat_id → [{role, content}, ...]
+shown_ids_map:  dict[str, list] = {}   # chat_id → [content_id, ...]
+
 
 # ── 유저 매핑 (telegram chat_id → keepit user_id) ──────────────────────────
 
@@ -126,11 +130,78 @@ async def handle(message: dict, users: dict):
                 await send(chat_id, f"❌ 오류가 발생했어요: {e}")
         return
 
-    # ── URL 없는 일반 텍스트 ──
-    await send(chat_id,
-        "링크를 보내주시면 자동으로 저장해드려요! 📎\n\n"
-        "예: <code>https://example.com</code>"
-    )
+    # ── URL 없는 일반 텍스트 → AI 채팅 ──
+    await _handle_chat(chat_id, user_id, text)
+
+
+# ── AI 채팅 핸들러 ──────────────────────────────────────────────────────────
+
+def _fmt_results(results: list) -> str:
+    """콘텐츠 목록을 텔레그램용 텍스트로 포맷"""
+    lines = []
+    for i, r in enumerate(results, 1):
+        title = r.get("title") or "(제목 없음)"
+        url   = r.get("url", "")
+        summary = r.get("one_line_summary") or r.get("description") or ""
+        cat   = r.get("category") or ""
+        sub   = r.get("sub_category") or ""
+        cat_label = f"{cat} / {sub}" if sub else cat
+
+        line = f"{i}. <b>{title}</b>"
+        if cat_label:
+            line += f"\n   📂 {cat_label}"
+        if summary:
+            line += f"\n   💬 {summary}"
+        if url:
+            line += f"\n   🔗 <a href='{url}'>{url[:60]}{'…' if len(url) > 60 else ''}</a>"
+        lines.append(line)
+    return "\n\n".join(lines)
+
+
+async def _handle_chat(chat_id: int, user_id: str, text: str):
+    key = str(chat_id)
+    history   = chat_histories.get(key, [])
+    s_ids     = shown_ids_map.get(key, [])
+
+    history.append({"role": "user", "content": text})
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(f"{KEEPIT_URL}/chat", json={
+                "query":      text,
+                "user_id":    user_id,
+                "history":    history[:-1],   # 현재 메시지 제외한 이전 맥락
+                "shown_ids":  s_ids,
+            })
+        data = res.json()
+    except Exception as e:
+        await send(chat_id, f"❌ 오류가 발생했어요: {e}")
+        return
+
+    answer   = data.get("answer") or data.get("message") or ""
+    results  = data.get("results") or []
+    follow_q = data.get("follow_up_questions") or []
+
+    # shown_ids 업데이트
+    new_ids = [r["id"] for r in results if r.get("id")]
+    if new_ids:
+        shown_ids_map[key] = list(dict.fromkeys(s_ids + new_ids))
+
+    # 어시스턴트 응답 기록
+    history.append({"role": "assistant", "content": answer})
+    chat_histories[key] = history[-20:]   # 최대 20개 메시지만 유지
+
+    # 응답 조합
+    parts = []
+    if answer:
+        parts.append(answer)
+    if results:
+        parts.append(_fmt_results(results))
+    if follow_q and isinstance(follow_q[0], str):
+        parts.append("💡 " + " / ".join(follow_q[:3]))
+
+    reply = "\n\n".join(parts) if parts else "이해하지 못했어요. 다시 말씀해 주세요."
+    await send(chat_id, reply)
 
 
 # ── 폴링 루프 ────────────────────────────────────────────────────────────────
