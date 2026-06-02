@@ -218,6 +218,35 @@ def _fuzzy_match(name: str, candidates: list[str], threshold: float = 0.75) -> s
     return best if ratio >= threshold else None
 
 
+import re as _re
+
+_MERGE_SIGNALS = ["합쳐주", "합쳐달라", "합치고", "합쳐줘", "합쳐라", "하나로 합"]
+
+def _detect_explicit_merge(query: str) -> list[str] | None:
+    """
+    "A 폴더에 있는 링크랑 B 폴더 합쳐달라고" 패턴에서 폴더명 배열 반환.
+    합치기 키워드 + 폴더명 2개 이상이 있을 때만 작동. 아니면 None.
+    LLM 의도 감지보다 먼저 실행되어 오분류를 방지.
+    """
+    if not any(s in query for s in _MERGE_SIGNALS):
+        return None
+
+    # "X 폴더" 패턴에서 X 추출
+    raw_names = _re.findall(r'(\S+?)\s*폴더', query)
+    names = [_strip_particles(n) for n in raw_names]
+    names = [n for n in names if n and len(n) >= 2]
+
+    # 중복 제거 (순서 유지)
+    seen: set[str] = set()
+    unique: list[str] = []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            unique.append(n)
+
+    return unique if len(unique) >= 2 else None
+
+
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
 DISSATISFACTION_SIGNALS = ["없", "아니", "못 찾", "모르겠", "그거 말고", "다른 거", "없는데", "아닌데", "틀렸"]
@@ -965,6 +994,13 @@ async def _handle_delete(user_id: str, delete_query: str, source_folder: str | N
 
 async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = [], shown_ids: list[str] = [], content_id: str | None = None) -> dict:
     """의도 파악 후 적절한 핸들러 호출. history로 대화 맥락 유지."""
+    # LLM 의도 감지 이전에 명시적 합치기 패턴 선제 감지
+    explicit_merge = _detect_explicit_merge(query)
+    if explicit_merge:
+        result = await _handle_multi_merge(user_id, explicit_merge, list(shown_ids))
+        result["intent"] = "merge"
+        return result
+
     intent_data = await _detect_intent(query, history)
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
