@@ -477,20 +477,119 @@ modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
 submitBtn.addEventListener('click', handleSubmit)
 promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
 
+// ── 리마인더 캘린더 ──
+let calYear  = new Date().getFullYear()
+let calMonth = new Date().getMonth()
+let calDeadlines = []
+
+function renderCalendar(year, month) {
+    const today      = new Date().toISOString().slice(0, 10)
+    const dayNames   = ['일', '월', '화', '수', '목', '금', '토']
+    const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+
+    const dateMap = {}
+    calDeadlines.forEach(d => {
+        const key = d.deadline || d.deadline_date
+        if (key) {
+            if (!dateMap[key]) dateMap[key] = []
+            dateMap[key].push(d)
+        }
+    })
+
+    const firstDay    = new Date(year, month, 1).getDay()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+    let gridHTML = dayNames.map(d => `<div class="cal-day-label">${d}</div>`).join('')
+    for (let i = 0; i < firstDay; i++) gridHTML += '<div class="cal-cell empty"></div>'
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const ds    = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const items = dateMap[ds]
+        const isToday = ds === today
+        const isPast  = items && ds < today
+
+        let cls = 'cal-cell'
+        if (isToday) cls += ' today'
+        if (items)   cls += ' has-deadline'
+        if (isPast)  cls += ' past-deadline'
+
+        gridHTML += `
+            <div class="${cls}" ${items ? `onclick="showDayDetail('${ds}')" id="cal-${ds}"` : ''}>
+                <span>${day}</span>
+                ${items ? '<span class="cal-dot"></span>' : ''}
+            </div>`
+    }
+
+    const upcoming = calDeadlines
+        .filter(d => { const k = d.deadline || d.deadline_date; return k && k >= today })
+        .sort((a, b) => (a.deadline || a.deadline_date).localeCompare(b.deadline || b.deadline_date))
+
+    const listHTML = upcoming.length
+        ? upcoming.map(d => `
+            <div class="reminder-item">
+                <span class="reminder-deadline">마감: ${d.deadline || d.deadline_date}</span>
+                <p class="reminder-title">${d.title}</p>
+                ${d.category ? `<span class="reminder-cat">${d.category}</span>` : ''}
+                ${d.deadline_note ? `<span class="reminder-cat">${d.deadline_note}</span>` : ''}
+                <a href="${d.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
+            </div>`).join('')
+        : '<p class="no-result">다가오는 마감이 없어요.</p>'
+
+    return `
+        <div class="cal-header">
+            <button class="cal-nav-btn" onclick="moveCalendar(-1)">‹</button>
+            <span>${year}년 ${monthNames[month]}</span>
+            <button class="cal-nav-btn" onclick="moveCalendar(1)">›</button>
+        </div>
+        <div class="cal-grid">${gridHTML}</div>
+        <div id="cal-day-detail"></div>
+        <p class="cal-section-title">다가오는 마감</p>
+        ${listHTML}
+    `
+}
+
+window.moveCalendar = function(dir) {
+    calMonth += dir
+    if (calMonth > 11) { calMonth = 0; calYear++ }
+    if (calMonth < 0)  { calMonth = 11; calYear-- }
+    document.getElementById('modal-body').innerHTML =
+        '<h2 class="modal-title">리마인더</h2>' + renderCalendar(calYear, calMonth)
+}
+
+window.showDayDetail = function(ds) {
+    document.querySelectorAll('.cal-cell.selected').forEach(el => el.classList.remove('selected'))
+    const cell = document.getElementById(`cal-${ds}`)
+    if (cell) cell.classList.add('selected')
+
+    const items = calDeadlines.filter(d => (d.deadline || d.deadline_date) === ds)
+    const detail = document.getElementById('cal-day-detail')
+    if (!detail) return
+
+    detail.innerHTML = `
+        <div class="cal-day-detail">
+            <p class="cal-day-detail-title">📅 ${ds}</p>
+            ${items.map(d => `
+                <div style="margin-bottom:10px">
+                    <p style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px">${d.title}</p>
+                    ${d.category ? `<p style="font-size:12px;color:#9A7055;margin-bottom:4px">${d.category}</p>` : ''}
+                    ${d.deadline_note ? `<p style="font-size:12px;color:#9A7055;margin-bottom:4px">${d.deadline_note}</p>` : ''}
+                    <a href="${d.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
+                </div>
+            `).join('')}
+        </div>`
+}
+
 document.getElementById('btn-reminders').addEventListener('click', async () => {
     const data = await fetch('/api/reminders').then(r => r.json())
-    if (!data.length) {
-        openModal('리마인더', '<p class="no-result">3일 이내 마감 자료가 없어요.</p>')
+    calDeadlines = Array.isArray(data) ? data : (data.deadlines || [])
+    calYear  = new Date().getFullYear()
+    calMonth = new Date().getMonth()
+
+    if (!calDeadlines.length) {
+        openModal('리마인더', '<p class="no-result">마감 자료가 없어요.</p>')
         return
     }
-    openModal('리마인더', data.map(r => `
-        <div class="reminder-item">
-            <span class="reminder-deadline">마감: ${r.deadline}</span>
-            <p class="reminder-title">${r.title}</p>
-            <span class="reminder-cat">${r.category}</span>
-            <a href="${r.url}" target="_blank" class="card-link">링크 열기 &rarr;</a>
-        </div>
-    `).join(''))
+    openModal('리마인더', renderCalendar(calYear, calMonth))
 })
 
 document.getElementById('btn-report').addEventListener('click', async () => {
