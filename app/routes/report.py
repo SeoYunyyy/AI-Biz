@@ -45,7 +45,7 @@ async def _fetch(user_id: str | None, since: str, until: str | None = None) -> l
         return []
     params = {
         "analysis_status": "eq.completed",
-        "select": "topics, content_type, saved_at, title, collection_id",
+        "select": "topics, content_type, category, saved_at, title, collection_id",
         "saved_at": f"gte.{since}",
         "user_id": f"eq.{user_id}",
     }
@@ -71,6 +71,7 @@ async def _fetch(user_id: str | None, since: str, until: str | None = None) -> l
 def _analyze(contents: list[dict]) -> dict:
     topic_c: Counter = Counter()
     type_c: Counter = Counter()
+    cat_c: Counter = Counter()
     slot_c: Counter = Counter()
     day_c: Counter = Counter()
     dates = []
@@ -79,6 +80,8 @@ def _analyze(contents: list[dict]) -> dict:
         for t in (c.get("topics") or []):
             topic_c[t] += 1
         type_c[c.get("content_type") or "other"] += 1
+        if c.get("category"):
+            cat_c[c["category"]] += 1
         s = c.get("saved_at")
         if s:
             dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -93,7 +96,7 @@ def _analyze(contents: list[dict]) -> dict:
     h, m = divmod(total_min, 60)
 
     return dict(
-        topic_c=topic_c, type_c=type_c, slot_c=slot_c, day_c=day_c, dates=dates,
+        topic_c=topic_c, type_c=type_c, cat_c=cat_c, slot_c=slot_c, day_c=day_c, dates=dates,
         estimated_display=f"{h}시간 {m}분" if h else f"{m}분",
         estimated_minutes=total_min,
     )
@@ -160,7 +163,7 @@ async def weekly_report(user_id: str = Query("")):
     a = _analyze(contents)
 
     top_topic, top_topic_cnt = a['topic_c'].most_common(1)[0] if a['topic_c'] else ('-', 0)
-    top_cat, top_cat_cnt = a['type_c'].most_common(1)[0] if a['type_c'] else ('-', 0)
+    top_cat, top_cat_cnt = a['cat_c'].most_common(1)[0] if a['cat_c'] else ('-', 0)
     peak_slot = a['slot_c'].most_common(1)[0][0] if a['slot_c'] else '저녁'
     streak = _streak(a['dates'])
     coll_count = len(set(c.get('collection_id') for c in contents if c.get('collection_id')))
@@ -249,10 +252,17 @@ async def weekly_stats(user_id: str = Query("")):
 
 
 @router.get("/api/monthly-report")
-async def monthly_report(user_id: str = Query(DEFAULT_USER_ID)):
+async def monthly_report(
+    user_id: str = Query(DEFAULT_USER_ID),
+    year: int = Query(0),
+    month: int = Query(0),
+):
     now = datetime.utcnow()
-    since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    contents = await _fetch(user_id, since)
+    y = year or now.year
+    m = month or now.month
+    since = datetime(y, m, 1).isoformat()
+    until = datetime(y + 1, 1, 1).isoformat() if m == 12 else datetime(y, m + 1, 1).isoformat()
+    contents = await _fetch(user_id, since, until)
 
     if not contents:
         return {'report': '이번 달 저장된 자료가 아직 없어요.', 'stats': []}

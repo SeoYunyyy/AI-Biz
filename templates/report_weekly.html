@@ -26,6 +26,7 @@
   .hero-right { flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; padding-top: 12px; }
   .hero-emoji-main { font-size: 120px; line-height: 1; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35)); }
   .hero-emoji-sub { font-size: 96px; line-height: 1; margin-top: 28px; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.3)); }
+  .hero-keepi { width: 420px; height: 420px; object-fit: contain; filter: drop-shadow(0 10px 32px rgba(0,0,0,0.28)); }
 
   /* ── 통계 행 (히어로 아래) ── */
   .stats-row-wrap { background: #fdf8f5; padding: 32px 48px; }
@@ -174,7 +175,7 @@
       <div class="hero-type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
       <button class="hero-share-btn" onclick="document.getElementById('shareModal').classList.add('show')">↗ 공유하기</button>
     </div>
-    <div class="hero-right">
+    <div class="hero-right" id="hero-right">
       <div class="hero-emoji-main" id="hero-emoji-main">✨</div>
       <div class="hero-emoji-sub" id="hero-emoji-sub">💻</div>
     </div>
@@ -340,7 +341,24 @@ function getUserId() {
     || localStorage.getItem('keepit_user_id')
     || '';
 }
-// 카테고리별 서브 이모지 (히어로 오른쪽 두 번째 이모지)
+// 이번 주 가장 많이 저장한 카테고리(top_category)로 키피 이미지 결정
+const CATEGORY_IMAGE = {
+  'IT/기술':     'keepi_tech.png',
+  '영상/엔터':   'keepi_video.png',
+  '음악':        'keepi_music.png',
+  '독서/책':     'keepi_book.png',
+  '요리/식품':   'keepi_food.png',
+  '여행':        'keepi_travel.png',
+  '패션/뷰티':   'keepi_fashion.png',
+  '운동/헬스':   'keepi_health.png',
+  '교육/학습':   'keepi_book.png',
+}
+function categoryImage(topCategory) {
+  const src = CATEGORY_IMAGE[topCategory] || 'keepi_default.png'
+  return `<img src="/static/images/keepi/${src}" class="hero-keepi" alt="keepi" onerror="this.style.display='none'" />`
+}
+
+// 카테고리별 서브 이모지 (키피 이미지 없을 때 fallback)
 const CATEGORY_EMOJI = {
   'IT/기술':'💻','영상/엔터':'🎬','음악':'🎵','독서/책':'📚','뉴스/사회':'📰',
   '정치/경제':'💼','스포츠':'⚽','게임':'🎮','요리/식품':'🍽️','여행':'✈️',
@@ -521,10 +539,17 @@ async function loadReport() {
       return;
     }
 
-    // 히어로 이모지 (메인 + 카테고리 서브)
+    // 히어로 키피 이미지 (취향 유형에 맞는 이미지, 없으면 이모지 fallback)
     const mainEmoji = rep.personality_emoji || '✨';
-    document.getElementById('hero-emoji-main').textContent = mainEmoji;
-    document.getElementById('hero-emoji-sub').textContent = CATEGORY_EMOJI[rep.top_category] || '🌐';
+    const heroRight = document.getElementById('hero-right');
+    heroRight.innerHTML = categoryImage(rep.top_category || '');
+    // 키피 이미지 로드 실패 시 이모지로 대체
+    const keepiImg = heroRight.querySelector('img');
+    if (keepiImg) {
+      keepiImg.addEventListener('error', () => {
+        heroRight.innerHTML = `<div class="hero-emoji-main">${mainEmoji}</div><div class="hero-emoji-sub">${CATEGORY_EMOJI[rep.top_category] || '🌐'}</div>`;
+      });
+    }
 
     document.getElementById('type-name').textContent = rep.personality_type || rep.nickname || rep.top_topic + ' 탐험가';
     document.getElementById('type-desc').textContent = rep.personality_desc || '';

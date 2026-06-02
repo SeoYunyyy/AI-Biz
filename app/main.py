@@ -93,6 +93,11 @@ async def weekly_report_page(request: Request):
     return templates.TemplateResponse(request, "report_weekly.html")
 
 
+@app.get("/monthly-report", response_class=HTMLResponse)
+async def monthly_report_page(request: Request):
+    return templates.TemplateResponse(request, "report_monthly.html")
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "Keepit API"}

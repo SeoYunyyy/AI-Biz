@@ -1902,23 +1902,115 @@ nav {
     border: none;
 }
 
-/* nav 사용자 정보 */
+/* ── nav 사용자 카드 ── */
+.nav-user-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 40px;
+    padding: 5px 14px 5px 5px;
+}
+
+.nav-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0;
+}
+
 .nav-username {
     font-size: 13px;
-    color: rgba(255,255,255,0.75);
-    font-weight: 500;
+    font-weight: 600;
+    color: rgba(255,255,255,0.92);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .nav-logout-btn {
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.25);
-    color: #fff;
-    border-radius: 8px;
-    padding: 6px 14px;
-    font-size: 13px;
+    background: none;
+    border: 1px solid rgba(255,255,255,0.30);
+    color: rgba(255,255,255,0.75);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
     font-family: inherit;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
 }
 
-.nav-logout-btn:hover { background: rgba(255,255,255,0.22); }
+.nav-logout-btn:hover {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+}
+
+/* ── 리마인더 캘린더 ── */
+.cal-container { width: 100%; }
+.cal-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid #EAD9CC; margin-bottom: 10px; }
+.cal-month-title { font-size: 17px; font-weight: 800; color: #2c1206; }
+.cal-nav { display: flex; align-items: center; gap: 5px; }
+.cal-nav-btn { background: none; border: 1px solid #E0D2C0; border-radius: 7px; padding: 4px 10px; font-size: 14px; color: #6b4c38; cursor: pointer; font-weight: 600; line-height: 1; transition: background 0.12s; }
+.cal-nav-btn:hover { background: #f5e6d8; }
+.cal-today-btn { font-size: 11px; padding: 4px 9px; letter-spacing: 0.3px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-bottom: 14px; }
+.cal-weekday { text-align: center; font-size: 10px; font-weight: 700; color: #b08060; padding: 3px 0 7px; letter-spacing: 0.5px; }
+.cal-weekday.sun { color: #d9534f; }
+.cal-weekday.sat { color: #5577cc; }
+.cal-cell { display: flex; flex-direction: column; align-items: center; padding: 2px 1px 4px; min-height: 46px; cursor: pointer; border-radius: 7px; transition: background 0.1s; }
+.cal-cell:hover:not(.other-month) { background: #f9f0e8; }
+.cal-cell.other-month { opacity: 0.22; pointer-events: none; }
+.cal-dots { display: flex; gap: 2px; height: 9px; align-items: center; margin-bottom: 2px; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: #c8874a; }
+.cal-date-num { font-size: 12px; font-weight: 600; color: #3a2010; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.cal-cell.today .cal-date-num { background: #3b1f0e !important; color: #fdf3ec !important; }
+.cal-cell.sunday .cal-date-num { color: #d9534f; }
+.cal-cell.saturday .cal-date-num { color: #5577cc; }
+.cal-cell.selected { background: #f5e6d8; }
+.cal-cell.selected .cal-date-num { background: #c8874a; color: #fff; }
+.cal-event-list { border-top: 1px solid #EAD9CC; padding-top: 12px; display: flex; flex-direction: column; gap: 12px; max-height: 260px; overflow-y: auto; }
+.cal-event-item { border-left: 3px solid #c8874a; padding-left: 11px; }
+.cal-event-item.expired { border-left-color: #b08060; }
+.cal-event-deadline { font-size: 11px; font-weight: 700; color: #c8874a; margin-bottom: 3px; }
+.cal-event-item.expired .cal-event-deadline { color: #b08060; }
+.cal-event-title { font-size: 13px; font-weight: 600; color: #2c1206; margin-bottom: 3px; line-height: 1.35; }
+.cal-event-note { font-size: 11px; color: #9A7055; margin-bottom: 4px; }
+.cal-event-link { font-size: 12px; color: #5A3002; text-decoration: none; font-weight: 600; }
+.cal-event-link:hover { text-decoration: underline; }
+.cal-no-events { font-size: 13px; color: #b08060; padding: 10px 0; text-align: center; }
+.cal-filter-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 6px 10px; background: #f9f0e8; border-radius: 8px; }
+.cal-filter-bar span { font-size: 12px; font-weight: 700; color: #6b3a2a; }
+.cal-filter-clear { background: none; border: 1px solid #d4a574; border-radius: 10px; padding: 3px 10px; font-size: 11px; color: #9A7055; cursor: pointer; font-family: inherit; }
+.cal-filter-clear:hover { background: #ede0d4; color: #5A3002; }
+
+/* ── 아카이브 검색 + 더보기/접기 ── */
+.sub-right { display: inline-flex; align-items: center; gap: 8px; }
+.archive-search-wrap { position: sticky; top: 0; background: #F5EFE6; padding-bottom: 10px; margin-bottom: 4px; z-index: 1; }
+.archive-search { width: 100%; padding: 9px 14px; border: 1px solid #EAD9CC; border-radius: 10px; font-family: inherit; font-size: 14px; color: #2C1A0E; background: #fdf8f5; outline: none; transition: border-color 0.15s; }
+.archive-search:focus { border-color: #c8874a; box-shadow: 0 0 0 3px rgba(200,135,74,0.1); }
+.archive-more-btn { display: block; width: 100%; background: none; border: 1px dashed #D4C4B0; color: #9A7055; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; cursor: pointer; margin: 4px 0 8px; text-align: center; transition: background 0.15s, color 0.15s; }
+.archive-more-btn:hover { background: #F4EBE0; color: #5A3002; border-color: #c8874a; }
+
+/* ── 아카이브 카드 썸네일·삭제 ── */
+.archive-item-thumb { width: 100%; height: 150px; object-fit: cover; border-radius: 10px; margin-bottom: 12px; display: block; }
+.archive-item-btns { display: inline-flex; align-items: center; gap: 12px; }
+.archive-del-btn { background: none; border: 1px solid rgba(220,53,69,0.3); color: #C0392B; font-family: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 7px; cursor: pointer; transition: background 0.15s; }
+.archive-del-btn:hover { background: rgba(220,53,69,0.12); }
+
+/* ── 요약 접기/펼치기 ── */
+.panel-item-summary.summary-collapsed,
+.archive-item-summary.summary-collapsed { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.summary-toggle { font-size: 11px; color: #5A3002; background: none; border: none; cursor: pointer; padding: 2px 0 6px; font-family: inherit; font-weight: 600; display: block; }
+.summary-toggle:hover { text-decoration: underline; }
