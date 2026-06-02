@@ -136,16 +136,27 @@ async def _genre_filter(query: str, results: list[dict]) -> list[dict]:
         return results
 
 
-async def _handle_search(user_id: str, query: str, shown_ids: list = None, history: list = None) -> dict:
+async def _emit(status_cb, msg: str):
+    """진행 상태 멘트를 스트리밍으로 흘려보낸다 (status_cb 없으면 무시)."""
+    if status_cb:
+        try:
+            await status_cb(msg)
+        except Exception:
+            pass
+
+
+async def _handle_search(user_id: str, query: str, shown_ids: list = None, history: list = None, status_cb=None) -> dict:
     shown_ids = shown_ids or []
     history = history or []
 
+    await _emit(status_cb, "검색어 분석 중")
     expanded = await expand_query(query)
     embedding = await generate_embedding(expanded)
     if not embedding:
         return {"answer": "검색어 처리 중 문제가 생겼어요. 다시 시도해주세요.", "results": [], "follow_up_questions": []}
 
     # 후보 15개 → shown_ids 제외 → 전체 필드 보강 → detailed_summary 기반 엄격 필터 → 상위 5개
+    await _emit(status_cb, "관련 콘텐츠 검색 중")
     candidates = await search_contents(user_id, embedding, limit=15)
     candidates = [r for r in candidates if r.get("id") not in shown_ids]
 
@@ -156,6 +167,7 @@ async def _handle_search(user_id: str, query: str, shown_ids: list = None, histo
         order = {cid: i for i, cid in enumerate(ids)}
         full.sort(key=lambda r: order.get(r.get("id"), 999))
         # 제목만 보던 느슨한 장르 필터 대신, 요약 내용으로 주제에 맞는 것만 선별
+        await _emit(status_cb, "관련도 확인 중")
         filtered = await _filter_by_topic(query, full)
         results = _to_cards(filtered[:5])
 
@@ -244,9 +256,9 @@ async def _handle_deadline(user_id: str) -> dict:
     }
 
 
-async def _handle_folder(user_id: str, folder_name: str, original_query: str = "") -> dict:
+async def _handle_folder(user_id: str, folder_name: str, original_query: str = "", status_cb=None) -> dict:
     """폴더명(주제)에 맞는 콘텐츠를 찾아 '선택/전체 묶기'로 제시 (실제 묶기는 사용자가 결정)."""
-    related = await _find_relevant_contents(user_id, folder_name, limit=12)
+    related = await _find_relevant_contents(user_id, folder_name, limit=12, status_cb=status_cb)
 
     if not related:
         # 후보가 없으면 빈 폴더만 생성
@@ -313,9 +325,10 @@ async def _handle_cleanup(user_id: str) -> dict:
     }
 
 
-async def _handle_move(user_id: str, move_query: str, target_folder: str) -> dict:
+async def _handle_move(user_id: str, move_query: str, target_folder: str, status_cb=None) -> dict:
     """주제에 맞는 콘텐츠를 정확히 찾아 폴더로 이동 (폴더 없으면 생성)."""
-    results = await _find_relevant_contents(user_id, move_query, limit=10)
+    results = await _find_relevant_contents(user_id, move_query, limit=10, status_cb=status_cb)
+    await _emit(status_cb, f"'{target_folder}' 폴더로 이동 중")
     if not results:
         return {
             "answer": f"'{move_query}' 관련 저장된 콘텐츠를 찾지 못했어요. 먼저 관련 링크를 저장해보세요.",
@@ -424,9 +437,11 @@ async def _filter_by_topic(topic: str, items: list[dict]) -> list[dict]:
         return items
 
 
-async def _find_relevant_contents(user_id: str, topic: str, limit: int = 10) -> list[dict]:
+async def _find_relevant_contents(user_id: str, topic: str, limit: int = 10, status_cb=None) -> list[dict]:
     """주제에 맞는 콘텐츠를 detailed_summary 기반으로 정확히 찾아 반환 (요약·묶기 공통)."""
+    await _emit(status_cb, f"'{topic}' 관련 콘텐츠 검색 중")
     full = await _search_full(user_id, topic, candidate_limit=15)
+    await _emit(status_cb, "관련도 확인 중")
     filtered = await _filter_by_topic(topic, full)
     return filtered[:limit]
 
@@ -449,21 +464,24 @@ def _match_collection(name: str, collections: list[dict]) -> dict | None:
 
 
 async def _handle_summarize(user_id: str, query: str, summarize_query: str = None,
-                            target_collection: str = None, recent_saved_ids: list = None) -> dict:
+                            target_collection: str = None, recent_saved_ids: list = None, status_cb=None) -> dict:
     """요약 대상 후보를 카드로 제시 → 사용자가 선택하면 /summarize 로 실제 요약."""
     recent_saved_ids = recent_saved_ids or []
 
     # 0) 방금 저장한 콘텐츠를 가리키는 경우("이 콘텐츠/방금 거") → 바로 그것을 요약
     #    대상이 특정되지 않은(주제·컬렉션 미지정) 모호한 요청일 때만 방금 저장분으로 직행
     if recent_saved_ids and not summarize_query and not target_collection:
+        await _emit(status_cb, "방금 저장한 콘텐츠 요약 중")
         return await summarize_contents(user_id, recent_saved_ids)
 
     # 1) 컬렉션을 가리키면(이름이 실제 컬렉션과 매칭되면) 그 폴더의 멤버를 그대로 요약 대상으로
     name_hint = target_collection or summarize_query
     if name_hint:
+        await _emit(status_cb, "컬렉션 확인 중")
         collections = await get_collections(user_id)
         matched = _match_collection(name_hint, collections)
         if matched:
+            await _emit(status_cb, f"'{matched['name']}' 폴더 불러오는 중")
             items = await get_collection_contents(user_id, matched["id"])
             if items:
                 msg = random.choice([
@@ -476,7 +494,7 @@ async def _handle_summarize(user_id: str, query: str, summarize_query: str = Non
 
     # 2) 주제가 명시되면 detailed_summary 기반으로 정확히 관련 콘텐츠만 찾기
     if summarize_query:
-        candidates = await _find_relevant_contents(user_id, summarize_query, limit=5)
+        candidates = await _find_relevant_contents(user_id, summarize_query, limit=5, status_cb=status_cb)
         if candidates:
             msg = random.choice([
                 f"'{summarize_query}' 관련해서 이만큼 찾았어요. 요약할 걸 골라주세요.",
@@ -507,79 +525,238 @@ async def _handle_summarize(user_id: str, query: str, summarize_query: str = Non
     }
 
 
-SUMMARY_PROMPT = """너는 콘텐츠 아카이브 전문 분석가야. 사용자가 나중에 이 요약만 보고도 원문을 안 봐도 될 정도로 상세하게 요약해.
+SUMMARY_PROMPT = """너는 콘텐츠를 깊이 이해하고, 그 콘텐츠에 가장 어울리는 방식으로 정리하는 콘텐츠 아카이브 전문 분석가야. 
+사용자가 나중에 이 요약만 보고도 원문을 안 봐도 될 정도로 상세하게 요약해. 마치 사람이 친구에게 "이거 무슨 내용이야?"라는 질문에 똑부러지게 답하듯이.
 
-═══ 절대 원칙 ═══
-1. 원문에 실제로 있는 사실·수치·고유명사만 사용. 없는 내용 절대 생성 금지.
-2. '유익합니다', '흥미롭습니다' 같은 추상적 평가 금지. 구체적 사실만.
-3. 한국어. 인사말·사족 없이 바로 시작.
-4. 원문이 짧더라도 최대한 정보를 빠짐없이 추출.
+###최우선 목표
 
-═══ 콘텐츠 유형별 요약 원칙 ═══
-[뉴스/시사]
-→ 무슨 일이 일어났고, 왜 일어났고, 어떤 영향이 있는지 서술.
-→ 핵심 수치와 인용이 있으면 반드시 포함.
-→ 반론이나 다른 시각이 있으면 함께.
+사용자가 이 요약만 읽고도 다음 질문에 답할 수 있어야 한다.
 
-[유튜브 영상]
-→ 영상이 다루는 주제와 흐름을 시간순/구성순으로 정리.
-→ 핵심 장면이나 발언이 있으면 포함.
-→ 어떤 사람이 보면 좋을지.
+그래서 무슨 내용인가?
+왜 중요한가?
+누가 무엇을 했는가?
+어떤 수치와 근거가 있는가?
+앞으로 어떤 의미가 있는가?
 
-[블로그/아티클]
-→ 글쓴이의 핵심 주장과 근거 정리.
-→ 실용적 팁이 있으면 구체적으로 추출.
-→ 개인 경험담이면 어떤 상황/결론인지.
+요약 후 원문을 다시 볼 필요가 없을 정도로 충분한 정보를 제공하라.
 
-[쇼핑/제품]
-→ 제품명, 가격대, 핵심 스펙.
-→ 어떤 용도에 적합한지.
-→ 리뷰 요약이 있으면 장단점.
+###가장 중요한 원칙
 
-[음악/플레이리스트]
-→ 전체 분위기와 장르.
-→ 대표곡 2~3개와 아티스트.
-→ 어떤 상황에 어울리는지 (새벽, 운동, 집중 등).
+단순 정보 나열을 하지 마라.
+좋은 요약은 문장을 줄이는 것이 아니라 정보를 이해하기 쉽게 재배열하는 것이다.
+원문의 사실을 압축만 하지 말고, 관련된 내용끼리 묶어 하나의 흐름으로 재구성하라.
 
-[레시피/요리]
-→ 요리명, 핵심 재료, 조리 시간.
-→ 난이도와 포인트 (이게 맛있어지는 핵심).
-→ 몇 인분인지.
+나쁜 예:
+UAE 수출 증가
+남미 수출 증가
+실리콘투 진출
+아모레퍼시픽 진출
 
-[교육/학습]
-→ 무엇을 가르치는 콘텐츠인지.
-→ 핵심 개념 2~3개 추출.
-→ 선수 지식이 필요한지, 난이도.
+좋은 예:
+UAE와 남미 시장에서 K뷰티 수출이 빠르게 증가하면서 기업들의 현지 진출도 본격화되고 있다. 실리콘투와 아모레퍼시픽은 현지 법인과 유통망 구축에 나섰으며, 이는 성장하는 신흥 시장을 선점하기 위한 전략으로 해석된다.
 
-[위에 해당 안 되는 경우]
-→ 콘텐츠의 핵심을 네가 판단해서 가장 유용한 방식으로 요약.
-→ 형식에 얽매이지 말고 정보 밀도를 높여.
+# 출력 형식
 
-═══ 출력 형식 ('콘텐츠 유형별 요약 원칙'에 따라 출력 형식안에서 최적의 요약을 하도록 해) ═══
+반드시 아래 구조를 따른다.
 
-🔑 핵심 한 줄
-(이 콘텐츠가 무엇에 대한 것인지 누가 봐도 바로 이해할 수 있는 한 문장. 주어+동사+목적어 구조로. 30자 이상.)
+📌 한눈에 보기
 
-📌 상세 요약
-(원문의 핵심 논점을 문단 형태로 서술. 단순 나열이 아니라 흐름이 있게 연결. 최소 150자 이상.)
-- 무엇이 일어났는가 / 무엇을 다루는가
-- 왜 그런 일이 일어났는가 / 배경 원인
-- 어떤 결과 또는 결론이 있는가
-- 반론, 논쟁, 다른 시각이 있다면 포함
+가장 먼저 작성한다.
 
-📊 핵심 팩트
-(원문에서 추출 가능한 구체적 사실만. 없으면 "해당 없음")
-- 수치/통계: (금액, 퍼센트, 순위, 날짜 등)
-- 인물/기관: (언급된 사람 이름, 회사, 기관)
-- 지역/장소: (관련 지역이 있다면)
-- 시점: (언제 일어난 일인지, 또는 콘텐츠 발행 시점 기준)
+4~8문장 내외로 작성하며,
+이 부분만 읽어도
+콘텐츠 전체를 이해할 수 있어야 한다.
 
-🏷️ 주제 키워드
-(이 콘텐츠를 나중에 검색할 때 쓸 법한 키워드 5~8개. 쉼표 구분.)
-예: 대선, 여론조사, 이재명, 지지율, 2028, 대통령 선거
+단순 요약이 아니라
+전체 내용을 압축한 브리핑 형태로 작성한다.
 
-🔗 관련 맥락
-(이 콘텐츠가 어떤 큰 흐름/이슈의 일부인지 1~2문장. 예: "2028 대선을 앞두고 각 후보 캠프의 전략이 본격화되는 시점의 뉴스")
+---
+
+📖 상세 내용
+
+콘텐츠 유형과 정보량에 따라
+1~6개의 대주제로 나누어 작성한다.
+
+대주제는 콘텐츠를 가장 이해하기 쉬운 방식으로
+AI가 직접 결정한다.
+
+억지로 개수를 채우지 마라.
+
+---
+
+# 대주제 작성 규칙
+
+각 대주제는
+
+아이콘 + 제목
+
+형태로 작성한다.
+
+예시
+
+🚀 성장 배경
+
+📊 핵심 수치
+
+🏢 주요 기업
+
+💡 핵심 인사이트
+
+⚠️ 주의할 점
+
+📈 향후 전망
+
+🎯 전략 분석
+
+🌍 시장 동향
+
+🎓 핵심 개념
+
+🛒 제품 특징
+
+아이콘은 내용에 맞게 자유롭게 선택한다.
+
+---
+
+# 가장 중요한 규칙
+
+정보를 나열하지 마라.
+
+관련된 정보는 하나의 흐름으로 묶어라.
+
+사실 → 원인 → 영향
+
+구조를 우선 고려하라.
+
+사용자가
+
+"그래서 무슨 얘기인데?"
+
+라고 물었을 때
+바로 이해할 수 있도록 작성한다.
+
+---
+
+# 정보 보존
+
+핵심 수치는 삭제하지 마라.
+
+가능하면 유지한다.
+
+- 금액
+- 성장률
+- 날짜
+- 시장 규모
+- 기업명
+- 브랜드명
+- 국가명
+- 제품명
+
+---
+
+
+##콘텐츠 유형별 관점
+─────────────────────────────
+[뉴스 / 시사]
+핵심 관점: "독자가 이 사건의 전말과 의미를 파악하게 하라"
+- 사건의 핵심: 무엇이 일어났는가 (육하원칙 중 살아있는 것만)
+- 인과: 왜 일어났는가, 직접 원인과 배경
+- 파급: 누구에게 어떤 영향이 가는가, 앞으로의 전망
+필수: 구체적 수치(금액·퍼센트·날짜·규모), 핵심 당사자의 직접 인용은 그대로 살려라
+주의: 기사의 논조에 휩쓸리지 마라. 사실과 의견을 구분하고, 반론·논쟁이 있으면 양쪽을 균형 있게. 한쪽 주장만 요약하면 안 된다.
+
+─────────────────────────────
+[유튜브 / 영상]
+핵심 관점: "이 영상을 안 보고도 알맹이를 얻게 하라"
+- 영상의 목적: 무엇을 보여주려는 영상인가 (리뷰/튜토리얼/브이로그/해설/엔터 등)
+- 흐름: 내용을 구성 순서대로. 단 단순 타임라인이 아니라 핵심 위주로
+- 결론/핵심 메시지: 영상이 최종적으로 전하는 것, 또는 인상적인 발언
+필수: 자막·설명에 등장하는 구체적 정보(수치, 제품명, 방법, 단계)는 빠짐없이
+주의: 제목/썸네일의 낚시성 표현을 그대로 옮기지 마라. 실제 내용 기준으로. 영상이 길고 정보가 많으면 섹션을 나눠 정리해도 좋다.
+
+─────────────────────────────
+[블로그 / 아티클 / 에세이]
+핵심 관점: "글쓴이가 무엇을 말하려 했고, 읽을 가치가 어디 있는가"
+- 핵심 주장: 글이 결국 말하려는 한 가지
+- 근거/전개: 그 주장을 받치는 논리나 사례
+- 실용 정보: 따라 할 수 있는 팁·방법·자료가 있으면 구체적으로 추출(추상화하지 말고 실제 수치·이름·순서 그대로)
+주의: 정보성 글(가이드/리뷰)과 개인 에세이(경험·생각)는 다르게 접근하라. 정보성이면 "무엇을 알 수 있나", 에세이면 "어떤 경험에서 어떤 결론에 도달했나". 글의 분량이 길어도 곁가지는 버리고 줄기만.
+
+─────────────────────────────
+[쇼핑 / 제품]
+핵심 관점: "이걸 살까 말까 판단할 정보를 주어라"
+- 정체: 제품명, 브랜드, 카테고리
+- 스펙·가격: 핵심 사양과 가격대(1회분/단위당 환산이 의미 있으면 함께)
+- 용도 적합성: 어떤 사람·상황에 맞고 안 맞는지
+- 평가: 리뷰가 있으면 반복되는 장점과 단점을 균형 있게
+필수: 가격, 핵심 스펙 수치는 정확히
+주의: 광고 문구("최고의", "혁신적인")를 그대로 옮기지 마라. 검증 가능한 사실만. 단점/한계가 원문에 있으면 반드시 포함(장점만 나열 금지).
+
+─────────────────────────────
+[음악 / 플레이리스트]
+핵심 관점: "어떤 분위기이고 언제 듣기 좋은가"
+- 무드·장르: 전체를 관통하는 분위기와 음악 스타일
+- 구성: 대표곡 2~4개와 아티스트, 흐름(잔잔→고조 등)이 있으면
+- 사용 맥락: 어울리는 상황·시간·활동(새벽/운동/집중/드라이브/수면 등)
+필수: 곡명·아티스트명은 정확히
+주의: 곡 하나하나 나열하지 마라(전체 무드와 대표곡 중심). BPM·템포 같은 분위기 단서가 있으면 활용. 플리 제목의 감성을 살리되 과장하지 마라.
+
+─────────────────────────────
+[레시피 / 요리]
+핵심 관점: "이 요약만 보고도 만들 수 있게 하라"
+- 정체: 요리명, 몇 인분, 총 소요 시간, 난이도
+- 재료: 핵심 재료와 분량(원문에 있는 그대로)
+- 순서: 조리 단계를 따라 할 수 있게 번호로
+- 결정적 포인트: 맛을 좌우하는 핵심 팁(불 조절, 타이밍, 비율 등)
+필수: 분량·시간·온도 수치는 정확히. 단계는 번호 목록으로.
+주의: 재료를 두루뭉술하게 쓰지 마라("적당량" 대신 원문의 실제 분량). 가장 중요한 건 "왜 이게 맛있어지는가"의 포인트 — 이걸 꼭 살려라.
+
+─────────────────────────────
+[교육 / 학습 / 강의]
+핵심 관점: "무엇을 배울 수 있고 나에게 맞는 수준인가"
+- 주제: 무엇을 가르치는 콘텐츠인가
+- 핵심 개념: 다루는 핵심 개념 2~4개를 짧은 설명과 함께
+- 수준: 난이도, 선수지식 필요 여부, 대상(입문/중급/실무)
+- 활용: 배운 걸 어디에 쓸 수 있는지
+필수: 다루는 개념·기술의 정확한 이름(용어를 임의로 바꾸지 마라)
+주의: "유익한 강의"같은 평가 대신 실제로 무엇을 다루는지로 가치를 보여줘라. 개념을 나열만 하지 말고 한 줄 설명을 붙여라.
+
+─────────────────────────────
+[SNS / 짧은 글 (트윗, 스레드, 인스타 등)]
+핵심 관점: "짧은 만큼 맥락과 핵심을 압축하라"
+- 핵심 메시지: 이 글이 말하는 한 가지
+- 맥락: 어떤 상황·이슈에 대한 반응인지(파악되면)
+- 톤: 정보 공유인지, 의견인지, 유머인지
+필수: 원문이 짧으면 요약도 짧게(2~3문장). 억지로 늘리지 마라.
+주의: 짧은 글에 없는 맥락을 지어내지 마라. 스레드(연속 글)면 전체 논지의 흐름을 정리.
+
+─────────────────────────────
+[지도 / 장소 / 맛집]
+핵심 관점: "어디이고 왜 저장할 만한가"
+- 정체: 장소명, 종류(식당/카페/명소 등), 위치(지역)
+- 특징: 무엇으로 유명한지, 대표 메뉴·볼거리
+- 실용 정보: 영업시간·가격대·예약 등 원문에 있으면
+주의: 원문에 없는 평점·후기를 만들지 마라. 위치는 파악되는 범위까지만.
+
+─────────────────────────────
+[위에 해당 없는 경우]
+- 먼저 이 콘텐츠가 본질적으로 무엇인지 한 문장으로 규정하라.
+- 그 본질에 가장 맞는 방식으로, 정보 밀도를 최우선으로 요약하라.
+- 형식·길이 모두 콘텐츠가 결정하게 두되, "이 요약만으로 충분한가"를 기준으로 삼아라.
+
+구조도 자유다. 줄글이 나을 때는 줄글로, 단계가 중요하면 번호 목록으로, 비교가 핵심이면 표로. 마크다운(불릿, 번호, 굵게, 표)을 콘텐츠에 맞게 활용해라.
+
+## 길이
+콘텐츠의 정보량에 비례하게. 짧은 SNS 글은 2~3문장, 긴 기사나 강의 영상은 충실하게. 억지로 늘리거나 줄이지 마라.
+
+## 절대 규칙
+- 원문에 실제로 있는 사실·수치·고유명사만 사용. 없는 내용은 절대 지어내지 마라. 모르면 쓰지 마라.
+- "유익합니다", "흥미롭습니다", "도움이 됩니다" 같은 공허한 평가 금지. 무엇이 어떻게 유익한지 구체적으로 쓰거나, 아니면 쓰지 마라.
+- 인사말, 메타 설명("이 콘텐츠는...", "요약하자면...") 없이 본론부터 시작.
+- 한국어. 자연스럽고 명료한 문장.
+
+## 톤
+정확하되 딱딱하지 않게. 정보를 빠르게 흡수할 수 있도록 명료하게. 단, 친근한 척하는 군더더기는 빼라.
 
 """
 
@@ -675,12 +852,13 @@ async def _handle_general(user_id: str, query: str, history: list = None) -> dic
 # ── 메인 진입점 ───────────────────────────────────────────────────────────────
 
 async def process_chat(user_id: str, query: str, history: list = None, shown_ids: list = None,
-                       recent_saved_ids: list = None) -> dict:
-    """의도 파악 후 적절한 핸들러 호출."""
+                       recent_saved_ids: list = None, status_cb=None) -> dict:
+    """의도 파악 후 적절한 핸들러 호출. status_cb로 단계별 진행 멘트를 흘려보냄."""
     history = history or []
     shown_ids = shown_ids or []
     recent_saved_ids = recent_saved_ids or []
 
+    await _emit(status_cb, "요청 의도 파악 중")
     intent_data = await _detect_intent(query, history=history)
     intent = intent_data.get("intent", "general")
     folder_name = intent_data.get("folder_name")
@@ -691,21 +869,25 @@ async def process_chat(user_id: str, query: str, history: list = None, shown_ids
     target_collection = intent_data.get("target_collection")
 
     if intent == "search":
-        result = await _handle_search(user_id, query, shown_ids=shown_ids, history=history)
+        result = await _handle_search(user_id, query, shown_ids=shown_ids, history=history, status_cb=status_cb)
     elif intent == "summarize":
-        result = await _handle_summarize(user_id, query, summarize_query, target_collection, recent_saved_ids)
+        result = await _handle_summarize(user_id, query, summarize_query, target_collection, recent_saved_ids, status_cb=status_cb)
     elif intent == "deadline":
+        await _emit(status_cb, "마감기한 확인 중")
         result = await _handle_deadline(user_id)
     elif intent == "folder" and folder_name:
-        result = await _handle_folder(user_id, folder_name, original_query=query)
+        result = await _handle_folder(user_id, folder_name, original_query=query, status_cb=status_cb)
     elif intent == "cleanup":
+        await _emit(status_cb, "정리할 항목 확인 중")
         result = await _handle_cleanup(user_id)
     elif intent == "move" and move_query and target_folder:
-        result = await _handle_move(user_id, move_query, target_folder)
+        result = await _handle_move(user_id, move_query, target_folder, status_cb=status_cb)
     elif intent == "delete" and delete_query:
+        await _emit(status_cb, "삭제 대상 찾는 중")
         result = await _handle_delete(user_id, delete_query)
     else:
         # general 및 미매칭 → 검색이 아니라 도메인 대화로
+        await _emit(status_cb, "답변 작성 중")
         result = await _handle_general(user_id, query, history=history)
 
     result["intent"] = intent

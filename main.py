@@ -8,11 +8,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import json
+import asyncio
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -404,6 +406,46 @@ async def chat(req: ChatRequest):
         recent_saved_ids=req.recent_saved_ids,
     )
     return result
+
+
+@app.post("/chat/stream")
+async def chat_stream(req: ChatRequest):
+    # 처리 단계마다 진행 멘트(status)를 SSE로 흘려보내고, 마지막에 result를 보낸다
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def status_cb(msg: str):
+            await queue.put({"type": "status", "message": msg})
+
+        async def run():
+            try:
+                result = await process_chat(
+                    req.user_id, req.query,
+                    history=req.history, shown_ids=req.shown_ids,
+                    recent_saved_ids=req.recent_saved_ids,
+                    status_cb=status_cb,
+                )
+                await queue.put({"type": "result", "data": result})
+            except Exception as e:
+                await queue.put({"type": "error", "message": str(e)})
+            finally:
+                await queue.put(None)  # 종료 신호
+
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+        finally:
+            await task
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
 
 
 # ── 요약 (선택한 콘텐츠 요약·설명) ─────────────────────────────────────────────

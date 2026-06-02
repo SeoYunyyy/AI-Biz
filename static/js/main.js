@@ -618,34 +618,30 @@ async function sendChat() {
             loadTopFolders()
             loadCollections()
         } else {
-            // 텍스트 → AI 대화
-            showChatStatus(['요청 이해 중', '콘텐츠 찾는 중'])
+            // 텍스트 → AI 대화 (실제 단계별 멘트가 뜨는 SSE 스트리밍, 실패 시 /chat 폴백)
+            showChatStatus('요청 보내는 중')
             chatHistory.push({ role: 'user', content: text })
-            const res = await fetch('/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    query: text,
-                    user_id: DEFAULT_USER_ID,
-                    history: chatHistory.slice(-10),
-                    shown_ids: [...shownIds],
-                    recent_saved_ids: lastSavedIds,
-                })
+            const body = JSON.stringify({
+                query: text,
+                user_id: DEFAULT_USER_ID,
+                history: chatHistory.slice(-10),
+                shown_ids: [...shownIds],
+                recent_saved_ids: lastSavedIds,
             })
-            const data = await res.json()
+            const data = await chatViaStream(body)
+
             hideChatStatus()
-
-            // 보여준 결과 ID 누적
-            if (data.results) {
-                data.results.forEach(r => r.id && shownIds.add(r.id))
+            if (!data) {
+                appendMsg(chatMessages, 'ai', '오류가 발생했어요. 다시 시도해주세요.')
+            } else {
+                if (data.results) data.results.forEach(r => r.id && shownIds.add(r.id))
+                chatHistory.push({ role: 'assistant', content: data.answer || '' })
+                const aiEl = document.createElement('div')
+                aiEl.className = 'chat-msg ai'
+                aiEl.innerHTML = buildAIContent(data)
+                chatMessages.appendChild(aiEl)
+                loadCollections()
             }
-            chatHistory.push({ role: 'assistant', content: data.answer || '' })
-
-            const aiEl = document.createElement('div')
-            aiEl.className = 'chat-msg ai'
-            aiEl.innerHTML = buildAIContent(data)
-            chatMessages.appendChild(aiEl)
-            loadCollections()
         }
     } catch (e) {
         hideChatStatus()
@@ -653,6 +649,53 @@ async function sendChat() {
     } finally {
         chatSend.disabled = false
         chatMessages.scrollTop = chatMessages.scrollHeight
+    }
+}
+
+// SSE 스트리밍으로 /chat 처리 — 단계 멘트를 실시간 갱신, 최종 result 반환. 실패 시 /chat 폴백
+async function chatViaStream(body) {
+    try {
+        const res = await fetch('/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+        })
+        if (!res.ok || !res.body) throw new Error('stream unavailable')
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buf = ''
+        let result = null
+        while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buf += decoder.decode(value, { stream: true })
+            const parts = buf.split('\n\n')
+            buf = parts.pop()
+            for (const part of parts) {
+                const dataLine = part.split('\n').find(l => l.startsWith('data:'))
+                if (!dataLine) continue
+                let evt
+                try { evt = JSON.parse(dataLine.slice(5).trim()) } catch (_) { continue }
+                if (evt.type === 'status') showChatStatus(evt.message)
+                else if (evt.type === 'result') result = evt.data
+                else if (evt.type === 'error') throw new Error(evt.message)
+            }
+        }
+        if (result) return result
+        throw new Error('no result')
+    } catch (e) {
+        // 스트리밍 미지원/실패 → 일반 /chat 폴백
+        try {
+            const res2 = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+            })
+            return await res2.json()
+        } catch (e2) {
+            return null
+        }
     }
 }
 
@@ -690,16 +733,20 @@ let chatStatusTimer = null
 function showChatStatus(messages) {
     const container = document.getElementById('chat-messages')
     if (!container) return
-    hideChatStatus()
     const list = Array.isArray(messages) ? messages : [messages]
-    const el = document.createElement('div')
-    el.className = 'chat-loading-ment'
-    el.id = 'chat-loading-ment'
+    clearInterval(chatStatusTimer); chatStatusTimer = null
+    // 기존 멘트 요소가 있으면 텍스트만 갱신 (스트리밍 단계 전환이 부드럽게)
+    let el = document.getElementById('chat-loading-ment')
+    if (!el) {
+        el = document.createElement('div')
+        el.className = 'chat-loading-ment'
+        el.id = 'chat-loading-ment'
+        container.appendChild(el)
+    }
     el.textContent = list[0]
-    container.appendChild(el)
     container.scrollTop = container.scrollHeight
-    let i = 0
     if (list.length > 1) {
+        let i = 0
         chatStatusTimer = setInterval(() => {
             i = (i + 1) % list.length
             const cur = document.getElementById('chat-loading-ment')
