@@ -995,9 +995,10 @@ async def _handle_delete(user_id: str, delete_query: str, source_folder: str | N
 async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] = [], shown_ids: list[str] = [], content_id: str | None = None) -> dict:
     """의도 파악 후 적절한 핸들러 호출. history로 대화 맥락 유지."""
     # LLM 의도 감지 이전에 명시적 합치기 패턴 선제 감지
+    # 폴더명을 명시한 경우 shown_ids는 포함하지 않음 (이전 검색 결과가 섞이는 문제 방지)
     explicit_merge = _detect_explicit_merge(query)
     if explicit_merge:
-        result = await _handle_multi_merge(user_id, explicit_merge, list(shown_ids))
+        result = await _handle_multi_merge(user_id, explicit_merge)
         result["intent"] = "merge"
         return result
 

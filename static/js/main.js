@@ -869,14 +869,71 @@ function buildFolderPickForMove(items, ids) {
         <div class="confirm-box move-folder-pick-box" data-ids="${ids.join(',')}">
             <div class="confirm-items">${titleList}${more}</div>
             <select class="folder-pick-select" id="fps-${uid}">
-                <option value="">폴더 선택...</option>
+                <option value="">기존 폴더 선택...</option>
             </select>
             <div class="confirm-actions" style="margin-top:8px">
                 <button class="confirm-btn confirm-cancel" onclick="this.closest('.confirm-box').remove()">취소</button>
                 <button class="confirm-btn confirm-move" onclick="executeMoveWithPicker(this, 'fps-${uid}')">이동</button>
             </div>
+            <div style="margin-top:12px;border-top:1px solid rgba(90,48,2,0.1);padding-top:10px">
+                <div style="font-size:11px;color:#9A7055;font-weight:600;margin-bottom:6px">또는 새 폴더 만들어서 이동</div>
+                <select class="folder-pick-select" id="fps-cat-${uid}" style="margin-bottom:5px">
+                    <option value="">대분류 선택 (선택 안 해도 됨)</option>
+                </select>
+                <input type="text" id="fps-sub-${uid}" class="reminder-note-input"
+                    style="width:100%;box-sizing:border-box;margin-bottom:6px"
+                    placeholder="새 폴더 이름 (예: 기타)" />
+                <button class="confirm-btn confirm-move"
+                    style="width:100%;box-sizing:border-box"
+                    onclick="executeMoveToNewFolder(this, 'fps-cat-${uid}', 'fps-sub-${uid}')">새 폴더 만들고 이동</button>
+            </div>
         </div>
     `
+}
+
+async function populateCategorySelect(selectId) {
+    const sel = document.getElementById(selectId)
+    if (!sel) return
+    try {
+        const data = await fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json())
+        Object.keys(data).forEach(cat => {
+            const opt = document.createElement('option')
+            opt.value = cat
+            opt.textContent = cat
+            sel.appendChild(opt)
+        })
+    } catch (e) {}
+}
+
+window.executeMoveToNewFolder = async function(btn, catSelId, subInputId) {
+    const catSel   = document.getElementById(catSelId)
+    const subInput = document.getElementById(subInputId)
+    const newSub   = subInput ? subInput.value.trim() : ''
+    const newCat   = catSel  ? catSel.value  : ''
+    if (!newSub) { alert('폴더 이름을 입력해주세요.'); return }
+
+    const box = btn.closest('.confirm-box')
+    const ids = box.dataset.ids.split(',').filter(Boolean)
+    btn.disabled = true
+    btn.textContent = '이동 중···'
+
+    try {
+        const body = { user_id: getCurrentUserId(), content_ids: ids, sub_category: newSub }
+        if (newCat) body.category = newCat
+        const res = await fetch('/contents/batch/category', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        if (res.ok) {
+            const label = newCat ? `${newCat} / ${newSub}` : newSub
+            box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${label}'(으)로 이동 완료!</div>`
+            setTimeout(() => { box.remove(); loadTopFolders() }, 1500)
+        } else throw new Error()
+    } catch (e) {
+        btn.disabled = false
+        btn.textContent = '새 폴더 만들고 이동'
+    }
 }
 
 async function populateFolderPickSelect(selectId) {
@@ -1141,7 +1198,10 @@ function buildAIContent(data) {
     if (!data.merge_mode && data.needs_folder_pick && data.pending_move_ids && data.pending_move_ids.length) {
         const pickId = 'fps-' + Date.now()
         html += buildFolderPickForMove(data.results || [], data.pending_move_ids).replace(/fps-\d+/g, pickId)
-        setTimeout(() => populateFolderPickSelect(pickId), 0)
+        setTimeout(() => {
+            populateFolderPickSelect(pickId)
+            populateCategorySelect('fps-cat-' + pickId.replace('fps-', ''))
+        }, 0)
     }
 
     // 폴더 생성 확인
