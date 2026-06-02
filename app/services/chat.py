@@ -66,12 +66,18 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - target_folder는 구체적인 폴더명이 없으면 반드시 null.
 - merge_target: 합칠 대상 이름 (예: "주식")
 
+중요 추가 규칙:
+- "OO 폴더에 있는 X 찾아줘" / "OO에서 X 찾아줘" → intent="search", source_folder="OO", folder_item_query="X"
+- "OO 폴더 보여줘" / "OO 폴더에 뭐 있어" → intent="search", source_folder="OO", folder_item_query=null
+- source_folder에는 조사·"폴더" 단어 모두 제외한 순수 폴더명만. (예: "TFT 폴더에 있는" → "TFT")
+
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "merge_sources": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null, "content_deadline_date": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "folder_item_query": null, "move_query": null, "target_folder": null, "merge_target": null, "merge_sources": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null, "content_deadline_date": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
-source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
+source_folder: 출처 폴더명 — 조사·"폴더" 단어 모두 제외한 순수 이름 (예: "TFT 폴더에 있는" → "TFT")
+folder_item_query: source_folder 지정 search 의도에서 폴더 안에서 더 좁혀 찾을 키워드 (예: "TFT 폴더에 있는 기사 찾아줘" → "기사"). 없으면 null.
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
 target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
 merge_target: 같은 이름이 여러 곳에 흩어진 경우 합칠 이름 (예: "주식")
@@ -191,6 +197,9 @@ _KO_PARTICLES = ["에게서", "으로부터", "로부터", "에서", "에게", "
 
 def _strip_particles(name: str) -> str:
     name = name.strip()
+    # "폴더" 단어 먼저 제거 (예: "TFT 폴더" → "TFT")
+    if name.endswith("폴더") and len(name) > 2:
+        name = name[:-2].strip()
     for p in _KO_PARTICLES:
         if name.endswith(p) and len(name) > len(p):
             return name[:-len(p)].strip()
@@ -956,6 +965,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     target_folder = intent_data.get("target_folder")
     merge_target = intent_data.get("merge_target")
     merge_sources = intent_data.get("merge_sources")  # list[str] or None
+    folder_item_query = intent_data.get("folder_item_query")
     target_sub_category = intent_data.get("target_sub_category")
     deadline_filter_date = intent_data.get("deadline_filter_date")
     deadline_filter_mode = intent_data.get("deadline_filter_mode")
@@ -989,7 +999,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
             result = {"answer": "마감기한을 추가할 콘텐츠를 먼저 찾아드릴게요. 제목이나 내용 키워드를 알려주세요.", "results": []}
     elif intent == "search":
         if source_folder:
-            result = await _handle_folder_search(user_id, source_folder, extra_query=query, shown_ids=shown_ids)
+            result = await _handle_folder_search(user_id, source_folder, extra_query=folder_item_query or "", shown_ids=shown_ids)
         else:
             result = await _handle_search(user_id, query, history, shown_ids)
     elif intent == "deadline":
