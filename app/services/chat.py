@@ -34,14 +34,19 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야", "7월 3일 전에 마감하는 거", "몇월 며칠 마감 뭐였지" 등)
 - folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
-- move     : 콘텐츠를 다른 폴더로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
-             목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null
+- move     : 콘텐츠를 다른 폴더/카테고리로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
+             목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null.
+             아카이브 대분류(음악, IT/기술 등)로 옮기는 경우도 포함.
+             소분류 이름 변경 요청이 함께 있으면 target_sub_category에 기록.
 - cleanup  : 오래된·만료된 콘텐츠 정리 또는 리마인드 요청.
              "기간 마감된", "만료된 링크", "기한 지난", "마감 지난", "기한 넘긴", "expired" 포함.
              → 반드시 cleanup으로 분류할 것. delete와 혼동하지 말 것.
 - delete   : 특정 콘텐츠 삭제 요청 ("OO 삭제해줘", "이거 지워줘" 등).
              단, "기간 마감된", "만료된" 같은 표현은 cleanup으로 분류할 것.
-- deadline_edit : 방금 저장한 콘텐츠의 마감기한 정정
+- deadline_edit : 콘텐츠의 마감기한을 수정·변경·추가하고 싶은 요청.
+                 "마감 바꾸고 싶음", "마감기한 수정", "마감일 변경", "그 링크 마감 바꿔줘",
+                 "마감기한 추가하고 싶어", "마감 설정", "마감 다시 잡아줘" 등 포함.
+                 "그 링크", "그거", "방금 거" 등 이전 검색 결과를 지칭하는 경우도 포함.
 - merge    : 같은 이름의 소분류/카테고리가 여러 대분류에 흩어져 있을 때 하나로 합치기.
              "합치다", "합쳐줘", "통합", "하나로", "합쳐", "묶어" 등 포함.
 - general  : 그 외
@@ -49,13 +54,16 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 중요 규칙:
 - "OO에 있는 링크 다른 폴더로 옮기고 싶음" → intent="move", source_folder="OO", target_folder=null
 - "OO 폴더에서 PP 폴더로 옮겨줘" → intent="move", source_folder="OO", target_folder="PP"
+- "그거 OO 카테고리로 옮겨줘" / "그 링크 OO로 옮기고 싶어" → intent="move", source_folder=null, target_folder="OO" (이전 대화 결과를 지칭할 때 "OO"는 반드시 target_folder)
+- "XX를 OO 카테고리로 옮기고 소분류는 PP로" → intent="move", move_query="XX", target_folder="OO", target_sub_category="PP"
+- source_folder는 오직 "OO에서", "OO에 있는"처럼 출발지를 명시할 때만. "OO로/OO 카테고리로"는 절대 source_folder가 아님.
 - "주식 둘이 합치고 싶어" / "주식 합쳐줘" → intent="merge", merge_target="주식"
 - source_folder는 현재 메시지에서 "~에서", "~에 있는" 형태로 출처를 명시한 경우만 추출. 조사(에, 에서, 의 등)는 제외하고 이름만.
 - target_folder는 구체적인 폴더명이 없으면 반드시 null.
 - merge_target: 합칠 대상 이름 (예: "주식")
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null, "content_deadline_date": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
@@ -63,12 +71,14 @@ source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
 target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
 merge_target: 합칠 대상 이름 (예: "주식")
+target_sub_category: move 의도에서 이동 후 소분류 이름을 변경할 때 그 이름 (예: "피크민"). 없으면 null.
 deadline_filter_date: deadline 의도에서 특정 날짜가 언급된 경우 YYYY-MM-DD. 없으면 null.
 deadline_filter_mode: "before" (해당 날짜 이전), "on" (해당 날짜), "after" (해당 날짜 이후). 날짜 없으면 null.
+content_deadline_date: deadline_edit 의도에서 수정할 콘텐츠를 기존 마감일로 지칭할 때 그 날짜 YYYY-MM-DD. (예: "마감기한 6월 24일인 거 바꿔줘" → "2026-06-24"). 없으면 null.
 second_intent: 두 번째 의도, 없으면 null
 second_query: 두 번째 요청 키워드, 없으면 null
 deadline_edit_type: "remove" 또는 "update"
-deadline_edit_date: YYYY-MM-DD
+deadline_edit_date: 새로 설정할 마감일 YYYY-MM-DD
 deadline_edit_note: 마감 설명"""
 
 
@@ -96,8 +106,9 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
 
 async def _detect_intent(query: str, history: list[dict[str, Any]]) -> dict:
     try:
-        messages = [{"role": "system", "content": INTENT_PROMPT}]
-        messages += history[-20:]  # 최근 6개 메시지로 맥락 파악
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        messages = [{"role": "system", "content": INTENT_PROMPT + f"\n\n오늘 날짜: {today_str} (날짜 파싱 시 이 연도를 기준으로 할 것)"}]
+        messages += history[-20:]
         messages += [{"role": "user", "content": query}]
         raw = await _llm(messages, model="gpt-4o-mini", max_tokens=80, json_mode=True)
         return json.loads(raw)
@@ -695,6 +706,46 @@ async def _handle_merge(user_id: str, merge_target: str) -> dict:
     }
 
 
+async def _handle_reclassify(user_id: str, move_query: str, target_category: str, target_sub_category: str | None, source_folder: str | None, shown_ids: list[str]) -> dict:
+    """아카이브 대분류(category) 변경 + 선택적 소분류(sub_category) 변경"""
+    items: list[dict] = []
+    is_contextual = not move_query or any(ref in move_query for ref in _CONTEXTUAL_REFS) or len(move_query.replace(" ", "")) <= 5
+
+    if shown_ids and is_contextual:
+        items = await get_contents_by_ids(user_id, list(shown_ids))
+
+    if not items and source_folder:
+        items, _ = await _resolve_folder_items(user_id, source_folder, [])
+
+    if not items and move_query and not is_contextual:
+        expanded = await expand_query(move_query)
+        embedding = await generate_embedding(expanded)
+        if embedding:
+            raw = await search_contents(user_id, embedding, limit=10)
+            items = await _filter_results(move_query, raw)
+            items = items[:5]
+
+    if not items:
+        return {"answer": "이동할 콘텐츠를 찾지 못했어요. 제목이나 키워드를 알려주세요.", "results": []}
+
+    content_ids = [r["id"] for r in items]
+    results = [{"id": r["id"], "title": r.get("title", ""), "url": r.get("url", ""),
+                "one_line_summary": r.get("one_line_summary", ""),
+                "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+               for r in items]
+
+    sub_label = f" / 소분류 '{target_sub_category}'" if target_sub_category else ""
+    titles = "\n".join(f"- {r['title']}" for r in results)
+    return {
+        "answer": f"콘텐츠 {len(results)}개를 '{target_category}'{sub_label}(으)로 이동할까요?\n{titles}",
+        "needs_confirmation": True,
+        "pending_move_ids": content_ids,
+        "target_category": target_category,
+        "target_sub_category": target_sub_category,
+        "results": results,
+    }
+
+
 async def _handle_move(user_id: str, move_query: str, target_folder: str, source_folder: str | None = None, shown_ids: list[str] = []) -> dict:
     collections = await get_collections(user_id)
     existing_names = [c["name"] for c in collections]
@@ -776,14 +827,19 @@ async def _handle_deadline_edit(user_id: str, content_id: str, edit_type: str, d
             return {"answer": "마감기한을 삭제했어요.", "results": []}
         return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
 
-    if edit_type == "update" and deadline_date:
+    if deadline_date:
         note = deadline_note or f"마감 {deadline_date[5:]}"
         success = await update_deadline(content_id, user_id, True, deadline_date, note)
         if success:
-            return {"answer": f"마감기한을 '{note}'으로 수정했어요.", "results": []}
+            return {"answer": f"마감기한을 '{note}'으로 설정했어요.", "results": []}
         return {"answer": "수정에 실패했어요. 다시 시도해주세요.", "results": []}
 
-    return {"answer": "마감일을 어떻게 바꿔드릴까요? '마감 없어' 또는 '7월 15일이야'처럼 말해주세요.", "results": []}
+    return {
+        "answer": "마감일을 설정할게요. 날짜를 선택해주세요.",
+        "needs_deadline_pick": True,
+        "pending_deadline_id": content_id,
+        "results": [],
+    }
 
 
 async def _handle_delete(user_id: str, delete_query: str, source_folder: str | None = None) -> dict:
@@ -853,16 +909,37 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
     merge_target = intent_data.get("merge_target")
+    target_sub_category = intent_data.get("target_sub_category")
     deadline_filter_date = intent_data.get("deadline_filter_date")
     deadline_filter_mode = intent_data.get("deadline_filter_mode")
     deadline_edit_type = intent_data.get("deadline_edit_type")
     deadline_edit_date = intent_data.get("deadline_edit_date")
     deadline_edit_note = intent_data.get("deadline_edit_note")
+    content_deadline_date = intent_data.get("content_deadline_date")
     second_intent = intent_data.get("second_intent")
     second_query = intent_data.get("second_query")
 
-    if intent == "deadline_edit" and content_id:
-        result = await _handle_deadline_edit(user_id, content_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+    if intent == "deadline_edit":
+        effective_id = content_id or (list(shown_ids)[0] if len(shown_ids) == 1 else None)
+
+        if not effective_id and content_deadline_date:
+            all_deadlines = await get_deadlines(user_id)
+            matched_by_date = [d for d in all_deadlines if d.get("deadline_date") == content_deadline_date]
+            if len(matched_by_date) == 1:
+                effective_id = matched_by_date[0]["id"]
+            elif len(matched_by_date) > 1:
+                results = [{"id": d["id"], "title": d.get("title", ""), "url": d.get("url", ""),
+                            "one_line_summary": f"마감: {d.get('deadline_date', '')} | {d.get('deadline_note', '')}",
+                            "thumbnail_url": d.get("thumbnail_url", ""), "similarity": 1.0}
+                           for d in matched_by_date[:5]]
+                result = {"answer": f"마감기한이 {content_deadline_date}인 콘텐츠가 {len(matched_by_date)}개 있어요. 어떤 건가요?",
+                          "results": results, "follow_up_questions": [], "intent": "deadline_edit"}
+                return result
+
+        if effective_id:
+            result = await _handle_deadline_edit(user_id, effective_id, deadline_edit_type or "", deadline_edit_date, deadline_edit_note)
+        else:
+            result = {"answer": "마감기한을 추가할 콘텐츠를 먼저 찾아드릴게요. 제목이나 내용 키워드를 알려주세요.", "results": []}
     elif intent == "search":
         if source_folder:
             result = await _handle_folder_search(user_id, source_folder, extra_query=query, shown_ids=shown_ids)
@@ -878,7 +955,13 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "merge" and merge_target:
         result = await _handle_merge(user_id, merge_target)
     elif intent == "move" and target_folder:
-        result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
+        cats = await get_all_categories(user_id)
+        clean_target = _strip_particles(target_folder)
+        best_cat, cat_ratio = _best_match(clean_target, cats)
+        if cat_ratio >= 0.45 and best_cat:
+            result = await _handle_reclassify(user_id, move_query or "", best_cat, target_sub_category, source_folder, shown_ids)
+        else:
+            result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
     elif intent == "move" and (source_folder or shown_ids):
         result = await _handle_move_no_target(user_id, source_folder, shown_ids)
     elif intent == "delete" and delete_query:

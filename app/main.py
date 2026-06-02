@@ -326,12 +326,13 @@ class BatchCategoryUpdateRequest(BaseModel):
     user_id: str
     content_ids: list[str]
     category: str
+    sub_category: str | None = None
 
 
 @app.patch("/contents/batch/category")
 async def batch_update_category_endpoint(req: BatchCategoryUpdateRequest):
-    """여러 콘텐츠의 category 일괄 업데이트 (합치기 기능)"""
-    success = await db_batch_update_category(req.user_id, req.content_ids, req.category)
+    """여러 콘텐츠의 category (+ 선택적 sub_category) 일괄 업데이트"""
+    success = await db_batch_update_category(req.user_id, req.content_ids, req.category, req.sub_category)
     if not success:
         raise HTTPException(status_code=500, detail="일괄 업데이트 실패")
     return {"updated": True}

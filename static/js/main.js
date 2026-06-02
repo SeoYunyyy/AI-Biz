@@ -209,6 +209,7 @@ async function openCategoryPanel(category, subcategory) {
                             <div class="panel-move-dropdown"></div>
                         </div>
                         <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                        <button class="panel-deadline-btn" onclick="showDeadlineAddPopup(this,'${esc(item.id)}')" title="마감 추가">📅</button>
                     </div>
                 </div>
             `
@@ -388,6 +389,7 @@ async function openCollectionPanel(collectionId, name) {
                             <div class="panel-move-dropdown"></div>
                         </div>
                         <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                        <button class="panel-deadline-btn" onclick="showDeadlineAddPopup(this,'${esc(item.id)}')" title="마감 추가">📅</button>
                     </div>
                 </div>
             `
@@ -597,13 +599,21 @@ async function sendChat(chatCollectionId) {
 // URL 저장 결과를 채팅 버블로 표시
 function buildSavedItemContent(item, isDuplicate = false, deadlineConfirmation = null) {
     const tags = Array.isArray(item.tags) ? item.tags : (item.tags ? JSON.parse(item.tags) : [])
-    const thumbHTML = item.thumbnail
-        ? `<img src="${item.thumbnail}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
+    const thumb = item.thumbnail_url || item.thumbnail || ''
+    const thumbHTML = thumb
+        ? `<img src="${thumb}" style="width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:10px;display:block" onerror="this.style.display='none'" alt="" />`
         : ''
-    const statusText  = isDuplicate ? '이미 저장된 콘텐츠예요' : '✓ 저장 완료'
+    const statusText  = isDuplicate ? '이미 저장된 콘텐츠예요 📌' : '✓ 저장 완료'
     const statusColor = isDuplicate ? '#9A7055' : '#5A9A60'
+    const statusBg    = isDuplicate ? 'rgba(154,112,85,0.08)' : 'transparent'
     const summary = item.one_line_summary || item.description || ''
     const subcat  = item.sub_category || item.subcategory || ''
+    const itemUrl = item.url || '#'
+
+    const duplicateBanner = isDuplicate ? `
+        <div style="background:rgba(154,112,85,0.1);border:1px solid rgba(154,112,85,0.25);border-radius:8px;padding:7px 11px;margin-bottom:10px;font-size:12px;color:#7A5030;line-height:1.5">
+            이미 저장되어 있는 링크예요. 아카이브에서 확인할 수 있어요.
+        </div>` : ''
 
     const deadlineHTML = deadlineConfirmation ? `
         <div class="deadline-confirm-box">
@@ -616,13 +626,14 @@ function buildSavedItemContent(item, isDuplicate = false, deadlineConfirmation =
     ` : ''
 
     return `
-        <div style="font-size:11px;font-weight:700;color:${statusColor};margin-bottom:8px;letter-spacing:0.3px">${statusText}</div>
+        <div style="font-size:11px;font-weight:700;color:${statusColor};background:${statusBg};border-radius:6px;padding:${isDuplicate?'4px 8px':'0'};margin-bottom:8px;letter-spacing:0.3px;display:inline-block">${statusText}</div>
+        ${duplicateBanner}
         ${thumbHTML}
-        <div style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px;line-height:1.4">${item.title}</div>
+        <div style="font-size:14px;font-weight:600;color:#2C1A0E;margin-bottom:4px;line-height:1.4">${item.title || ''}</div>
         <div style="font-size:12px;color:#9A7055;margin-bottom:8px">${item.category || ''}${subcat ? ' / ' + subcat : ''}</div>
         ${summary ? `<div style="font-size:13px;color:#6B4E3A;line-height:1.55;margin-bottom:8px">${summary}</div>` : ''}
         ${tags.length ? `<div class="card-tags" style="margin-bottom:8px">${tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` : ''}
-        <a href="${item.url}" target="_blank" class="panel-item-link" style="margin-top:4px;display:inline-block">링크 열기 &rarr;</a>
+        <a href="${itemUrl}" target="_blank" class="panel-item-link" style="margin-top:4px;display:inline-block">링크 열기 &rarr;</a>
         ${deadlineHTML}
     `
 }
@@ -706,6 +717,54 @@ function buildMoveConfirm(items, ids, targetFolder) {
             </div>
         </div>
     `
+}
+
+function buildReclassifyConfirm(items, ids, targetCategory, targetSubCategory) {
+    const titleList = items.map(i => `<div class="confirm-item-title">${i.title}</div>`).join('')
+    const subLabel = targetSubCategory ? ` / 소분류 '${targetSubCategory}'` : ''
+    return `
+        <div class="confirm-box move-confirm-box"
+             data-ids="${ids.join(',')}"
+             data-category="${esc(targetCategory)}"
+             data-sub="${esc(targetSubCategory || '')}">
+            <div class="confirm-items">${titleList}</div>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel" onclick="this.closest('.confirm-box').remove()">취소</button>
+                <button class="confirm-btn confirm-move" onclick="executeReclassify(this)">'${targetCategory}'${subLabel}(으)로 이동</button>
+            </div>
+        </div>
+    `
+}
+
+window.executeReclassify = async function(btn) {
+    const box = btn.closest('.confirm-box')
+    const ids = box.dataset.ids.split(',').filter(Boolean)
+    const category = box.dataset.category
+    const subCategory = box.dataset.sub || null
+
+    btn.disabled = true
+    btn.textContent = '이동 중···'
+
+    try {
+        const body = { user_id: getCurrentUserId(), content_ids: ids, category }
+        if (subCategory) body.sub_category = subCategory
+        const res = await fetch('/contents/batch/category', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        if (res.ok) {
+            const subMsg = subCategory ? ` / ${subCategory}` : ''
+            box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${category}${subMsg}'(으)로 이동 완료</div>`
+            setTimeout(() => { box.remove(); loadTopFolders() }, 1500)
+        } else {
+            throw new Error()
+        }
+    } catch (e) {
+        btn.disabled = false
+        btn.textContent = `'${category}'으로 이동`
+        appendMsg(document.getElementById('chat-messages') || document.body, 'ai', '이동에 실패했어요. 다시 시도해주세요.')
+    }
 }
 
 window.executeDelete = async function(btn) {
@@ -915,6 +974,79 @@ window.panelDeleteItem = async function(contentId, btn) {
     }
 }
 
+window._deadlinePending = {}
+
+function buildDeadlinePicker(contentId) {
+    const uid = 'dlp-' + Date.now()
+    window._deadlinePending[uid] = contentId
+    return `
+        <div class="deadline-picker-wrap" id="${uid}-wrap">
+            <input type="date" class="reminder-date-input" id="${uid}-date" />
+            <input type="text" class="reminder-note-input" id="${uid}-note" placeholder="메모 (예: 원서 마감)" />
+            <button class="chat-action-btn" onclick="executeSetDeadline('${uid}')">마감 설정</button>
+        </div>`
+}
+
+window.executeSetDeadline = async function(uid) {
+    const contentId = window._deadlinePending?.[uid]
+    const dateVal = document.getElementById(uid + '-date')?.value
+    const noteVal = document.getElementById(uid + '-note')?.value || ''
+    if (!dateVal) return alert('날짜를 선택해주세요.')
+    const wrap = document.getElementById(uid + '-wrap')
+    try {
+        const res = await fetch(`/deadlines/${contentId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), deadline_date: dateVal, deadline_note: noteVal })
+        })
+        if (!res.ok) throw new Error()
+        if (wrap) wrap.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ 마감일 ${dateVal} 설정 완료!</div>`
+        delete window._deadlinePending[uid]
+    } catch (e) {
+        alert('설정에 실패했어요.')
+    }
+}
+
+window.showDeadlineAddPopup = function(btn, contentId) {
+    const existing = document.getElementById('cdp-wrap-' + contentId)
+    if (existing) { existing.remove(); return }
+    document.querySelectorAll('.card-deadline-popup').forEach(p => p.remove())
+
+    const wrap = document.createElement('div')
+    wrap.id = 'cdp-wrap-' + contentId
+    wrap.className = 'card-deadline-popup'
+    wrap.innerHTML = `
+        <div style="font-size:12px;font-weight:600;color:#5A3002;margin-bottom:8px">📅 마감일 설정</div>
+        <input type="date" class="reminder-date-input" id="cdp-date-${contentId}" style="width:100%;margin-bottom:6px" />
+        <input type="text" class="reminder-note-input" id="cdp-note-${contentId}" placeholder="메모 (선택)" style="width:100%;margin-bottom:10px" />
+        <div style="display:flex;gap:6px">
+            <button class="reminder-save-btn" onclick="saveCardDeadline('${contentId}')">저장</button>
+            <button class="reminder-cancel-btn" onclick="document.getElementById('cdp-wrap-${contentId}')?.remove()">취소</button>
+        </div>`
+    const card = btn.closest('.panel-item-card, .archive-item-card')
+    if (card) {
+        card.appendChild(wrap)
+    } else {
+        document.body.appendChild(wrap)
+    }
+}
+
+window.saveCardDeadline = async function(contentId) {
+    const dateVal = document.getElementById('cdp-date-' + contentId)?.value
+    const noteVal = document.getElementById('cdp-note-' + contentId)?.value || ''
+    if (!dateVal) return alert('날짜를 선택해주세요.')
+    try {
+        const res = await fetch(`/deadlines/${contentId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: getCurrentUserId(), deadline_date: dateVal, deadline_note: noteVal })
+        })
+        if (!res.ok) throw new Error()
+        document.querySelectorAll('.card-deadline-popup').forEach(p => p.remove())
+        alert(`마감일 ${dateVal} 설정 완료!`)
+    } catch (e) { alert('설정에 실패했어요.') }
+}
+
 window._mergePending = {}
 
 function buildMergePicker(data) {
@@ -1010,13 +1142,22 @@ function buildAIContent(data) {
         html += buildFolderConfirm(data.confirmation_data)
     }
 
+    // 마감일 날짜 피커
+    if (data.needs_deadline_pick && data.pending_deadline_id) {
+        html += buildDeadlinePicker(data.pending_deadline_id)
+    }
+
     // 삭제 확인
     if (data.needs_confirmation && data.pending_delete_ids && data.pending_delete_ids.length) {
         html += buildDeleteConfirm(data.results || [], data.pending_delete_ids)
     }
 
-    // 이동 확인
-    if (data.needs_confirmation && data.pending_move_ids && data.pending_move_ids.length) {
+    // 아카이브 대분류 이동 확인 (category + 선택적 sub_category 업데이트)
+    if (data.needs_confirmation && data.pending_move_ids && data.pending_move_ids.length && data.target_category) {
+        html += buildReclassifyConfirm(data.results || [], data.pending_move_ids, data.target_category, data.target_sub_category || null)
+    }
+    // 일반 컬렉션 이동 확인
+    else if (data.needs_confirmation && data.pending_move_ids && data.pending_move_ids.length) {
         html += buildMoveConfirm(data.results || [], data.pending_move_ids, data.target_folder || '')
     }
 
@@ -1217,8 +1358,12 @@ async function showArchiveItems(category, subcategory) {
                         <span class="archive-item-meta">${date}</span>
                         <div class="archive-item-btns">
                             <a href="${item.url}" target="_blank" class="archive-item-link">링크 열기 &rarr;</a>
-                            <button class="archive-del-btn"
-                                onclick="deleteArchiveContent('${esc(item.id)}','${esc(category)}','${esc(subcategory)}')">삭제</button>
+                            <div class="panel-move-wrap">
+                                <button class="panel-move-btn" onclick="showPanelMoveDropdown(this, '${esc(item.id)}')">폴더 이동 ▾</button>
+                                <div class="panel-move-dropdown"></div>
+                            </div>
+                            <button class="panel-delete-btn" onclick="panelDeleteItem('${esc(item.id)}', this)" title="삭제">🗑️</button>
+                            <button class="panel-deadline-btn" onclick="showDeadlineAddPopup(this,'${esc(item.id)}')" title="마감 추가">📅</button>
                         </div>
                     </div>
                 </div>
