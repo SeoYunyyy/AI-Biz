@@ -62,7 +62,11 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - source_folder는 오직 "OO에서", "OO에 있는"처럼 출발지를 명시할 때만. "OO로/OO 카테고리로"는 절대 source_folder가 아님.
 - "주식 둘이 합치고 싶어" / "주식 합쳐줘" → intent="merge", merge_target="주식", merge_sources=null
 - "삼성전자 폴더랑 주식 폴더 합쳐줘" → intent="merge", merge_sources=["삼성전자","주식"], merge_target=null
+- "주식 폴더에 있는거랑 삼성전자 폴더에 있는 거 합쳐달라고" → intent="merge", merge_sources=["주식","삼성전자"], merge_target=null
+- "A에 있는거랑 B에 있는 거 합쳐줘/합쳐달라고" → intent="merge", merge_sources=["A","B"] (반드시 merge로 분류, move 아님)
+- "그 링크랑 삼성전자 폴더 합쳐줘" / "그 링크들이랑 주식 폴더 합쳐달라고" → intent="merge", merge_sources=["삼성전자"](또는 ["주식"]) (이전 결과는 코드에서 shown_ids로 자동 포함)
 - source_folder는 현재 메시지에서 "~에서", "~에 있는" 형태로 출처를 명시한 경우만 추출. 조사(에, 에서, 의 등)는 제외하고 이름만.
+- merge 의도에서 두 폴더명이 모두 "~에 있는거랑" 형태로 나란히 언급되면 반드시 merge_sources 배열로 추출.
 - target_folder는 구체적인 폴더명이 없으면 반드시 null.
 - merge_target: 합칠 대상 이름 (예: "주식")
 
@@ -677,11 +681,22 @@ async def _handle_move_no_target(user_id: str, source_folder: str | None, shown_
     }
 
 
-async def _handle_multi_merge(user_id: str, merge_sources: list[str]) -> dict:
-    """서로 다른 이름의 폴더 여러 개를 찾아 한 폴더로 합치기"""
+async def _handle_multi_merge(user_id: str, merge_sources: list[str], shown_ids: list[str] = []) -> dict:
+    """서로 다른 이름의 폴더 여러 개(+ 선택적으로 shown_ids)를 찾아 한 폴더로 합치기"""
     all_items: list[dict] = []
     found_labels: list[str] = []
     not_found: list[str] = []
+
+    # shown_ids가 있으면 "이전에 찾은 링크들"로 먼저 추가
+    if shown_ids:
+        ctx_items = await get_contents_by_ids(user_id, list(shown_ids))
+        if ctx_items:
+            seen_ids: set[str] = set()
+            for item in ctx_items:
+                if item["id"] not in seen_ids:
+                    all_items.append(item)
+                    seen_ids.add(item["id"])
+            found_labels.append("이전에 찾은 콘텐츠")
 
     for source_name in merge_sources:
         clean = _strip_particles(source_name)
@@ -1009,8 +1024,15 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "cleanup":
         wants_delete = any(w in query for w in ["삭제", "지워", "없애", "제거"])
         result = await _handle_cleanup(user_id, wants_delete=wants_delete)
-    elif intent == "merge" and merge_sources and len(merge_sources) >= 2:
-        result = await _handle_multi_merge(user_id, merge_sources)
+    elif intent == "merge" and merge_sources and len(merge_sources) >= 1:
+        # merge_sources 1개 이상이면 multi_merge (shown_ids도 함께 전달)
+        result = await _handle_multi_merge(user_id, merge_sources, list(shown_ids))
+    elif intent == "merge" and shown_ids and source_folder:
+        # "그 링크랑 삼성전자 폴더 합쳐줘" → LLM이 merge_sources 대신 source_folder로 파싱한 경우
+        result = await _handle_multi_merge(user_id, [source_folder], list(shown_ids))
+    elif intent == "merge" and shown_ids and not merge_target:
+        # shown_ids만 있는 merge (폴더 지정 없음) → 폴더 선택 UI
+        result = await _handle_multi_merge(user_id, [], list(shown_ids))
     elif intent == "merge" and merge_target:
         result = await _handle_merge(user_id, merge_target)
     elif intent == "move" and target_folder:
