@@ -13,3 +13,6 @@ beautifulsoup4
 
 # 환경변수 로드
 python-dotenv
+
+# 인증 (Google 로그인 JWT 세션)
+PyJWT
