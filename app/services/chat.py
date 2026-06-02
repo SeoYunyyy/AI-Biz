@@ -224,17 +224,32 @@ _MERGE_SIGNALS = ["합쳐주", "합쳐달라", "합치고", "합쳐줘", "합쳐
 
 def _detect_explicit_merge(query: str) -> list[str] | None:
     """
-    "A 폴더에 있는 링크랑 B 폴더 합쳐달라고" 패턴에서 폴더명 배열 반환.
-    합치기 키워드 + 폴더명 2개 이상이 있을 때만 작동. 아니면 None.
+    합치기 키워드 + 폴더명 2개 이상인 경우 폴더명 배열 반환. 아니면 None.
     LLM 의도 감지보다 먼저 실행되어 오분류를 방지.
+
+    처리 패턴:
+    - "A이랑 B 폴더" → A, B 둘 다 추출 (A에 '폴더' 키워드 없어도)
+    - "A 폴더랑 B 폴더" → A, B 추출
+    - "기타 폴더 만들어서" → 목적지이므로 제외 (만들 제외 lookahead)
     """
     if not any(s in query for s in _MERGE_SIGNALS):
         return None
 
-    # "X 폴더" 패턴에서 X 추출
-    raw_names = _re.findall(r'(\S+?)\s*폴더', query)
-    names = [_strip_particles(n) for n in raw_names]
-    names = [n for n in names if n and len(n) >= 2]
+    names: list[str] = []
+
+    # 패턴1: "A이랑 B 폴더" — A에 '폴더' 없이 이랑으로 연결된 경우
+    for m in _re.finditer(r'(\S+?)(?:이랑|랑)\s+(\S+?)\s*폴더(?!\s*만들)', query):
+        names.append(m.group(1))
+        names.append(m.group(2))
+
+    # 패턴2: "X 폴더" — 단, "폴더 만들" 앞의 폴더는 목적지이므로 제외
+    for n in _re.findall(r'(\S+?)\s*폴더(?!\s*만들)', query):
+        names.append(n)
+
+    # 조사 제거 + 빈 값/짧은 값 필터
+    # "폴더" 자체, "있는거" 같은 동사형 단어 제외 (있는거랑 → 있는거 오탐 방지)
+    names = [_strip_particles(n) for n in names]
+    names = [n for n in names if n and len(n) >= 2 and n != "폴더" and "있" not in n]
 
     # 중복 제거 (순서 유지)
     seen: set[str] = set()
