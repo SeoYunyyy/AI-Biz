@@ -56,6 +56,34 @@ async def handle(message: dict, users: dict):
     chat_id = message["chat"]["id"]
     text    = message.get("text", "") or ""
 
+    # ── /help ──
+    if text.startswith("/help"):
+        await send(chat_id,
+            "📚 <b>Keepit 봇 사용법</b>\n\n"
+            "🔗 <b>링크 저장</b>\n"
+            "URL을 그냥 보내면 자동으로 저장돼요.\n\n"
+            "🔍 <b>콘텐츠 검색</b>\n"
+            "자연어로 찾고 싶은 걸 말해보세요.\n"
+            "예: <i>저번에 저장한 딥러닝 영상 찾아줘</i>\n\n"
+            "📅 <b>마감기한 확인</b>\n"
+            "<code>/deadlines</code> 또는 <i>마감 임박한 거 뭐야</i>\n\n"
+            "📂 <b>폴더 관리</b>\n"
+            "<i>주식 폴더에 있는 거 찾아줘</i>\n"
+            "<i>이거 IT 폴더로 옮겨줘</i>\n\n"
+            "🔗 <b>계정 연동</b>\n"
+            "<code>/link YOUR_USER_ID</code>"
+        )
+        return
+
+    # ── /deadlines ──
+    if text.startswith("/deadlines"):
+        user_id = users.get(str(chat_id))
+        if not user_id:
+            await send(chat_id, "❗ 먼저 <code>/link YOUR_USER_ID</code> 로 연동해주세요.")
+            return
+        await _handle_chat(chat_id, user_id, "마감 임박한 거 정리해줘")
+        return
+
     # ── /link USER_ID 연동 ──
     if text.startswith("/link") or text.startswith("/start"):
         parts = text.split()
@@ -165,6 +193,8 @@ async def _handle_chat(chat_id: int, user_id: str, text: str):
 
     history.append({"role": "user", "content": text})
 
+    await send(chat_id, "⏳ 찾는 중...")
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(f"{KEEPIT_URL}/chat", json={
@@ -206,10 +236,22 @@ async def _handle_chat(chat_id: int, user_id: str, text: str):
 
 # ── 폴링 루프 ────────────────────────────────────────────────────────────────
 
+async def _register_commands():
+    """Telegram 앱 하단 '/' 메뉴에 커맨드 등록"""
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.post(f"{TG_BASE}/setMyCommands", json={"commands": [
+            {"command": "link",      "description": "Keepit 계정 연동"},
+            {"command": "help",      "description": "사용법 안내"},
+            {"command": "deadlines", "description": "마감기한 확인"},
+        ]})
+
+
 async def poll():
     if not BOT_TOKEN:
         print("❌ TELEGRAM_BOT_TOKEN이 .env에 없습니다.")
         return
+
+    await _register_commands()
 
     users  = _load_users()
     offset = 0
