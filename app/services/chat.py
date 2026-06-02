@@ -54,6 +54,9 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 중요 규칙:
 - "OO에 있는 링크 다른 폴더로 옮기고 싶음" → intent="move", source_folder="OO", target_folder=null
 - "OO 폴더에서 PP 폴더로 옮겨줘" → intent="move", source_folder="OO", target_folder="PP"
+- "그거 OO 카테고리로 옮겨줘" / "그 링크 OO로 옮기고 싶어" → intent="move", source_folder=null, target_folder="OO" (이전 대화 결과를 지칭할 때 "OO"는 반드시 target_folder)
+- "XX를 OO 카테고리로 옮기고 소분류는 PP로" → intent="move", move_query="XX", target_folder="OO", target_sub_category="PP"
+- source_folder는 오직 "OO에서", "OO에 있는"처럼 출발지를 명시할 때만. "OO로/OO 카테고리로"는 절대 source_folder가 아님.
 - "주식 둘이 합치고 싶어" / "주식 합쳐줘" → intent="merge", merge_target="주식"
 - source_folder는 현재 메시지에서 "~에서", "~에 있는" 형태로 출처를 명시한 경우만 추출. 조사(에, 에서, 의 등)는 제외하고 이름만.
 - target_folder는 구체적인 폴더명이 없으면 반드시 null.
@@ -964,7 +967,19 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
         else:
             result = await _handle_move(user_id, move_query or "", target_folder, source_folder, shown_ids)
     elif intent == "move" and (source_folder or shown_ids):
-        result = await _handle_move_no_target(user_id, source_folder, shown_ids)
+        # source_folder가 아카이브 대분류이고 shown_ids가 있으면 → 대분류를 target으로 재해석
+        # (예: "그거 음악 카테고리로 옮겨줘"를 LLM이 source_folder="음악"으로 잘못 분류한 경우)
+        _is_ctx = any(ref in query for ref in _CONTEXTUAL_REFS)
+        if source_folder and shown_ids and _is_ctx:
+            _cats = await get_all_categories(user_id)
+            _clean_sf = _strip_particles(source_folder)
+            _best_sf, _sf_ratio = _best_match(_clean_sf, _cats)
+            if _sf_ratio >= 0.45 and _best_sf:
+                result = await _handle_reclassify(user_id, move_query or "", _best_sf, target_sub_category, None, shown_ids)
+            else:
+                result = await _handle_move_no_target(user_id, source_folder, shown_ids)
+        else:
+            result = await _handle_move_no_target(user_id, source_folder, shown_ids)
     elif intent == "delete" and delete_query:
         result = await _handle_delete(user_id, delete_query, source_folder)
     else:
