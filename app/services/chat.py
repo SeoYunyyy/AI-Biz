@@ -47,8 +47,11 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
                  "마감 바꾸고 싶음", "마감기한 수정", "마감일 변경", "그 링크 마감 바꿔줘",
                  "마감기한 추가하고 싶어", "마감 설정", "마감 다시 잡아줘" 등 포함.
                  "그 링크", "그거", "방금 거" 등 이전 검색 결과를 지칭하는 경우도 포함.
-- merge    : 같은 이름의 소분류/카테고리가 여러 대분류에 흩어져 있을 때 하나로 합치기.
-             "합치다", "합쳐줘", "통합", "하나로", "합쳐", "묶어" 등 포함.
+- merge    : 폴더/카테고리를 하나로 합치기. "합치다", "합쳐줘", "통합", "하나로", "합쳐", "묶어" 등 포함.
+             두 가지 경우:
+             (1) 같은 이름이 여러 대분류에 흩어진 경우 → merge_target에 이름, merge_sources=null
+             (2) 서로 다른 이름의 폴더 여러 개를 합치는 경우 → merge_sources에 폴더명 배열, merge_target=null
+             예: "삼성전자 폴더랑 주식 폴더 합쳐줘" → merge_sources=["삼성전자","주식"]
 - general  : 그 외
 
 중요 규칙:
@@ -57,20 +60,22 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - "그거 OO 카테고리로 옮겨줘" / "그 링크 OO로 옮기고 싶어" → intent="move", source_folder=null, target_folder="OO" (이전 대화 결과를 지칭할 때 "OO"는 반드시 target_folder)
 - "XX를 OO 카테고리로 옮기고 소분류는 PP로" → intent="move", move_query="XX", target_folder="OO", target_sub_category="PP"
 - source_folder는 오직 "OO에서", "OO에 있는"처럼 출발지를 명시할 때만. "OO로/OO 카테고리로"는 절대 source_folder가 아님.
-- "주식 둘이 합치고 싶어" / "주식 합쳐줘" → intent="merge", merge_target="주식"
+- "주식 둘이 합치고 싶어" / "주식 합쳐줘" → intent="merge", merge_target="주식", merge_sources=null
+- "삼성전자 폴더랑 주식 폴더 합쳐줘" → intent="merge", merge_sources=["삼성전자","주식"], merge_target=null
 - source_folder는 현재 메시지에서 "~에서", "~에 있는" 형태로 출처를 명시한 경우만 추출. 조사(에, 에서, 의 등)는 제외하고 이름만.
 - target_folder는 구체적인 폴더명이 없으면 반드시 null.
 - merge_target: 합칠 대상 이름 (예: "주식")
 
 응답 형식:
-{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null, "content_deadline_date": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
+{"intent": "search", "folder_name": null, "delete_query": null, "source_folder": null, "move_query": null, "target_folder": null, "merge_target": null, "merge_sources": null, "deadline_filter_date": null, "deadline_filter_mode": null, "second_intent": null, "second_query": null, "content_deadline_date": null, "deadline_edit_type": null, "deadline_edit_date": null, "deadline_edit_note": null}
 
 folder_name: 폴더 의도일 때만 생성할 폴더명
 delete_query: 삭제 의도일 때 삭제 대상 키워드 (예: "딥러닝")
 source_folder: 출처 폴더명 (조사 제외, 예: "노래", "음악")
 move_query: 이동 의도일 때 이동할 콘텐츠 키워드
 target_folder: 구체적인 이동 목적지 폴더명 (불특정이면 null)
-merge_target: 합칠 대상 이름 (예: "주식")
+merge_target: 같은 이름이 여러 곳에 흩어진 경우 합칠 이름 (예: "주식")
+merge_sources: 서로 다른 이름의 폴더 여러 개를 합칠 때 폴더명 배열 (예: ["삼성전자","주식"]). 없으면 null.
 target_sub_category: move 의도에서 이동 후 소분류 이름을 변경할 때 그 이름 (예: "피크민"). 없으면 null.
 deadline_filter_date: deadline 의도에서 특정 날짜가 언급된 경우 YYYY-MM-DD. 없으면 null.
 deadline_filter_mode: "before" (해당 날짜 이전), "on" (해당 날짜), "after" (해당 날짜 이후). 날짜 없으면 null.
@@ -663,6 +668,47 @@ async def _handle_move_no_target(user_id: str, source_folder: str | None, shown_
     }
 
 
+async def _handle_multi_merge(user_id: str, merge_sources: list[str]) -> dict:
+    """서로 다른 이름의 폴더 여러 개를 찾아 한 폴더로 합치기"""
+    all_items: list[dict] = []
+    found_labels: list[str] = []
+    not_found: list[str] = []
+
+    for source_name in merge_sources:
+        clean = _strip_particles(source_name)
+        items, found_name = await _resolve_folder_items(user_id, clean, [])
+        if items:
+            seen_ids = {i["id"] for i in all_items}
+            for item in items:
+                if item["id"] not in seen_ids:
+                    all_items.append(item)
+                    seen_ids.add(item["id"])
+            found_labels.append(found_name)
+        else:
+            not_found.append(clean)
+
+    if not all_items:
+        return {
+            "answer": f"'{', '.join(merge_sources)}' 폴더를 찾지 못했어요. 폴더 이름을 다시 확인해주세요.",
+            "results": [],
+        }
+
+    results = [{"id": r["id"], "title": r["title"], "url": r["url"],
+                "one_line_summary": r.get("one_line_summary", ""),
+                "thumbnail_url": r.get("thumbnail_url", ""), "similarity": 1.0}
+               for r in all_items]
+
+    label = " + ".join(found_labels)
+    not_found_msg = f" ('{', '.join(not_found)}' 폴더는 찾지 못했어요)" if not_found else ""
+    return {
+        "answer": f"'{label}' 콘텐츠 {len(results)}개를 어느 폴더로 합칠까요?{not_found_msg}",
+        "needs_folder_pick": True,
+        "pending_move_ids": [r["id"] for r in results],
+        "results": results,
+        "follow_up_questions": [],
+    }
+
+
 async def _handle_merge(user_id: str, merge_target: str) -> dict:
     """여러 대분류에 흩어진 같은 소분류명 콘텐츠를 하나의 폴더로 합치기"""
     clean = _strip_particles(merge_target)
@@ -909,6 +955,7 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     move_query = intent_data.get("move_query")
     target_folder = intent_data.get("target_folder")
     merge_target = intent_data.get("merge_target")
+    merge_sources = intent_data.get("merge_sources")  # list[str] or None
     target_sub_category = intent_data.get("target_sub_category")
     deadline_filter_date = intent_data.get("deadline_filter_date")
     deadline_filter_mode = intent_data.get("deadline_filter_mode")
@@ -952,6 +999,8 @@ async def process_chat(user_id: str, query: str, history: list[dict[str, Any]] =
     elif intent == "cleanup":
         wants_delete = any(w in query for w in ["삭제", "지워", "없애", "제거"])
         result = await _handle_cleanup(user_id, wants_delete=wants_delete)
+    elif intent == "merge" and merge_sources and len(merge_sources) >= 2:
+        result = await _handle_multi_merge(user_id, merge_sources)
     elif intent == "merge" and merge_target:
         result = await _handle_merge(user_id, merge_target)
     elif intent == "move" and target_folder:
