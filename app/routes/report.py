@@ -124,12 +124,17 @@ async def _ai_analyze(top_topics: list, top_type: str, peak_slot: str, total: in
     try:
         prompt = f"""
 이번 {period} 저장 데이터: 총 {total}개
+이번 주 대표 카테고리: {top_type}
 주요 주제: {', '.join(top_topics[:5])}
 가장 많이 저장한 시간대: {peak_slot}
-가장 많은 콘텐츠 유형: {top_type}
+
+규칙:
+- personality_type은 반드시 대표 카테고리({top_type}) 기반으로 지을 것
+- 주제와 시간대는 personality_type 이름에 자연스럽게 녹여도 되지만, 카테고리에서 벗어나면 안 됨
+- 예시: 운동/헬스 → "오전의 운동러", "헬스 마니아" / IT/기술 → "코드 탐험가" / 스포츠 → "주말의 스포츠팬"
 
 JSON으로 답해줘:
-{{"personality_type":"취향 유형 이름(예: 밤의 미식가)","personality_emoji":"이모지 1~2개","personality_desc":"1~2문장 따뜻한 설명","ai_summary":"2~3문장 따뜻한 총평"}}
+{{"personality_type":"취향 유형 이름","personality_emoji":"이모지 1~2개","personality_desc":"1~2문장 따뜻한 설명","ai_summary":"2~3문장 따뜻한 총평"}}
 """
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(

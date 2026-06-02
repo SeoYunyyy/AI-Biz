@@ -42,12 +42,16 @@
       <!-- 메인 콘텐츠 -->
       <main class="main-content">
         <section class="hero">
+          <!-- 키피 캐릭터 + 칭호 + 버튼 -->
+          <div id="main-weekly-recap" class="main-weekly-recap"></div>
+
           <h1 class="hero-title">오늘은 무엇을 Keep하고 싶나요?</h1>
           <p class="hero-sub">키핏이 저장하고 요약하고 다시 알려드려요</p>
 
-          <!-- Top 5 폴더 (JS로 동적 생성) -->
-          <div id="folder-grid" class="folder-grid">
-            <div class="folder-placeholder">저장된 콘텐츠가 없어요</div>
+          <!-- 미니 캘린더 (우측 절대 배치) -->
+          <div class="main-cal-wrap">
+            <div id="main-cal-inner"></div>
+            <div id="main-cal-events"></div>
           </div>
         </section>
 

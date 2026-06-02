@@ -352,6 +352,14 @@ const CATEGORY_IMAGE = {
   '패션/뷰티':   'keepi_fashion.png',
   '운동/헬스':   'keepi_health.png',
   '교육/학습':   'keepi_book.png',
+  '스포츠':      'keepi_sport.png',
+  '뉴스/사회':   'keepi_news.png',
+  '정치/경제':   'keepi_economy.png',
+  '게임':        'keepi_game.png',
+  '예술/디자인': 'keepi_art.png',
+  '기타/알쓸신잡':'keepi_etc.png',
+  '종교':        'keepi_religion.png',
+  '카페':        'keepi_cafe.png',
 }
 function categoryImage(topCategory) {
   const src = CATEGORY_IMAGE[topCategory] || 'keepi_default.png'
@@ -363,7 +371,7 @@ const CATEGORY_EMOJI = {
   'IT/기술':'💻','영상/엔터':'🎬','음악':'🎵','독서/책':'📚','뉴스/사회':'📰',
   '정치/경제':'💼','스포츠':'⚽','게임':'🎮','요리/식품':'🍽️','여행':'✈️',
   '패션/뷰티':'👗','운동/헬스':'💪','교육/학습':'📖','예술/디자인':'🎨',
-  '기타/알쓸신잡':'🌐','종교':'🕊️'
+  '기타/알쓸신잡':'🌐','종교':'🕊️','카페':'☕'
 };
 
 function renderWordCloud(topics) {

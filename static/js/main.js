@@ -52,6 +52,12 @@ let calMonth        = new Date().getMonth()
 let calDeadlines    = []
 let calSelectedDate = null
 
+// ── 메인 미니 캘린더 상태 ──
+let mainCalYear         = new Date().getFullYear()
+let mainCalMonth        = new Date().getMonth()
+let mainCalDeadlines    = []
+let mainCalSelectedDate = null
+
 const promptInput = document.getElementById('prompt-input')
 const submitBtn   = document.getElementById('submit-btn')
 const resultsDiv  = document.getElementById('results')
@@ -140,44 +146,52 @@ async function populateFolderDropdown(dropdown, onSelect) {
     }
 }
 
-// ── Top 5 폴더 로드 ──
-async function loadTopFolders() {
+// ── 메인 주간 레포트 카드 ──
+const _MWR_CATEGORY_IMAGE = {
+    'IT/기술': 'keepi_tech.png', '영상/엔터': 'keepi_video.png',
+    '음악': 'keepi_music.png', '독서/책': 'keepi_book.png',
+    '요리/식품': 'keepi_food.png', '여행': 'keepi_travel.png',
+    '패션/뷰티': 'keepi_fashion.png', '운동/헬스': 'keepi_health.png',
+    '교육/학습': 'keepi_book.png', '스포츠': 'keepi_sport.png',
+    '뉴스/사회': 'keepi_news.png', '정치/경제': 'keepi_economy.png',
+    '게임': 'keepi_game.png', '예술/디자인': 'keepi_art.png',
+    '기타/알쓸신잡': 'keepi_etc.png', '종교': 'keepi_religion.png',
+    '카페': 'keepi_cafe.png',
+}
+const _MWR_CATEGORY_EMOJI = {
+    'IT/기술':'💻','영상/엔터':'🎬','음악':'🎵','독서/책':'📚','뉴스/사회':'📰',
+    '정치/경제':'💼','스포츠':'⚽','게임':'🎮','요리/식품':'🍽️','여행':'✈️',
+    '패션/뷰티':'👗','운동/헬스':'💪','교육/학습':'📖','예술/디자인':'🎨',
+    '기타/알쓸신잡':'🌐','종교':'🕊️','카페':'☕',
+}
+
+async function loadMainWeeklyRecap() {
+    const el = document.getElementById('main-weekly-recap')
+    if (!el) return
     try {
-        const data = await fetch(`/api/categories?user_id=${getCurrentUserId()}`).then(r => r.json())
-        const folderGrid = document.getElementById('folder-grid')
+        const rep = await fetch(`/api/weekly-report?user_id=${getCurrentUserId()}`).then(r => r.json())
 
-        let allCats = []
-        Object.entries(data).forEach(([cat, subs]) => {
-            subs.forEach(sub => allCats.push({ category: cat, name: sub.name, count: sub.count }))
+        if (rep.empty) return
+
+        const imgFile = _MWR_CATEGORY_IMAGE[rep.top_category] || 'keepi_default.png'
+        const fallbackEmoji = _MWR_CATEGORY_EMOJI[rep.top_category] || '✨'
+        const typeName = rep.personality_type || rep.nickname || (rep.top_topic + ' 탐험가')
+
+        const username = getCurrentUsername()
+        const questionText = username ? `이번주 ${username}의 키핏은?` : '이번주 나의 키핏은?'
+
+        el.innerHTML = `
+            <img src="/static/images/keepi/${imgFile}" class="mwr-keepi" alt="keepi"
+                onerror="this.outerHTML='<div class=\\'mwr-emoji\\'>${fallbackEmoji}</div>'" />
+            <div class="mwr-question">${questionText}</div>
+            <div class="mwr-type-title">${typeName}</div>
+            <button class="mwr-report-btn" id="mwr-report-btn">주간 레포트 보러가기 →</button>
+        `
+        document.getElementById('mwr-report-btn').addEventListener('click', () => {
+            document.getElementById('btn-weekly-report').click()
         })
-        allCats.sort((a, b) => b.count - a.count)
-        const top5 = allCats.slice(0, 5)
-
-        if (!top5.length) {
-            folderGrid.innerHTML = '<div class="folder-placeholder">저장된 콘텐츠가 없어요</div>'
-            return
-        }
-
-        folderGrid.innerHTML = top5.map(cat => `
-            <div class="folder-card" onclick="openCategoryPanel('${esc(cat.category)}','${esc(cat.name)}')">
-                <div class="folder-icon-wrap">
-                    <div class="folder-tab"></div>
-                    <div class="folder-body">
-                        <div class="folder-papers">
-                            <div class="folder-paper-line"></div>
-                            <div class="folder-paper-line"></div>
-                            <div class="folder-paper-line short"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="folder-meta">
-                    <span class="folder-name">${cat.name || cat.category}</span>
-                    <span class="folder-count">${cat.count}개</span>
-                </div>
-            </div>
-        `).join('')
     } catch (e) {
-        console.error('폴더 로드 실패:', e)
+        console.error('주간 요약 로드 실패:', e)
     }
 }
 
@@ -313,7 +327,7 @@ window.deleteCollection = async function(collectionId) {
     try {
         await fetch(`/collections/${collectionId}?user_id=${getCurrentUserId()}`, { method: 'DELETE' })
         loadCollections()
-        loadTopFolders()
+        loadMainWeeklyRecap()
     } catch (e) {}
 }
 
@@ -557,7 +571,7 @@ async function sendChat(chatCollectionId) {
             }
 
             loadingEl.remove()
-            loadTopFolders()
+            loadMainWeeklyRecap()
             loadCollections()
         } else {
             // 텍스트 → AI 대화
@@ -756,7 +770,7 @@ window.executeReclassify = async function(btn) {
         if (res.ok) {
             const subMsg = subCategory ? ` / ${subCategory}` : ''
             box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${category}${subMsg}'(으)로 이동 완료</div>`
-            setTimeout(() => { box.remove(); loadTopFolders() }, 1500)
+            setTimeout(() => { box.remove(); loadMainWeeklyRecap() }, 1500)
         } else {
             throw new Error()
         }
@@ -785,7 +799,7 @@ window.executeDelete = async function(btn) {
     }
 
     box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ ${successCount}개 삭제 완료</div>`
-    setTimeout(() => { box.remove(); loadTopFolders(); loadCollections() }, 1500)
+    setTimeout(() => { box.remove(); loadMainWeeklyRecap(); loadCollections() }, 1500)
 }
 
 window.executeMove = async function(btn) {
@@ -949,7 +963,7 @@ window.executeMoveWithPicker = async function(btn, selectId) {
         }
         if (ok) {
             box.innerHTML = `<div style="padding:8px;color:#5A9A60;font-size:13px;font-weight:600">✓ '${name}'(으)로 이동 완료</div>`
-            setTimeout(() => { box.remove(); loadCollections(); loadTopFolders() }, 1500)
+            setTimeout(() => { box.remove(); loadCollections(); loadMainWeeklyRecap() }, 1500)
         } else throw new Error()
     } catch (e) { btn.disabled = false; btn.textContent = '이동' }
 }
@@ -1248,7 +1262,7 @@ window.executePanelMove = async function(contentId, optionEl) {
             dropdown.innerHTML = ''
             const card = optionEl.closest('.panel-item-card') || dropdown.closest('.panel-item-card')
             if (card) { card.style.opacity = '0.4'; setTimeout(() => card.remove(), 600) }
-            loadCollections(); loadTopFolders()
+            loadCollections(); loadMainWeeklyRecap()
         }
     } catch (e) { dropdown.classList.remove('open') }
 }
@@ -1379,7 +1393,7 @@ window.deleteArchiveContent = async function(contentId, category, subcategory) {
         const res = await fetch(`/contents/${contentId}?user_id=${getCurrentUserId()}`, { method: 'DELETE' })
         if (!res.ok) throw new Error('삭제 실패')
         showArchiveItems(category, subcategory)
-        loadTopFolders()
+        loadMainWeeklyRecap()
     } catch (e) { alert('삭제 실패: ' + e.message) }
 }
 
@@ -1541,6 +1555,123 @@ window.calClearFilter = function() {
     renderReminderCalendar()
 }
 
+// ── 메인 미니 캘린더 ──
+async function loadMainCalendar() {
+    const el = document.getElementById('main-cal-inner')
+    if (!el) return
+    try {
+        const data = await fetch(`/deadlines/${getCurrentUserId()}`).then(r => r.json())
+        mainCalDeadlines = data.deadlines || []
+        renderMainCalendar()
+    } catch (e) {
+        console.error('미니 캘린더 로드 실패:', e)
+    }
+}
+
+function renderMainCalendar() {
+    const inner = document.getElementById('main-cal-inner')
+    const eventsEl = document.getElementById('main-cal-events')
+    if (!inner) return
+
+    const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const monthPad = String(mainCalMonth + 1).padStart(2, '0')
+
+    const dateMap = {}
+    mainCalDeadlines.forEach(r => {
+        if (r.deadline_date) {
+            if (!dateMap[r.deadline_date]) dateMap[r.deadline_date] = []
+            dateMap[r.deadline_date].push(r)
+        }
+    })
+
+    const firstDow    = new Date(mainCalYear, mainCalMonth, 1).getDay()
+    const daysInMonth = new Date(mainCalYear, mainCalMonth + 1, 0).getDate()
+    const weekdays    = ['일','월','화','수','목','금','토']
+
+    let cellsHTML = weekdays.map((d, i) =>
+        `<div class="cal-weekday ${i===0?'sun':i===6?'sat':''}">${d}</div>`
+    ).join('')
+
+    const prevDays = new Date(mainCalYear, mainCalMonth, 0).getDate()
+    for (let i = firstDow - 1; i >= 0; i--)
+        cellsHTML += `<div class="cal-cell other-month"><div class="cal-dots"></div><div class="cal-date-num">${prevDays - i}</div></div>`
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${mainCalYear}-${monthPad}-${String(d).padStart(2,'0')}`
+        const dow   = (firstDow + d - 1) % 7
+        const items = dateMap[dateStr] || []
+        const dots  = Array(Math.min(items.length, 4)).fill('<div class="cal-dot"></div>').join('')
+        const cls   = [dateStr === todayStr ? 'today' : '', dow === 0 ? 'sunday' : '', dow === 6 ? 'saturday' : ''].join(' ')
+        const isSel = dateStr === mainCalSelectedDate ? 'selected' : ''
+        cellsHTML += `
+            <div class="cal-cell ${cls} ${isSel}" onclick="window.mainCalSelectDate('${dateStr}')">
+                <div class="cal-dots">${dots}</div>
+                <div class="cal-date-num">${d}</div>
+            </div>`
+    }
+
+    const total    = firstDow + daysInMonth
+    const trailing = total % 7 === 0 ? 0 : 7 - (total % 7)
+    for (let i = 1; i <= trailing; i++)
+        cellsHTML += `<div class="cal-cell other-month"><div class="cal-dots"></div><div class="cal-date-num">${i}</div></div>`
+
+    inner.innerHTML = `
+        <div class="main-cal-header">
+            <span class="main-cal-month-title">${mainCalYear}년 ${MONTHS[mainCalMonth]}</span>
+            <div class="main-cal-nav">
+                <button class="main-cal-nav-btn main-cal-today-btn" onclick="window.mainCalNavigate(0)">오늘</button>
+                <button class="main-cal-nav-btn" onclick="window.mainCalNavigate(-1)">‹</button>
+                <button class="main-cal-nav-btn" onclick="window.mainCalNavigate(1)">›</button>
+            </div>
+        </div>
+        <div class="cal-grid">${cellsHTML}</div>
+    `
+
+    if (!eventsEl) return
+    const monthStart = `${mainCalYear}-${monthPad}-01`
+    const monthEnd   = `${mainCalYear}-${monthPad}-${String(daysInMonth).padStart(2,'0')}`
+    const listItems  = mainCalSelectedDate
+        ? mainCalDeadlines.filter(r => r.deadline_date === mainCalSelectedDate)
+        : mainCalDeadlines
+            .filter(r => r.deadline_date >= monthStart && r.deadline_date <= monthEnd)
+            .sort((a, b) => a.deadline_date.localeCompare(b.deadline_date))
+
+    if (!listItems.length) {
+        eventsEl.innerHTML = ''
+        return
+    }
+
+    eventsEl.innerHTML = listItems.map(r => {
+        const exp = r.deadline_date < todayStr
+        return `
+            <div class="cal-event-item ${exp ? 'expired' : ''}">
+                <div class="cal-event-deadline">${exp ? '⏰ 만료 · ' : '📌 '}${r.deadline_date}</div>
+                <div class="cal-event-title">${r.title}</div>
+                ${r.deadline_note ? `<div class="cal-event-note">${r.deadline_note}</div>` : ''}
+                <a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>
+            </div>`
+    }).join('')
+    eventsEl.className = 'main-cal-events'
+}
+
+window.mainCalNavigate = function(dir) {
+    mainCalSelectedDate = null
+    if (dir === 0) {
+        const now = new Date()
+        mainCalYear = now.getFullYear(); mainCalMonth = now.getMonth()
+    } else {
+        mainCalMonth += dir
+        if (mainCalMonth < 0)  { mainCalMonth = 11; mainCalYear-- }
+        if (mainCalMonth > 11) { mainCalMonth = 0;  mainCalYear++ }
+    }
+    renderMainCalendar()
+}
+window.mainCalSelectDate = function(dateStr) {
+    mainCalSelectedDate = mainCalSelectedDate === dateStr ? null : dateStr
+    renderMainCalendar()
+}
+
 window.toggleDeadlineEdit = function(id, date, note) {
     const form = document.getElementById('ref-' + id)
     if (!form) return
@@ -1592,7 +1723,7 @@ document.getElementById('btn-reclassify').addEventListener('click', async () => 
         const res  = await fetch(`/admin/reclassify/${getCurrentUserId()}`, { method: 'POST' })
         const data = await res.json()
         alert(`재분류 완료! ${data.updated}개 업데이트, ${data.failed}개 실패`)
-        loadTopFolders()
+        loadMainWeeklyRecap()
         loadCollections()
     } catch (e) {
         alert('재분류 실패: ' + e.message)
@@ -1633,7 +1764,8 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
 // ── 초기 로드 ──
 initAuth()
 if (isLoggedIn()) {
-    loadTopFolders()
+    loadMainWeeklyRecap()
+    loadMainCalendar()
     loadCollections()
 }
 initFolderPicker()
