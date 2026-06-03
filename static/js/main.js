@@ -1558,11 +1558,14 @@ function renderReminderCalendar() {
         ? listItems.map(r => {
             const exp = r.deadline_date < todayStr
             return `
-                <div class="cal-event-item ${exp ? 'expired' : ''}">
+                <div class="cal-event-item ${exp ? 'expired' : ''}" id="ri-${r.id}">
                     <div class="cal-event-deadline">${exp ? '⏰ 만료 · ' : '📌 '}${r.deadline_date}</div>
                     <div class="cal-event-title">${r.title}</div>
                     ${r.deadline_note ? `<div class="cal-event-note">${r.deadline_note}</div>` : ''}
-                    <a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>
+                    <div class="cal-event-actions">
+                        <a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>
+                        <button class="cal-event-delete-btn" onclick="removeDeadline('${r.id}')">🗑️ 삭제</button>
+                    </div>
                 </div>`
         }).join('')
         : `<div class="cal-no-events">${noMsg}</div>`)

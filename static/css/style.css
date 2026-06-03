@@ -1987,8 +1987,11 @@ nav {
 .cal-event-item.expired .cal-event-deadline { color: #b08060; }
 .cal-event-title { font-size: 13px; font-weight: 600; color: #2c1206; margin-bottom: 3px; line-height: 1.35; }
 .cal-event-note { font-size: 11px; color: #9A7055; margin-bottom: 4px; }
+.cal-event-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .cal-event-link { font-size: 12px; color: #5A3002; text-decoration: none; font-weight: 600; }
 .cal-event-link:hover { text-decoration: underline; }
+.cal-event-delete-btn { font-size: 11px; color: #b05030; background: none; border: none; cursor: pointer; padding: 0; }
+.cal-event-delete-btn:hover { text-decoration: underline; }
 .cal-no-events { font-size: 13px; color: #b08060; padding: 10px 0; text-align: center; }
 .cal-filter-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 6px 10px; background: #f9f0e8; border-radius: 8px; }
 .cal-filter-bar span { font-size: 12px; font-weight: 700; color: #6b3a2a; }
