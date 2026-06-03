@@ -5,7 +5,9 @@
 
 import os
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
+import httpx
 import jwt  # PyJWT
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -19,6 +21,15 @@ JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("FLASK_SECRET_KEY", "keep-it-s
 JWT_ALGORITHM = "HS256"
 JWT_EXP_DAYS = 7
 COOKIE_NAME = "keepit_token"
+
+# Supabase (OAuth 유저 upsert용)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+# 카카오 OAuth 설정
+KAKAO_CLIENT_ID     = os.getenv("KAKAO_CLIENT_ID", "")
+KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "")
+KAKAO_REDIRECT_URI  = os.getenv("KAKAO_REDIRECT_URI", "http://localhost:8000/auth/kakao/callback")
 
 
 def create_token(user: dict) -> str:
@@ -111,4 +122,103 @@ async def logout():
     resp.delete_cookie(COOKIE_NAME)
     return resp
 
-# 로그인 페이지·OAuth 콜백·JWT 세션 발급/조회/삭제 엔드포인트 (FastAPI 이식판)
+# ── 카카오 OAuth ────────────────────────────────────────────────
+
+def _supabase_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+async def _upsert_oauth_user(provider: str, provider_id: str, display_name: str, email: str | None = None) -> dict:
+    """OAuth 유저를 users 테이블에서 조회, 없으면 생성. {id, username, ...} 반환"""
+    field = f"{provider}_id"
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/users",
+            headers=_supabase_headers(),
+            params={field: f"eq.{provider_id}", "select": "id,username,email"},
+        )
+        rows = res.json()
+        if rows:
+            return rows[0]
+
+        user_data = {"username": display_name, field: provider_id}
+        if email:
+            user_data["email"] = email
+
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/users",
+            headers={**_supabase_headers(), "Prefer": "return=representation"},
+            json=user_data,
+        )
+        if not res.is_success:
+            raise HTTPException(500, f"유저 생성 실패: {res.text}")
+        return res.json()[0]
+
+
+@router.get("/auth/kakao")
+async def kakao_login():
+    """카카오 인가 코드 요청 페이지로 리디렉트"""
+    params = {
+        "client_id": KAKAO_CLIENT_ID,
+        "redirect_uri": KAKAO_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "profile_nickname",
+    }
+    return RedirectResponse("https://kauth.kakao.com/oauth/authorize?" + urlencode(params))
+
+
+@router.get("/auth/kakao/callback")
+async def kakao_callback(code: str):
+    """카카오 콜백 → 토큰 교환 → 유저 정보 조회 → users upsert → JWT 쿠키 발급 후 메인으로"""
+    async with httpx.AsyncClient(timeout=15) as client:
+        token_res = await client.post(
+            "https://kauth.kakao.com/oauth/token",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "authorization_code",
+                "client_id": KAKAO_CLIENT_ID,
+                "client_secret": KAKAO_CLIENT_SECRET,
+                "redirect_uri": KAKAO_REDIRECT_URI,
+                "code": code,
+            },
+        )
+        if not token_res.is_success:
+            raise HTTPException(500, f"카카오 토큰 오류: {token_res.status_code} / {token_res.text}")
+        access_token = token_res.json()["access_token"]
+
+        info_res = await client.get(
+            "https://kapi.kakao.com/v2/user/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        info = info_res.json()
+
+    kakao_id = str(info["id"])
+    nickname = (
+        info.get("kakao_account", {}).get("profile", {}).get("nickname")
+        or f"user_{kakao_id[-4:]}"
+    )
+    email = info.get("kakao_account", {}).get("email")
+
+    db_user = await _upsert_oauth_user("kakao", kakao_id, nickname, email)
+
+    # AI-Biz JWT 쿠키 방식에 맞춰 토큰 발급
+    user = {
+        "id": db_user["id"],
+        "email": db_user.get("email") or email or "",
+        "name": db_user.get("username") or nickname,
+        "avatar": "",
+    }
+    token = create_token(user)
+    resp = RedirectResponse("/")
+    resp.set_cookie(
+        COOKIE_NAME, token,
+        httponly=True, max_age=JWT_EXP_DAYS * 86400, samesite="lax",
+    )
+    return resp
+
+
+# 로그인 페이지·OAuth 콜백·JWT 세션 발급/조회/삭제·카카오 로그인 엔드포인트 (FastAPI 이식판)

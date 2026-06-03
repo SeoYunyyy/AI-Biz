@@ -4,6 +4,7 @@ import os
 import httpx
 import json
 import random
+import asyncio
 from difflib import SequenceMatcher
 from datetime import datetime, timezone
 
@@ -63,17 +64,34 @@ async def _llm(messages: list, model: str = "gpt-4o-mini", max_tokens: int = 500
     if json_mode:
         body["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            OPENAI_API_URL,
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
-        response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"].strip()
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    # 429(레이트리밋)·5xx는 지수 백오프로 최대 3회 재시도
+    last_exc = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(OPENAI_API_URL, headers=headers, json=body)
+            if response.status_code in (429, 500, 502, 503, 504):
+                last_exc = httpx.HTTPStatusError(
+                    f"OpenAI {response.status_code}", request=response.request, response=response,
+                )
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except httpx.HTTPStatusError as e:
+            last_exc = e
+            if e.response is not None and e.response.status_code not in (429, 500, 502, 503, 504):
+                raise
+            await asyncio.sleep(1.5 * (attempt + 1))
+    # 재시도 모두 실패
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("LLM 호출 실패")
 
 
 async def _detect_intent(query: str, history: list = None) -> dict:
