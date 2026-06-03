@@ -58,8 +58,8 @@ let mainCalMonth        = new Date().getMonth()
 let mainCalDeadlines    = []
 let mainCalSelectedDate = null
 
-const promptInput = document.getElementById('prompt-input')
-const submitBtn   = document.getElementById('submit-btn')
+const chatInput   = document.getElementById('chat-input')
+const chatSendBtn = document.getElementById('chat-send')
 const resultsDiv  = document.getElementById('results')
 const modal       = document.getElementById('modal')
 const modalBody   = document.getElementById('modal-body')
@@ -72,7 +72,22 @@ function isURL(str) {
     return /^https?:\/\//i.test(str) || /^www\./i.test(str)
 }
 
-// 입력에서 URL과 마감기한 분리
+// 텍스트에서 모든 URL 추출
+function extractUrls(text) {
+    const re = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi
+    return (text.match(re) || []).map(u => u.replace(/[.,)\]]+$/, ''))
+}
+
+// 자연어에서 대상 컬렉션 이름 추출
+function parseCollectionName(text) {
+    const m = text.match(/([가-힣A-Za-z0-9][가-힣A-Za-z0-9 ]*?)\s*(?:컬렉션|폴더)\s*에?\s*(?:저장|넣어|넣|담아|담|추가|모아|올려)/)
+    if (!m) return null
+    let name = m[1].trim()
+    name = name.replace(/^(를|을|은|는|이|가|에|에서|로|으로|와|과|도|만|,)\s*/, '').trim()
+    return name || null
+}
+
+// 입력에서 URL과 마감기한 분리 (단일 URL용)
 function parseInput(text) {
     const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
     const deadline = deadlineMatch ? deadlineMatch[1] : null
@@ -81,28 +96,21 @@ function parseInput(text) {
 }
 
 function setLoading(on) {
-    submitBtn.disabled = on
-    submitBtn.innerHTML = on ? '&#8230;' : '&#8594;'
+    if (chatSendBtn) {
+        chatSendBtn.disabled = on
+        chatSendBtn.innerHTML = on ? '&#8230;' : '&#8594;'
+    }
 }
 
-// ── 우측 패널 ──
-function openRightPanel(title, content, fullscreen = false) {
+// ── 우측 패널 (카테고리 상세) ──
+function openRightPanel(title, content) {
     panelTitle.textContent = title
     panelBody.innerHTML = content
     rightPanel.classList.add('open')
-    const wrapper = document.querySelector('.page-wrapper')
-    document.querySelector('.prompt-section').style.display = 'none'
-    if (fullscreen) {
-        wrapper.classList.add('chat-fullscreen')
-    } else {
-        wrapper.classList.remove('chat-fullscreen')
-    }
 }
 
 function closeRightPanel() {
     rightPanel.classList.remove('open')
-    document.querySelector('.prompt-section').style.display = ''
-    document.querySelector('.page-wrapper').classList.remove('chat-fullscreen')
 }
 
 // ── 폴더 선택 (메인 프롬프트 박스) ──
@@ -167,35 +175,47 @@ const _MWR_CATEGORY_EMOJI = {
     '기타/알쓸신잡':'🌐','종교':'🕊️','카페':'☕',
 }
 
-async function loadMainWeeklyRecap() {
-    const el = document.getElementById('main-weekly-recap')
-    if (!el) return
+// ── 주간 레포트: stat-bars + persona-card + mascot 이미지 ──
+async function loadWeekly() {
+    const setBar = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val }
+    const box = document.getElementById('persona-card')
     try {
-        const rep = await fetch(`/api/weekly-report?user_id=${getCurrentUserId()}`).then(r => r.json())
+        const data = await fetch(`/api/weekly-report?user_id=${getCurrentUserId()}`).then(r => r.json())
 
-        if (rep.empty) return
+        // 통계 바
+        setBar('sb-links',       `${data.total || 0}개`)
+        setBar('sb-collections', `${data.collection_count || 0}개`)
+        setBar('sb-streak',      `${data.streak || 0}일`)
+        setBar('sb-time',        data.estimated_time || '0분')
 
-        const imgFile = _MWR_CATEGORY_IMAGE[rep.top_category] || 'keepi_default.png'
-        const fallbackEmoji = _MWR_CATEGORY_EMOJI[rep.top_category] || '✨'
-        const typeName = rep.personality_type || rep.nickname || (rep.top_topic + ' 탐험가')
+        // mascot 이미지: 이번 주 top_category에 맞는 키피로 교체
+        const imgFile = _MWR_CATEGORY_IMAGE[data.top_category] || 'keepi_default.png'
+        const mascotEl = document.getElementById('mascot')
+        if (mascotEl) mascotEl.src = `/static/images/keepi/${imgFile}`
 
-        const username = getCurrentUsername()
-        const questionText = username ? `이번주 ${username}의 키핏은?` : '이번주 나의 키핏은?'
-
-        el.innerHTML = `
-            <img src="/static/images/keepi/${imgFile}" class="mwr-keepi" alt="keepi"
-                onerror="this.outerHTML='<div class=\\'mwr-emoji\\'>${fallbackEmoji}</div>'" />
-            <div class="mwr-question">${questionText}</div>
-            <div class="mwr-type-title">${typeName}</div>
-            <button class="mwr-report-btn" id="mwr-report-btn">주간 레포트 보러가기 →</button>
-        `
-        document.getElementById('mwr-report-btn').addEventListener('click', () => {
-            document.getElementById('btn-weekly-report').click()
-        })
+        // persona-card 취향 유형 박스
+        if (box) {
+            if (data.empty) { box.style.display = 'none'; return }
+            const emoji = data.personality_emoji || _MWR_CATEGORY_EMOJI[data.top_category] || '✨'
+            const type  = data.personality_type || data.nickname || '취향 탐험가'
+            const desc  = data.personality_desc || data.ai_summary || ''
+            box.innerHTML = `
+                <div class="pb-chip"><span class="pb-emoji">${emoji}</span><span class="pb-type">${type}</span></div>
+                <div class="pb-detail">
+                    <p class="pb-lead">이번 주 당신의 키피는<br><b>${type}</b> 이에요</p>
+                    ${desc ? `<p class="pb-desc">${desc}</p>` : ''}
+                    <button class="pb-more" onclick="document.getElementById('btn-weekly-report').click()">주간 레포트 보기 ›</button>
+                </div>
+            `
+            box.style.display = 'block'
+        }
     } catch (e) {
-        console.error('주간 요약 로드 실패:', e)
+        if (box) box.style.display = 'none'
     }
 }
+
+// 하위 호환: loadMainWeeklyRecap 호출부를 loadWeekly로 처리
+const loadMainWeeklyRecap = loadWeekly
 
 // ── 카테고리 패널 열기 ──
 async function openCategoryPanel(category, subcategory) {
@@ -415,17 +435,25 @@ async function openCollectionPanel(collectionId, name) {
     }
 }
 
-// ── AI 채팅 패널 열기 (전체화면) ──
+// ── AI 전체화면 채팅 열기 ──
 function openChatPanel(initialText = '') {
     chatHistory = []
     shownIds = new Set()
-    // currentContentId는 세션 간 유지 (저장 후 마감 수정 흐름)
+
+    document.getElementById('ai-fullscreen-overlay')?.remove()
 
     let chatPanelCollectionId   = selectedCollectionId
     let chatPanelCollectionName = selectedCollectionName
 
-    openRightPanel('AI 어시스턴트', `
-        <div class="chat-container">
+    const overlay = document.createElement('div')
+    overlay.id = 'ai-fullscreen-overlay'
+    overlay.className = 'ai-fullscreen-overlay'
+    overlay.innerHTML = `
+        <div class="ai-fullscreen-header">
+            <span class="ai-fullscreen-title">AI 어시스턴트</span>
+            <button class="ai-fullscreen-close" id="ai-fullscreen-close">✕ 닫기</button>
+        </div>
+        <div class="ai-fullscreen-body">
             <div class="chat-messages" id="chat-messages">
                 <div class="chat-msg ai">안녕하세요! URL을 붙여넣으면 저장하고, 그 외 메시지는 AI와 대화할 수 있어요.</div>
             </div>
@@ -438,15 +466,25 @@ function openChatPanel(initialText = '') {
                 <button class="chat-reset-btn" id="chat-reset-btn" title="대화 초기화">↺</button>
             </div>
             <div class="chat-input-wrap">
-                <input type="text" id="chat-input" class="chat-input" placeholder="URL 붙여넣기 또는 메시지 입력" />
+                <input type="text" id="chat-input" class="chat-input" placeholder="URL 붙여넣기 또는 메시지 입력" autocomplete="off" />
                 <button id="chat-send" class="chat-send-btn">&#8594;</button>
             </div>
         </div>
-    `, true)
+    `
+    document.body.appendChild(overlay)
+    requestAnimationFrame(() => overlay.classList.add('open'))
 
-    // 채팅 패널 내 폴더 선택
-    const chatFolderBtn      = document.getElementById('chat-folder-btn')
-    const chatFolderDropdown = document.getElementById('chat-folder-dropdown')
+    const closeOverlay = () => {
+        overlay.classList.remove('open')
+        setTimeout(() => overlay.remove(), 280)
+        loadWeekly()
+        loadCollections()
+    }
+    overlay.querySelector('#ai-fullscreen-close').addEventListener('click', closeOverlay)
+
+    // 폴더 선택
+    const chatFolderBtn      = overlay.querySelector('#chat-folder-btn')
+    const chatFolderDropdown = overlay.querySelector('#chat-folder-dropdown')
 
     chatFolderBtn.addEventListener('click', async (e) => {
         e.stopPropagation()
@@ -457,13 +495,11 @@ function openChatPanel(initialText = '') {
         await populateFolderDropdown(chatFolderDropdown, (id, name) => {
             chatPanelCollectionId   = id
             chatPanelCollectionName = name
-            // 메인 상태도 동기화
             selectedCollectionId   = id
             selectedCollectionName = name
             chatFolderBtn.textContent = id ? `📁 ${name}` : '📁 선택 안 함'
             chatFolderBtn.classList.toggle('active', !!id)
             chatFolderDropdown.classList.remove('open')
-            // 메인 버튼도 동기화
             const mainBtn = document.getElementById('folder-picker-btn')
             if (mainBtn) {
                 mainBtn.textContent = id ? `📁 ${name}` : '📁'
@@ -472,35 +508,35 @@ function openChatPanel(initialText = '') {
         })
         chatFolderDropdown.classList.add('open')
     })
-
     document.addEventListener('click', () => chatFolderDropdown.classList.remove('open'))
 
-    document.getElementById('chat-reset-btn').addEventListener('click', () => {
+    overlay.querySelector('#chat-reset-btn').addEventListener('click', () => {
         chatHistory = []
         shownIds = new Set()
-        const msgs = document.getElementById('chat-messages')
+        const msgs = overlay.querySelector('#chat-messages')
         if (msgs) msgs.innerHTML = '<div class="chat-msg ai">대화가 초기화됐어요. 새로 질문해주세요!</div>'
     })
 
-    const chatInput = document.getElementById('chat-input')
-    const chatSend  = document.getElementById('chat-send')
+    const aiChatInput = overlay.querySelector('#chat-input')
+    const aiChatSend  = overlay.querySelector('#chat-send')
 
     const doSend = () => sendChat(chatPanelCollectionId)
-    chatSend.addEventListener('click', doSend)
-    chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSend() })
-    chatInput.focus()
+    aiChatSend.addEventListener('click', doSend)
+    aiChatInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSend() })
+    aiChatInput.focus()
 
     if (initialText) {
-        chatInput.value = initialText
+        aiChatInput.value = initialText
         setTimeout(doSend, 60)
     }
 }
 
 // ── 채팅 메시지 전송 (URL → 저장 / 텍스트 → AI 대화) ──
 async function sendChat(chatCollectionId) {
-    const chatInput    = document.getElementById('chat-input')
-    const chatSend     = document.getElementById('chat-send')
-    const chatMessages = document.getElementById('chat-messages')
+    const _root        = document.getElementById('ai-fullscreen-overlay') || document.getElementById('panel-body')
+    const chatInput    = _root?.querySelector('#chat-input') || document.getElementById('chat-input')
+    const chatSend     = _root?.querySelector('#chat-send') || document.getElementById('chat-send')
+    const chatMessages = _root?.querySelector('#chat-messages') || document.getElementById('chat-messages')
     if (!chatInput) return
 
     const text = chatInput.value.trim()
@@ -661,7 +697,8 @@ window.dismissDeadlineConfirm = function(btn) {
 
 window.editDeadline = function(btn) {
     btn.closest('.deadline-confirm-box').remove()
-    const chatInput = document.getElementById('chat-input')
+    const _root = document.getElementById('ai-fullscreen-overlay') || document.getElementById('panel-body')
+    const chatInput = _root?.querySelector('#chat-input') || document.getElementById('chat-input')
     if (chatInput) {
         chatInput.placeholder = '마감일을 알려주세요. 예: "마감 없어" 또는 "7월 15일이야"'
         chatInput.focus()
@@ -864,7 +901,8 @@ window.createFolder = async function(name) {
     document.querySelector('.folder-confirm-box')?.remove()
     try {
         const res = await fetch(`/collections?user_id=${getCurrentUserId()}&name=${encodeURIComponent(name)}`, { method: 'POST' })
-        const chatMessages = document.getElementById('chat-messages')
+        const _root = document.getElementById('ai-fullscreen-overlay') || document.getElementById('panel-body')
+        const chatMessages = _root?.querySelector('#chat-messages') || document.getElementById('chat-messages')
         if (chatMessages) {
             const el = document.createElement('div')
             el.className = 'chat-msg ai'
@@ -1271,19 +1309,180 @@ window.executePanelMove = async function(contentId, optionEl) {
 
 // 후속 질문 버튼 클릭 시 채팅 입력에 삽입
 window.followUp = function(btn) {
-    const chatInput = document.getElementById('chat-input')
+    const _root = document.getElementById('ai-fullscreen-overlay') || document.getElementById('panel-body')
+    const chatInput = _root?.querySelector('#chat-input') || document.getElementById('chat-input')
     if (chatInput) {
         chatInput.value = btn.textContent
         chatInput.focus()
     }
 }
 
-// ── 메인 submit 핸들러 → 채팅 패널로 통합 ──
+// ── 말풍선 ──
+let bubbleTimer = null
+function showBubble(text, loading = false) {
+    const bubble = document.getElementById('speech-bubble')
+    if (!bubble) return
+    document.getElementById('speech-text').textContent = text
+    document.getElementById('speech-cards').innerHTML = ''
+    bubble.classList.toggle('loading', loading)
+    bubble.classList.remove('has-card')
+    bubble.style.position = bubble.style.left = bubble.style.top = bubble.style.maxHeight = ''
+    bubble.classList.add('show')
+    clearTimeout(bubbleTimer)
+    if (!loading) bubbleTimer = setTimeout(() => bubble.classList.remove('show'), 6000)
+}
+
+function showBubbleCard(comment, cardsHtml) {
+    const bubble = document.getElementById('speech-bubble')
+    if (!bubble) return
+    document.getElementById('speech-text').textContent = comment
+    document.getElementById('speech-cards').innerHTML = cardsHtml
+    bubble.classList.remove('loading')
+    bubble.classList.add('has-card', 'show')
+    clearTimeout(bubbleTimer)
+    requestAnimationFrame(() => {
+        const mascotEl = document.getElementById('mascot')
+        if (!mascotEl) return
+        const mr = mascotEl.getBoundingClientRect()
+        const margin = 12, navH = 78
+        const avail = Math.max(160, mr.top - navH - margin)
+        bubble.style.maxHeight = avail + 'px'
+        const bw = bubble.offsetWidth
+        const bh = Math.min(bubble.offsetHeight, avail)
+        let left = mr.left + mr.width / 2 - bw / 2
+        left = Math.max(margin, Math.min(left, window.innerWidth - bw - margin))
+        let top = mr.top - margin - bh
+        if (top < navH) top = navH
+        bubble.style.position = 'fixed'
+        bubble.style.left = left + 'px'
+        bubble.style.top  = top + 'px'
+        bubble.style.bottom = 'auto'
+        bubble.style.transform = 'none'
+    })
+}
+
+function hideBubble() {
+    const bubble = document.getElementById('speech-bubble')
+    if (bubble) bubble.classList.remove('show')
+}
+
+// ── Mascot 상태 ──
+function setMascotState(state) {
+    const m = document.getElementById('mascot')
+    if (!m) return
+    m.classList.remove('happy', 'thinking', 'talking')
+    if (state === 'happy') {
+        m.classList.add('happy')
+        setTimeout(() => m.classList.remove('happy'), 760)
+    } else if (state === 'thinking') {
+        m.classList.add('thinking')
+    }
+}
+
+let chatStatusTimer = null
+function showChatStatus(messages) {
+    const list = Array.isArray(messages) ? messages : [messages]
+    clearInterval(chatStatusTimer); chatStatusTimer = null
+    document.getElementById('mascot')?.classList.add('talking')
+    showBubble(list[0], true)
+    if (list.length > 1) {
+        let i = 0
+        chatStatusTimer = setInterval(() => { i = (i + 1) % list.length; showBubble(list[i], true) }, 1600)
+    }
+}
+function hideChatStatus() {
+    clearInterval(chatStatusTimer); chatStatusTimer = null
+    document.getElementById('mascot')?.classList.remove('talking')
+    hideBubble()
+}
+
+// ── URL 저장: mascot 말풍선으로 처리 ──
+async function saveViaMascot(rawText, urls) {
+    setMascotState('thinking')
+    const deadlineMatch = rawText.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
+    const deadline = deadlineMatch ? deadlineMatch[1] : null
+    let nl = rawText
+    urls.forEach(u => { nl = nl.replace(u, ' ') })
+    nl = nl.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
+    const collectionName = parseCollectionName(nl)
+    let instruction = nl
+    if (deadline) instruction = `${instruction} 마감기한: ${deadline}`.trim()
+
+    const saves = []
+    try {
+        for (let i = 0; i < urls.length; i++) {
+            const pos = urls.length > 1 ? `(${i + 1}/${urls.length}) ` : ''
+            showBubble(`${pos}저장하고 있어요`, true)
+            const res = await fetch('/ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: urls[i], user_id: getCurrentUserId(), instruction, collection_name: collectionName })
+            })
+            const data = await res.json()
+            if (!res.ok || data.error) continue
+            const card = data.duplicate ? { ...data.content, duplicate: true } : data
+            saves.push({ data: card })
+        }
+        if (!saves.length) {
+            showBubble('앗, 저장에 실패했어요.\n링크를 다시 확인해 주세요.')
+            setMascotState('idle')
+            return
+        }
+        let comment
+        if (saves.length > 1) {
+            comment = `링크 ${saves.length}개를 정리했어요! 📁`
+        } else if (saves[0].data.duplicate) {
+            comment = '이미 저장돼 있던 거예요! 📁'
+        } else {
+            comment = '저장 완료! 이렇게 정리했어요 📁'
+        }
+        let cardsHtml
+        if (saves.length === 1) {
+            cardsHtml = `<div class="saved-card">${buildSavedItemContent(saves[0].data, saves[0].data.duplicate)}</div>`
+        } else {
+            cardsHtml = `<div class="saved-bars">${saves.map(s => {
+                const it = s.data
+                return `<a href="${it.url}" target="_blank" class="saved-bar">
+                    <span class="saved-bar-title">${it.title || '제목 없음'}</span>
+                    <span class="saved-bar-link">링크 열기 →</span>
+                </a>`
+            }).join('')}</div>`
+        }
+        showBubbleCard(comment, cardsHtml)
+        setMascotState('happy')
+        loadCollections()
+        loadWeekly()
+    } catch (e) {
+        showBubble(`앗, 저장에 실패했어요.\n${e.message}`)
+        setMascotState('idle')
+    }
+}
+
+// ── 대화 모드 진입 ──
+function enterChat() {
+    hideBubble()
+    const stage = document.getElementById('stage')
+    if (!stage) return
+    stage.classList.remove('collapsed')
+    if (!stage.classList.contains('chatting')) {
+        stage.classList.add('chatting')
+        chatHistory = []
+        shownIds = new Set()
+    }
+}
+
+// ── 메인 submit 핸들러 ──
 function handleSubmit() {
-    const text = promptInput.value.trim()
+    const text = chatInput.value.trim()
     if (!text) return
-    promptInput.value = ''
-    openChatPanel(text)
+    const urls = extractUrls(text)
+    if (urls.length) {
+        chatInput.value = ''
+        openChatPanel(text)
+    } else {
+        enterChat()
+        sendChat()
+    }
 }
 
 // ── 아카이브 모달 ──
@@ -1432,8 +1631,27 @@ document.getElementById('btn-archives').addEventListener('click', showArchiveHom
 document.getElementById('panel-close').addEventListener('click', closeRightPanel)
 document.getElementById('modal-close').addEventListener('click', closeModal)
 modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
-submitBtn.addEventListener('click', handleSubmit)
-promptInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
+chatSendBtn.addEventListener('click', handleSubmit)
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit() })
+
+// ── 채팅 영역 접기/펼치기 ──
+document.getElementById('chat-collapse')?.addEventListener('click', () => {
+    document.getElementById('stage')?.classList.add('collapsed')
+})
+document.getElementById('chat-expand')?.addEventListener('click', () => {
+    document.getElementById('stage')?.classList.remove('collapsed')
+})
+
+// ── mascot 클릭: 가벼운 인사 ──
+const _greetings = ['링크를 주면 잘 정리해둘게!', '찾고 싶은 게 있으면 물어봐!', '오늘은 뭘 Keep할까?', '안녕! 나는 키피야 🐿️']
+document.getElementById('mascot')?.addEventListener('click', () => {
+    if (document.getElementById('mascot').classList.contains('talking')) return
+    showBubble(_greetings[Math.floor(Math.random() * _greetings.length)])
+    setMascotState('happy')
+})
+
+// ── 리마인더 바 클릭 ──
+document.getElementById('bar-reminder')?.addEventListener('click', openReminderWindow)
 
 document.getElementById('btn-reminders').addEventListener('click', async () => {
     const data = await fetch(`/deadlines/${getCurrentUserId()}`).then(r => r.json())
@@ -1763,11 +1981,72 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
     document.body.appendChild(overlay)
 })
 
+// ── 리마인더 바 데이터 ──
+let reminderList = []
+function _todayStr() { return new Date().toISOString().slice(0, 10) }
+
+async function loadReminders() {
+    const bar = document.getElementById('bar-reminder')
+    if (!bar) return
+    try {
+        const data = await fetch(`/deadlines/${getCurrentUserId()}`).then(r => r.json())
+        reminderList = data.deadlines || []
+        const valEl = document.getElementById('sb-reminder')
+        const todayCount = reminderList.filter(r => r.deadline_date === _todayStr()).length
+        if (todayCount > 0) {
+            if (valEl) valEl.textContent = `마감 임박! ${todayCount}`
+            bar.classList.add('urgent')
+        } else {
+            if (valEl) valEl.textContent = reminderList.length ? `${reminderList.length}건` : '없음'
+            bar.classList.remove('urgent')
+        }
+    } catch (e) { /* 무시 */ }
+}
+
+function openReminderWindow() {
+    document.getElementById('noti-overlay')?.remove()
+    const today = _todayStr()
+    const sorted = [...reminderList].sort((a, b) => (a.deadline_date || '').localeCompare(b.deadline_date || ''))
+    const itemsHtml = sorted.length
+        ? sorted.map(r => {
+            const isToday = r.deadline_date === today
+            return `<div class="noti-item${isToday ? ' today' : ''}">
+                <div class="noti-item-body">
+                    <div class="noti-item-top">
+                        <span class="noti-date">${isToday ? '오늘 마감' : '마감 ' + (r.deadline_date || '')}</span>
+                        ${r.deadline_note ? `<span class="noti-note">${r.deadline_note}</span>` : ''}
+                    </div>
+                    <p class="noti-title">${r.title || ''}</p>
+                    ${r.url ? `<a href="${r.url}" target="_blank" class="noti-link">링크 열기 →</a>` : ''}
+                </div>
+            </div>`
+        }).join('')
+        : '<p class="noti-empty">예정된 마감이 없어요 🎉</p>'
+
+    const todayCount = sorted.filter(r => r.deadline_date === today).length
+    const overlay = document.createElement('div')
+    overlay.id = 'noti-overlay'
+    overlay.className = 'noti-overlay'
+    overlay.innerHTML = `
+        <div class="noti-window">
+            <div class="noti-head">
+                <span class="noti-head-title">리마인더${todayCount > 0 ? `<span class="noti-head-count">오늘 ${todayCount}건</span>` : ''}</span>
+                <button class="noti-close" aria-label="닫기">&times;</button>
+            </div>
+            <div class="noti-list">${itemsHtml}</div>
+        </div>`
+    document.body.appendChild(overlay)
+    requestAnimationFrame(() => overlay.classList.add('open'))
+    const close = () => { overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 250) }
+    overlay.querySelector('.noti-close').addEventListener('click', close)
+    overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+}
+
 // ── 초기 로드 ──
 initAuth()
 if (isLoggedIn()) {
-    loadMainWeeklyRecap()
-    loadMainCalendar()
+    loadWeekly()
+    loadReminders()
     loadCollections()
 }
 initFolderPicker()

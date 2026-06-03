@@ -41,40 +41,63 @@
 
       <!-- 메인 콘텐츠 -->
       <main class="main-content">
-        <section class="hero">
-          <!-- 키피 캐릭터 + 칭호 + 버튼 -->
-          <div id="main-weekly-recap" class="main-weekly-recap"></div>
-
-          <h1 class="hero-title">오늘은 무엇을 Keep하고 싶나요?</h1>
-          <p class="hero-sub">키핏이 저장하고 요약하고 다시 알려드려요</p>
-
-          <!-- 미니 캘린더 (우측 절대 배치) -->
-          <div class="main-cal-wrap">
-            <div id="main-cal-inner"></div>
-            <div id="main-cal-events"></div>
-          </div>
-        </section>
-
-        <section class="prompt-section">
-          <div class="prompt-box" id="prompt-box">
-            <input
-              type="text"
-              id="prompt-input"
-              class="prompt-input"
-              placeholder="URL을 붙여넣거나 찾고 싶은 자료를 말해보세요"
-              autocomplete="off"
-            />
-            <!-- 폴더 선택 버튼 -->
-            <div class="folder-picker-wrap" id="folder-picker-wrap">
-              <button id="folder-picker-btn" class="folder-picker-btn" title="저장할 폴더 선택">📁</button>
-              <div id="folder-dropdown" class="folder-dropdown"></div>
+        <div class="stage" id="stage">
+          <!-- 메인 컬럼: 찐한 갈색 패널 + 통계 바 -->
+          <div class="main-col">
+            <div class="hero-panel">
+              <h1 class="keepit">KEEP IT!</h1>
+              <!-- 상단: 좌(이번주 취향유형) · 우(캐릭터) -->
+              <section class="hero-row">
+                <!-- 좌: 이번 주 취향 유형 -->
+                <div id="persona-card" class="persona-box" style="display:none"></div>
+                <!-- 우: 캐릭터 + 소품 -->
+                <div class="char-zone">
+                  <div class="mascot-area">
+                    <div class="speech-bubble" id="speech-bubble">
+                      <span id="speech-text"></span>
+                      <div id="speech-cards" class="speech-cards"></div>
+                    </div>
+                    <img id="mascot" class="mascot" src="/static/images/keepi/keepi_default.png" alt="키피" />
+                  </div>
+                  <div class="char-props" aria-hidden="true"><span>🌰</span><span>📚</span><span>🍂</span></div>
+                </div>
+              </section>
             </div>
-            <button id="submit-btn" class="prompt-btn">&#8594;</button>
-          </div>
-          <p class="hint">입력 예시: https://example.com 을 야구 폴더에 넣어줘</p>
-        </section>
 
-        <section id="results" class="results-section"></section>
+            <!-- 5개 통계 바 -->
+            <div class="stat-bars" id="stat-bars">
+              <div class="stat-bar"><span class="sb-icon">🔗</span><span class="sb-label">저장한 링크</span><span class="sb-value" id="sb-links">–</span></div>
+              <div class="stat-bar"><span class="sb-icon">📁</span><span class="sb-label">생성된 컬렉션</span><span class="sb-value" id="sb-collections">–</span></div>
+              <div class="stat-bar"><span class="sb-icon">🔥</span><span class="sb-label">연속 저장중!</span><span class="sb-value" id="sb-streak">–</span></div>
+              <div class="stat-bar"><span class="sb-icon">⏱️</span><span class="sb-label">예상 소비시간</span><span class="sb-value" id="sb-time">–</span></div>
+              <button class="stat-bar stat-reminder" id="bar-reminder" type="button"><span class="sb-icon">🔔</span><span class="sb-label">리마인더</span><span class="sb-value" id="sb-reminder">–</span></button>
+            </div>
+          </div>
+
+          <!-- 채팅 영역 (기본: 채팅바 / 대화: 큰 박스로 확장) -->
+          <section class="chat-zone" id="chat-zone">
+            <div class="chat-box-head">
+              <span class="chat-box-title">키피와의 대화</span>
+              <button class="chat-collapse-btn" id="chat-collapse" type="button" aria-label="채팅 접기">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+            <div class="chat-box-inner">
+              <div class="chat-messages" id="chat-messages"></div>
+            </div>
+            <p class="hint chat-hint">마감기한 추가 예시: https://example.com 마감: 2026-06-01</p>
+            <div class="chat-input-wrap chat-bar">
+              <input type="text" id="chat-input" class="chat-input" placeholder="무엇이든 물어보세요" autocomplete="off" />
+              <button id="chat-send" class="chat-send-btn">&#8594;</button>
+            </div>
+            <button class="chat-expand-btn" id="chat-expand" type="button" aria-label="채팅 펼치기">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              <span class="ceb-text">채팅</span>
+            </button>
+          </section>
+        </div>
+
+        <section id="results" class="results-section" hidden></section>
       </main>
 
       <!-- 우측 슬라이드 패널 (카테고리 상세 / AI 채팅) -->

@@ -108,8 +108,6 @@ async def items(
     }
     if category:
         params["category"] = f"eq.{category}"
-    if subcategory:
-        params["sub_category"] = f"eq.{subcategory}"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -120,6 +118,13 @@ async def items(
             )
             response.raise_for_status()
             rows = response.json()
+
+        # sub_category 필터: "기타"는 빈 문자열/null도 포함
+        if subcategory:
+            if subcategory == "기타":
+                rows = [r for r in rows if not r.get("sub_category") or r.get("sub_category") == "기타"]
+            else:
+                rows = [r for r in rows if r.get("sub_category") == subcategory]
 
         return {
             "items": [
