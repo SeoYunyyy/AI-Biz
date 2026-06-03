@@ -8,8 +8,8 @@ let chatHistory = []
 let shownIds = new Set()
 let lastSavedIds = []   // 방금 저장한 콘텐츠 id ("이 콘텐츠 요약" 직행용)
 
-const promptInput = document.getElementById('prompt-input')
-const submitBtn   = document.getElementById('submit-btn')
+const promptInput = document.getElementById('chat-input')   // 우측 채팅바 입력 = 메인 입력
+const submitBtn   = document.getElementById('chat-send')
 const resultsDiv  = document.getElementById('results')
 const modal       = document.getElementById('modal')
 const modalBody   = document.getElementById('modal-body')
@@ -60,12 +60,14 @@ function openRightPanel(title, content, fullscreen = false) {
 // 채팅 접기 (내용은 유지 → '채팅 열기' 버튼으로 복원)
 function closeRightPanel() {
     rightPanel.classList.remove('open')
-    document.querySelector('.page-wrapper').classList.remove('chat-fullscreen')
+    const wrapper = document.querySelector('.page-wrapper')
+    wrapper.classList.remove('chat-fullscreen')
+    wrapper.classList.remove('chat-mode')
     const reopen = document.getElementById('panel-reopen')
     if (reopen && panelBody.innerHTML.trim()) reopen.style.display = 'flex'
 }
 
-// '채팅 열기' — 어느 상황에서든 항상 채팅 화면을 연다
+// '채팅 열기' — 어느 상황에서든 항상 채팅 화면을 연다 (전체화면)
 window.reopenPanel = function () {
     rightPanel.classList.add('open')
     document.querySelector('.page-wrapper').classList.add('chat-fullscreen')
@@ -136,9 +138,11 @@ function folderCardHTML(c) {
 // ── 메인: 자주 보는 컬렉션 5개 로드 ──
 async function loadTopFolders() {
     try {
+        const folderGrid = document.getElementById('folder-grid')
+        if (!folderGrid) return   // 메인 폴더 그리드 제거됨 → 좌측 사이드바만 사용
+
         const data = await fetch(`/collections/${DEFAULT_USER_ID}`).then(r => r.json())
         const collections = data.collections || []
-        const folderGrid = document.getElementById('folder-grid')
 
         const editBtn0 = document.getElementById('edit-folders-btn')
         if (!collections.length) {
@@ -525,14 +529,33 @@ window.deleteAllCollection = async function (collectionId, name) {
     loadCollections()
 }
 
-// ── AI 채팅 패널 열기 (전체화면) ──
+// 채팅 안 키피 얼굴 (말하는 효과용)
+const KIPI_FACE_SVG = `
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22 56 Q22 92 50 94 Q78 92 78 56 Z" fill="#A4682F"/>
+        <path d="M20 55 Q20 26 50 22 Q80 26 80 55 Q80 60 75 60 L25 60 Q20 60 20 55 Z" fill="#5A3002"/>
+        <circle cx="35" cy="72" r="6" fill="#E8896A" opacity="0.55"/>
+        <circle cx="65" cy="72" r="6" fill="#E8896A" opacity="0.55"/>
+        <g class="eye"><ellipse cx="40" cy="60" rx="5" ry="7" fill="#3A2410"/><circle cx="42" cy="57" r="2" fill="#fff"/></g>
+        <g class="eye"><ellipse cx="60" cy="60" rx="5" ry="7" fill="#3A2410"/><circle cx="62" cy="57" r="2" fill="#fff"/></g>
+        <path class="kipi-mouth" d="M44 72 Q50 78 56 72" stroke="#3A2410" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>`
+
+// ── AI 채팅 패널 열기 (전체화면: 키피가 채팅창에 들어와 말함) ──
 function openChatPanel(initialText = '') {
     chatHistory = []
     shownIds = new Set()
     openRightPanel('AI 어시스턴트', `
         <div class="chat-container">
+            <div class="chat-kipi-bar">
+                <div class="chat-kipi pop" id="chat-kipi">${KIPI_FACE_SVG}</div>
+                <div class="chat-kipi-meta">
+                    <div class="chat-kipi-name">키피</div>
+                    <div class="chat-kipi-status" id="chat-kipi-status">무엇이든 물어보세요</div>
+                </div>
+            </div>
             <div class="chat-messages" id="chat-messages">
-                <div class="chat-msg ai">안녕하세요! URL을 붙여넣으면 저장하고, 그 외 메시지는 AI와 대화할 수 있어요.</div>
+                <div class="chat-msg ai">안녕하세요! 무엇을 도와드릴까요? 요약, 폴더 정리 무엇이든 말씀해 주세요.</div>
             </div>
             <div class="chat-input-wrap">
                 <input type="text" id="chat-input" class="chat-input" placeholder="URL 붙여넣기 또는 메시지 입력 (마감: 2026-06-01 형식으로 마감 추가 가능)" />
@@ -728,35 +751,26 @@ function appendMsg(container, role, text) {
     container.scrollTop = container.scrollHeight
 }
 
-// ── 작동 로딩 상태 (사용자 말풍선 아래, 멘트만 흐르는 그라데이션) ──
+// ── 작동 로딩 상태: 채팅 영역이 아니라 좌측 키피 말풍선에만 표시 ──
 let chatStatusTimer = null
 function showChatStatus(messages) {
-    const container = document.getElementById('chat-messages')
-    if (!container) return
     const list = Array.isArray(messages) ? messages : [messages]
     clearInterval(chatStatusTimer); chatStatusTimer = null
-    // 기존 멘트 요소가 있으면 텍스트만 갱신 (스트리밍 단계 전환이 부드럽게)
-    let el = document.getElementById('chat-loading-ment')
-    if (!el) {
-        el = document.createElement('div')
-        el.className = 'chat-loading-ment'
-        el.id = 'chat-loading-ment'
-        container.appendChild(el)
-    }
-    el.textContent = list[0]
-    container.scrollTop = container.scrollHeight
+    // 좌측 키피가 "말하는" 효과: 캐릭터가 움직이고 말풍선에 상태 멘트 표시
+    document.getElementById('mascot')?.classList.add('talking')
+    showBubble(list[0], true)
     if (list.length > 1) {
         let i = 0
         chatStatusTimer = setInterval(() => {
             i = (i + 1) % list.length
-            const cur = document.getElementById('chat-loading-ment')
-            if (cur) cur.textContent = list[i]
+            showBubble(list[i], true)
         }, 1600)
     }
 }
 function hideChatStatus() {
     clearInterval(chatStatusTimer); chatStatusTimer = null
-    document.getElementById('chat-loading-ment')?.remove()
+    document.getElementById('mascot')?.classList.remove('talking')
+    hideBubble()
 }
 
 // 검색 결과 카드 HTML
@@ -1028,13 +1042,199 @@ window.followUp = function(btn) {
     sendChat()
 }
 
-// ── 메인 submit 핸들러 → 채팅 패널로 통합 ──
-function handleSubmit() {
-    const text = promptInput.value.trim()
-    if (!text) return
-    promptInput.value = ''
-    openChatPanel(text)
+// 텍스트 말풍선의 인라인 위치 리셋 → CSS 기본(캐릭터 위 absolute)로 복귀
+function resetBubblePosition(bubble) {
+    bubble.style.position = ''
+    bubble.style.left = ''
+    bubble.style.top = ''
+    bubble.style.bottom = ''
+    bubble.style.transform = ''
+    bubble.style.maxHeight = ''
 }
+
+// 마스코트 말풍선 표시 (loading=true면 분석 중 표시 유지)
+let bubbleTimer
+function showBubble(text, loading = false) {
+    const bubble = document.getElementById('speech-bubble')
+    document.getElementById('speech-text').textContent = text
+    document.getElementById('speech-cards').innerHTML = ''   // 카드 영역 비움
+    bubble.classList.toggle('loading', loading)
+    bubble.classList.remove('has-card')
+    resetBubblePosition(bubble)
+    bubble.classList.add('show')
+    clearTimeout(bubbleTimer)
+    if (!loading) bubbleTimer = setTimeout(() => bubble.classList.remove('show'), 6000)
+}
+
+// 키피 멘트 + 저장 카드뉴스를 말풍선 안에 함께 표시 (화면 안으로 고정·클램프)
+function showBubbleCard(comment, cardsHtml) {
+    const bubble = document.getElementById('speech-bubble')
+    document.getElementById('speech-text').textContent = comment
+    document.getElementById('speech-cards').innerHTML = cardsHtml
+    bubble.classList.remove('loading')
+    bubble.classList.add('has-card', 'show')
+    clearTimeout(bubbleTimer)
+    // 캐릭터 "위" 공간 안에만 두어 캐릭터를 가리지 않게 (넘치면 말풍선 내부 스크롤)
+    requestAnimationFrame(() => {
+        const mascot = document.getElementById('mascot')
+        if (!mascot) return
+        const mr = mascot.getBoundingClientRect()
+        const margin = 12
+        const navH = 78
+        // 캐릭터 머리 위 가용 높이로 말풍선 높이를 제한 → 캐릭터를 덮지 않음
+        const avail = Math.max(160, mr.top - navH - margin)
+        bubble.style.maxHeight = avail + 'px'
+        const bw = bubble.offsetWidth
+        const bh = Math.min(bubble.offsetHeight, avail)
+        let left = mr.left + mr.width / 2 - bw / 2
+        left = Math.max(margin, Math.min(left, window.innerWidth - bw - margin))
+        let top = mr.top - margin - bh               // 말풍선 바닥이 캐릭터 머리 바로 위
+        if (top < navH) top = navH
+        bubble.style.position = 'fixed'
+        bubble.style.left = left + 'px'
+        bubble.style.top = top + 'px'
+        bubble.style.bottom = 'auto'
+        bubble.style.transform = 'none'
+    })
+}
+
+function hideBubble() {
+    document.getElementById('speech-bubble').classList.remove('show')
+}
+
+// 마스코트 상태 전환 (happy=폴짝, thinking=갸웃, idle=기본)
+function setMascotState(state) {
+    const m = document.getElementById('mascot')
+    m.classList.remove('happy', 'thinking')
+    if (state === 'happy') {
+        m.classList.add('happy')
+        setTimeout(() => m.classList.remove('happy'), 760)
+    } else if (state === 'thinking') {
+        m.classList.add('thinking')
+    }
+}
+
+// 저장 요청 처리: 대화 없이 키피 멘트 + 카드뉴스를 말풍선 안에 함께 표시 (URL 여러 개도 처리)
+async function saveViaMascot(rawText, urls) {
+    setMascotState('thinking')
+    lastSavedIds = []
+    const deadlineMatch = rawText.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
+    const deadline = deadlineMatch ? deadlineMatch[1] : null
+    let nl = rawText
+    urls.forEach(u => { nl = nl.replace(u, ' ') })
+    nl = nl.replace(/마감[：:]\s*\d{4}-\d{2}-\d{2}/, '').trim()
+    const collectionName = parseCollectionName(nl)
+    let instruction = nl
+    if (deadline) instruction = `${instruction} 마감기한: ${deadline}`.trim()
+
+    const saves = []
+    try {
+        for (let i = 0; i < urls.length; i++) {
+            const pos = urls.length > 1 ? `(${i + 1}/${urls.length}) ` : ''
+            showBubble(`${pos}저장하고 있어요`, true)
+            const res = await fetch('/ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: urls[i], user_id: DEFAULT_USER_ID, instruction, collection_name: collectionName })
+            })
+            const data = await res.json()
+            if (!res.ok || data.error) continue
+            // 카드 빌더가 기대하는 형태로 통일 (중복이면 content 안에 실데이터)
+            const card = data.duplicate ? { ...data.content, duplicate: true } : data
+            const savedId = data.duplicate ? (data.content && data.content.id) : data.id
+            if (savedId) lastSavedIds.push(savedId)
+            saves.push({ data: card })
+        }
+
+        if (!saves.length) {
+            showBubble('앗, 저장에 실패했어요.\n링크를 다시 확인해 주세요.')
+            setMascotState('idle')
+            return
+        }
+
+        // 키피 멘트 결정
+        let comment
+        if (saves.length > 1) {
+            const where = collectionName ? ` '${collectionName}' 컬렉션에` : ''
+            comment = `링크 ${saves.length}개를${where} 정리했어요! 📁`
+        } else if (saves[0].data.duplicate) {
+            comment = '이미 저장돼 있던 거예요! 📁'
+        } else {
+            comment = '저장 완료! 이렇게 정리했어요 📁'
+        }
+        // 1개 저장 → 기존 카드뉴스 그대로 / 2개 이상 → 제목+링크열기 바 목록
+        let cardsHtml
+        if (saves.length === 1) {
+            cardsHtml = `<div class="saved-card">${buildSavedItemContent(saves[0].data, saves[0].data.duplicate)}</div>`
+        } else {
+            cardsHtml = `<div class="saved-bars">${saves.map(s => {
+                const it = s.data
+                return `<a href="${it.url}" target="_blank" class="saved-bar">
+                    <span class="saved-bar-title">${it.title || '제목 없음'}</span>
+                    <span class="saved-bar-link">링크 열기 →</span>
+                </a>`
+            }).join('')}</div>`
+        }
+        showBubbleCard(comment, cardsHtml)
+        setMascotState('happy')
+        loadTopFolders()
+        loadCollections()
+    } catch (e) {
+        showBubble(`앗, 저장에 실패했어요.\n${e.message}`)
+        setMascotState('idle')
+    }
+}
+
+// 대화 모드 진입: 캐릭터 좌측 이동 + 채팅 박스 슬라이드 확장 + 취향 박스 축소
+function enterChat() {
+    hideBubble()
+    const stage = document.getElementById('stage')
+    if (!stage) return
+    stage.classList.remove('collapsed')   // 접혀 있으면 펼침
+    if (!stage.classList.contains('chatting')) {
+        stage.classList.add('chatting')
+        chatHistory = []
+        shownIds = new Set()
+    }
+}
+
+// 채팅 박스 접기/펼치기 (폭만 전환 → 슬라이드)
+document.getElementById('chat-collapse')?.addEventListener('click', () => {
+    document.getElementById('stage')?.classList.add('collapsed')
+})
+document.getElementById('chat-expand')?.addEventListener('click', () => {
+    document.getElementById('stage')?.classList.remove('collapsed')
+})
+
+// ── 메인 submit 핸들러: 저장 요청 / 대화 요청 분기 ──
+function handleSubmit() {
+    const input = document.getElementById('chat-input')
+    const text = input.value.trim()
+    if (!text) return
+
+    const urls = extractUrls(text)
+    if (urls.length) {
+        input.value = ''
+        saveViaMascot(text, urls)   // 링크 있음 → 저장 요청 (좌측 키피 말풍선)
+    } else {
+        enterChat()                 // 링크 없음 → 우측이 채팅창으로 확장
+        sendChat()                  // 기존 입력값으로 LLM 대화 (sendChat이 입력을 읽고 비움)
+    }
+}
+
+// 마스코트 클릭 시 가벼운 인사
+const greetings = [
+    '안녕! 나는 키피야 🐿️',
+    '링크를 주면 잘 정리해둘게!',
+    '찾고 싶은 게 있으면 물어봐!',
+    '오늘은 뭘 Keep할까?',
+]
+document.getElementById('mascot')?.addEventListener('click', () => {
+    // 대화 중(상태 멘트 표시 중)에는 인사로 덮어쓰지 않음
+    if (document.getElementById('mascot').classList.contains('talking')) return
+    showBubble(greetings[Math.floor(Math.random() * greetings.length)])
+    setMascotState('happy')
+})
 
 // ── 아카이브 모달 ──
 async function showArchiveHome() {
@@ -1216,6 +1416,152 @@ document.getElementById('btn-weekly-report').addEventListener('click', () => {
     requestAnimationFrame(() => overlay.classList.add('open'))
 })
 
+// ── 주간 레포트 통계: 취향 유형 박스 + 4개 통계 바 ──
+async function loadWeekly() {
+    const setBar = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val }
+    const box = document.getElementById('persona-card')
+    try {
+        const data = await fetch(`/api/weekly-report?user_id=${DEFAULT_USER_ID}`).then(r => r.json())
+
+        // 4개 통계 바
+        setBar('sb-links', `${data.total || 0}개`)
+        setBar('sb-collections', `${data.collection_count || 0}개`)
+        setBar('sb-streak', `${data.streak || 0}일`)
+        setBar('sb-time', data.estimated_time || '0분')
+
+        // 취향 유형 박스
+        if (box) {
+            if (data.empty) { box.style.display = 'none'; return }
+            const emoji = data.personality_emoji || '✨'
+            const type  = data.personality_type || data.nickname || '취향 탐험가'
+            const desc  = data.personality_desc || data.ai_summary || ''
+            box.innerHTML = `
+                <div class="pb-chip"><span class="pb-emoji">${emoji}</span><span class="pb-type">${type}</span></div>
+                <div class="pb-detail">
+                    <p class="pb-lead">이번 주 당신의 키피는<br><b>${type}</b> 이에요</p>
+                    ${desc ? `<p class="pb-desc">${desc}</p>` : ''}
+                    <button class="pb-more" onclick="document.getElementById('btn-weekly-report').click()">주간 레포트 보기 ›</button>
+                </div>
+            `
+            box.style.display = 'block'
+        }
+    } catch (e) {
+        if (box) box.style.display = 'none'
+    }
+}
+
+// ── 리마인더: 우상단 종 아이콘(빨간 dot) + 새 창(알림 모음) ──
+let reminderList = []
+function todayStr() { return new Date().toISOString().slice(0, 10) }
+
+async function loadReminders() {
+    const bar = document.getElementById('bar-reminder')
+    if (!bar) return
+    try {
+        const data = await fetch(`/deadlines/${DEFAULT_USER_ID}`).then(r => r.json())
+        reminderList = data.deadlines || []
+        const valEl = document.getElementById('sb-reminder')
+        const todayCount = reminderList.filter(r => r.deadline_date === todayStr()).length
+        if (todayCount > 0) {
+            if (valEl) valEl.textContent = `마감 임박! ${todayCount}`
+            bar.classList.add('urgent')   // 임박 → 종 흔들림
+        } else {
+            if (valEl) valEl.textContent = reminderList.length ? `${reminderList.length}건` : '없음'
+            bar.classList.remove('urgent')
+        }
+    } catch (e) {
+        console.error('리마인더 로드 실패:', e)
+    }
+}
+
+// 알림 모음 새 창(오버레이) — 오늘 마감은 느낌표 + 흔들림 강조
+window.openReminderWindow = function () {
+    document.getElementById('noti-overlay')?.remove()
+    const today = todayStr()
+    const sorted = [...reminderList].sort((a, b) => (a.deadline_date || '').localeCompare(b.deadline_date || ''))
+
+    const itemsHtml = sorted.length ? sorted.map(r => {
+        const isToday = r.deadline_date === today
+        return `
+            <div class="noti-item${isToday ? ' today' : ''}">
+                ${isToday ? '<span class="noti-flag">!</span>' : '<span class="noti-dot"></span>'}
+                <div class="noti-item-body">
+                    <div class="noti-item-top">
+                        <span class="noti-date">${isToday ? '오늘 마감' : '마감 ' + (r.deadline_date || '')}</span>
+                        ${r.deadline_note ? `<span class="noti-note">${r.deadline_note}</span>` : ''}
+                    </div>
+                    <p class="noti-title">${r.title || ''}</p>
+                    ${r.url ? `<a href="${r.url}" target="_blank" class="noti-link">링크 열기 →</a>` : ''}
+                </div>
+            </div>`
+    }).join('') : '<p class="noti-empty">예정된 마감이 없어요 🎉</p>'
+
+    const todayCount = sorted.filter(r => r.deadline_date === today).length
+    const overlay = document.createElement('div')
+    overlay.id = 'noti-overlay'
+    overlay.className = 'noti-overlay'
+    overlay.innerHTML = `
+        <div class="noti-window" role="dialog" aria-label="리마인더">
+            <div class="noti-head">
+                <span class="noti-head-title">
+                    <span class="noti-head-bell">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                    </span>
+                    리마인더
+                    ${todayCount > 0 ? `<span class="noti-head-count">오늘 ${todayCount}건</span>` : ''}
+                </span>
+                <button class="noti-close" aria-label="닫기">&times;</button>
+            </div>
+            <div class="noti-list">${itemsHtml}</div>
+        </div>`
+    document.body.appendChild(overlay)
+    requestAnimationFrame(() => overlay.classList.add('open'))
+
+    const close = () => { overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 250) }
+    overlay.querySelector('.noti-close').addEventListener('click', close)
+    overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+}
+
+document.getElementById('bar-reminder')?.addEventListener('click', openReminderWindow)
+
+// ── 상단 캡슐 탭 활성 표시 (클릭 시 active 이동) ──
+document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'))
+        tab.classList.add('active')
+    })
+})
+
+// 대화 탭: 모달 닫고 입력에 포커스
+document.getElementById('tab-chat')?.addEventListener('click', () => {
+    closeModal()
+    document.getElementById('noti-overlay')?.remove()
+    document.getElementById('chat-input')?.focus()
+})
+
+// 공간 탭: 추후 확장 예정 안내
+document.getElementById('tab-room')?.addEventListener('click', () => {
+    showBubble('캐릭터 공간은 곧 찾아올게요! 🏠')
+    setMascotState('happy')
+})
+
+// AI 자동정리 토글 (시각 상태 저장)
+const aiToggle = document.getElementById('ai-toggle')
+if (aiToggle) {
+    const saved = localStorage.getItem(`keepit_ai_${DEFAULT_USER_ID}`)
+    const on = saved === null ? true : saved === '1'
+    aiToggle.setAttribute('aria-pressed', on ? 'true' : 'false')
+    aiToggle.addEventListener('click', () => {
+        const next = aiToggle.getAttribute('aria-pressed') !== 'true'
+        aiToggle.setAttribute('aria-pressed', next ? 'true' : 'false')
+        localStorage.setItem(`keepit_ai_${DEFAULT_USER_ID}`, next ? '1' : '0')
+    })
+}
+
 // ── 초기 로드 ──
 loadTopFolders()
 loadCollections()
+loadWeekly()
+loadReminders()

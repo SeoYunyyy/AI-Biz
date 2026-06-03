@@ -248,19 +248,25 @@ async def weekly_stats(user_id: str = Query("")):
 
 
 @router.get("/api/monthly-report")
-async def monthly_report(user_id: str = Query(DEFAULT_USER_ID)):
+async def monthly_report(user_id: str = Query(DEFAULT_USER_ID), brief: bool = Query(False)):
     now = datetime.utcnow()
     since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     contents = await _fetch(user_id, since)
 
     if not contents:
-        return {'report': '이번 달 저장된 자료가 아직 없어요.', 'stats': []}
+        return {'report': '이번 달 저장된 자료가 아직 없어요.', 'stats': [], 'topics': [], 'total': 0}
 
     a = _analyze(contents)
 
     # category별 집계 (type_c 기반)
     stats = [{'category': k, 'subcategory': '', 'count': v} for k, v in a['type_c'].most_common()]
     top_topics = [t for t, _ in a['topic_c'].most_common(5)]
+    total = len(contents)
+
+    # brief=메인 미리보기용: 통계만 반환 (AI 문장 생성 생략 → 비용·지연 없음)
+    if brief:
+        return {'report': '', 'stats': stats, 'topics': top_topics, 'total': total}
+
     stats_str = '\n'.join(f"{s['category']}: {s['count']}개" for s in stats)
 
     report_text = '이번 달 저장 내역을 불러왔어요.'
