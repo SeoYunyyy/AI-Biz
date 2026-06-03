@@ -91,6 +91,7 @@ function openRightPanel(title, content, fullscreen = false) {
     panelBody.innerHTML = content
     rightPanel.classList.add('open')
     const wrapper = document.querySelector('.page-wrapper')
+    document.querySelector('.prompt-section').style.display = 'none'
     if (fullscreen) {
         wrapper.classList.add('chat-fullscreen')
     } else {
@@ -100,6 +101,7 @@ function openRightPanel(title, content, fullscreen = false) {
 
 function closeRightPanel() {
     rightPanel.classList.remove('open')
+    document.querySelector('.prompt-section').style.display = ''
     document.querySelector('.page-wrapper').classList.remove('chat-fullscreen')
 }
 
