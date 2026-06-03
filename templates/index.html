@@ -10,13 +10,6 @@
   <body>
     <nav>
       <a class="logo" href="/">
-        <svg class="logo-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="22" fill="#5A3002"/>
-          <line x1="28" y1="22" x2="28" y2="78" stroke="white" stroke-width="5" stroke-linecap="round"/>
-          <line x1="72" y1="50" x2="33" y2="50" stroke="white" stroke-width="5" stroke-linecap="round"/>
-          <line x1="33" y1="50" x2="52" y2="28" stroke="white" stroke-width="5" stroke-linecap="round"/>
-          <line x1="33" y1="50" x2="52" y2="72" stroke="white" stroke-width="5" stroke-linecap="round"/>
-        </svg>
         <span class="logo-text">Keepit</span>
       </a>
       <div class="nav-btns">
@@ -59,7 +52,6 @@
                     </div>
                     <img id="mascot" class="mascot" src="/static/images/keepi/keepi_default.png" alt="키피" />
                   </div>
-                  <div class="char-props" aria-hidden="true"><span>🌰</span><span>📚</span><span>🍂</span></div>
                 </div>
               </section>
             </div>
@@ -70,7 +62,17 @@
               <div class="stat-bar"><span class="sb-icon">📁</span><span class="sb-label">생성된 컬렉션</span><span class="sb-value" id="sb-collections">–</span></div>
               <div class="stat-bar"><span class="sb-icon">🔥</span><span class="sb-label">연속 저장중!</span><span class="sb-value" id="sb-streak">–</span></div>
               <div class="stat-bar"><span class="sb-icon">⏱️</span><span class="sb-label">예상 소비시간</span><span class="sb-value" id="sb-time">–</span></div>
-              <button class="stat-bar stat-reminder" id="bar-reminder" type="button"><span class="sb-icon">🔔</span><span class="sb-label">리마인더</span><span class="sb-value" id="sb-reminder">–</span></button>
+              <div class="stat-reminder-wrap">
+                <div id="deadline-alert" class="deadline-alert" hidden>
+                  <div class="deadline-alert-top">
+                    <span class="deadline-alert-icon">⚠️</span>
+                    <span class="deadline-alert-text">마감기한 확인</span>
+                    <span class="deadline-alert-count" id="deadline-alert-count"></span>
+                  </div>
+                  <button class="deadline-alert-btn" onclick="window.openUrgentDeadlines()">상세보기 →</button>
+                </div>
+                <button class="stat-bar stat-reminder" id="bar-reminder" type="button"><span class="sb-icon">🔔</span><span class="sb-label">리마인더</span><span class="sb-value" id="sb-reminder">–</span></button>
+              </div>
             </div>
           </div>
 
@@ -85,9 +87,9 @@
             <div class="chat-box-inner">
               <div class="chat-messages" id="chat-messages"></div>
             </div>
-            <p class="hint chat-hint">마감기한 추가 예시: https://example.com 마감: 2026-06-01</p>
+            <p class="hint chat-hint">입력 예시: https://example.com 를 생성형AI와비즈니스 폴더에 넣어줘</p>
             <div class="chat-input-wrap chat-bar">
-              <input type="text" id="chat-input" class="chat-input" placeholder="무엇이든 물어보세요" autocomplete="off" />
+              <input type="text" id="chat-input" class="chat-input" placeholder="URL을 붙여넣거나 대화를 시작하세요" autocomplete="off" />
               <button id="chat-send" class="chat-send-btn">&#8594;</button>
             </div>
             <button class="chat-expand-btn" id="chat-expand" type="button" aria-label="채팅 펼치기">

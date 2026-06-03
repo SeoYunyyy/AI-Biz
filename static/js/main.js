@@ -1650,22 +1650,19 @@ document.getElementById('mascot')?.addEventListener('click', () => {
     setMascotState('happy')
 })
 
-// ── 리마인더 바 클릭 ──
-document.getElementById('bar-reminder')?.addEventListener('click', openReminderWindow)
-
-document.getElementById('btn-reminders').addEventListener('click', async () => {
+// ── 리마인더 바 / 네비 버튼 클릭 → 오른쪽 사이드바로 열기 ──
+async function openReminderPanel() {
     const data = await fetch(`/deadlines/${getCurrentUserId()}`).then(r => r.json())
-    if (!data.deadlines || !data.deadlines.length) {
-        openModal('리마인더', '<p class="no-result">마감 자료가 없어요.</p>')
-        return
-    }
     const now = new Date()
     calYear      = now.getFullYear()
     calMonth     = now.getMonth()
-    calDeadlines = data.deadlines
+    calDeadlines = data.deadlines || []
     calSelectedDate = null
     renderReminderCalendar()
-})
+}
+
+document.getElementById('bar-reminder')?.addEventListener('click', openReminderPanel)
+document.getElementById('btn-reminders').addEventListener('click', openReminderPanel)
 
 function renderReminderCalendar() {
     const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
@@ -1739,7 +1736,7 @@ function renderReminderCalendar() {
         }).join('')
         : `<div class="cal-no-events">${noMsg}</div>`)
 
-    openModal('리마인더', `
+    openRightPanel('리마인더 📅', `
         <div class="cal-container">
             <div class="cal-header">
                 <span class="cal-month-title">${calYear}년 ${MONTHS[calMonth]}</span>
@@ -1991,8 +1988,12 @@ async function loadReminders() {
     try {
         const data = await fetch(`/deadlines/${getCurrentUserId()}`).then(r => r.json())
         reminderList = data.deadlines || []
+        const todayStr = _todayStr()
+        const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3)
+        const in3DaysStr = in3Days.toISOString().slice(0, 10)
+
         const valEl = document.getElementById('sb-reminder')
-        const todayCount = reminderList.filter(r => r.deadline_date === _todayStr()).length
+        const todayCount = reminderList.filter(r => r.deadline_date === todayStr).length
         if (todayCount > 0) {
             if (valEl) valEl.textContent = `마감 임박! ${todayCount}`
             bar.classList.add('urgent')
@@ -2000,7 +2001,46 @@ async function loadReminders() {
             if (valEl) valEl.textContent = reminderList.length ? `${reminderList.length}건` : '없음'
             bar.classList.remove('urgent')
         }
+
+        // 3일 이내 마감 경고 배너
+        const urgentItems = reminderList.filter(r => r.deadline_date && r.deadline_date >= todayStr && r.deadline_date <= in3DaysStr)
+        const alertEl = document.getElementById('deadline-alert')
+        const countEl = document.getElementById('deadline-alert-count')
+        if (alertEl) {
+            if (urgentItems.length > 0) {
+                if (countEl) countEl.textContent = `${urgentItems.length}건`
+                alertEl.hidden = false
+            } else {
+                alertEl.hidden = true
+            }
+        }
     } catch (e) { /* 무시 */ }
+}
+
+window.openUrgentDeadlines = function() {
+    const todayStr = _todayStr()
+    const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3)
+    const in3DaysStr = in3Days.toISOString().slice(0, 10)
+    const urgent = reminderList
+        .filter(r => r.deadline_date && r.deadline_date >= todayStr && r.deadline_date <= in3DaysStr)
+        .sort((a, b) => a.deadline_date.localeCompare(b.deadline_date))
+    const itemsHtml = urgent.map(r => {
+        const isToday = r.deadline_date === todayStr
+        const daysLeft = Math.round((new Date(r.deadline_date) - new Date(todayStr)) / 86400000)
+        const label = isToday ? '오늘 마감' : `${daysLeft}일 후 마감`
+        return `
+            <div class="cal-event-item">
+                <div class="cal-event-deadline">⚠️ ${label} · ${r.deadline_date}</div>
+                <div class="cal-event-title">${r.title}</div>
+                ${r.deadline_note ? `<div class="cal-event-note">${r.deadline_note}</div>` : ''}
+                ${r.url ? `<a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>` : ''}
+            </div>`
+    }).join('')
+    openRightPanel('마감 임박 ⚠️', `
+        <div class="cal-container">
+            <div class="cal-filter-bar"><span>⚠️ 3일 이내 마감 콘텐츠 ${urgent.length}건</span></div>
+            <div class="cal-event-list">${itemsHtml}</div>
+        </div>`)
 }
 
 function openReminderWindow() {
