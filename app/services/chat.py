@@ -33,7 +33,7 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 의도 종류:
 - search   : 저장한 콘텐츠를 찾거나 검색하는 요청 (이전 검색의 후속 답변 포함)
 - deadline : 마감기한 관련 질문 ("마감 언제야", "임박한 거 뭐야", "7월 3일 전에 마감하는 거", "몇월 며칠 마감 뭐였지" 등)
-- folder   : 폴더 생성·지정·관리 ("이 링크 OO 폴더에 넣어줘" 등)
+- folder   : 폴더 생성·지정·관리. "OO 폴더 만들어줘", "OO 폴더 만들어주라", "OO 폴더 새로 만들어줘", "이 링크 OO 폴더에 넣어줘" 등. 폴더명을 folder_name에 기록.
 - move     : 콘텐츠를 다른 폴더/카테고리로 이동. "옮기고 싶음", "이동", "옮겨줘" 포함.
              목적지가 없거나 "다른 폴더", "다른 곳", "어딘가"처럼 불특정이면 target_folder=null.
              아카이브 대분류(음악, IT/기술 등)로 옮기는 경우도 포함.
@@ -55,6 +55,7 @@ INTENT_PROMPT = """사용자 메시지와 대화 맥락을 보고 의도를 분�
 - general  : 그 외
 
 중요 규칙:
+- "OO 폴더 만들어줘" / "OO 폴더 만들어주라" / "OO 폴더 새로 만들어줘" → intent="folder", folder_name="OO"
 - "OO에 있는 링크 다른 폴더로 옮기고 싶음" → intent="move", source_folder="OO", target_folder=null
 - "OO 폴더에서 PP 폴더로 옮겨줘" → intent="move", source_folder="OO", target_folder="PP"
 - "그거 OO 카테고리로 옮겨줘" / "그 링크 OO로 옮기고 싶어" → intent="move", source_folder=null, target_folder="OO" (이전 대화 결과를 지칭할 때 "OO"는 반드시 target_folder)
