@@ -192,7 +192,7 @@ const CATEGORY_IMAGE = {
 
 function getCategoryImage(category) {
   const file = CATEGORY_IMAGE[category] || 'keepi_default.png';
-  return `/static/images/keepi/${file}`;
+  return `/static/images/keepi/${file}?v=${Date.now()}`;
 }
 
 const _now = new Date();

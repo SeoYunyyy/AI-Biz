@@ -363,7 +363,7 @@ const CATEGORY_IMAGE = {
 }
 function categoryImage(topCategory) {
   const src = CATEGORY_IMAGE[topCategory] || 'keepi_default.png'
-  return `<img src="/static/images/keepi/${src}" class="hero-keepi" alt="keepi" onerror="this.style.display='none'" />`
+  return `<img src="/static/images/keepi/${src}?v=${Date.now()}" class="hero-keepi" alt="keepi" onerror="this.style.display='none'" />`
 }
 
 // 카테고리별 서브 이모지 (키피 이미지 없을 때 fallback)

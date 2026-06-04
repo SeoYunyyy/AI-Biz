@@ -191,7 +191,7 @@ async function loadWeekly() {
         const imgFile = _MWR_CATEGORY_IMAGE[data.top_category] || 'keepi_default.png'
         const mascotEl = document.getElementById('mascot')
         if (mascotEl && !document.getElementById('stage')?.classList.contains('chatting')) {
-            mascotEl.src = `/static/images/keepi/${imgFile}`
+            mascotEl.src = `/static/images/keepi/${imgFile}?v=${Date.now()}`
         }
 
         if (box) {
