@@ -848,9 +848,9 @@ nav {
   font-weight: 600;
   color: #2C1A0E;
   line-height: 1.5;
-  white-space: pre-line;
+  white-space: nowrap;
   text-align: center;
-  max-width: 320px;
+  max-width: none;
   box-shadow: 0 10px 28px rgba(90,48,2,0.18);
   opacity: 0;
   pointer-events: none;

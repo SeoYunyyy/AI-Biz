@@ -194,7 +194,21 @@ async function loadWeekly() {
             mascotEl.src = `/static/images/keepi/${imgFile}`
         }
 
-        if (box) box.style.display = 'none'
+        if (box) {
+            if (data.empty) { box.style.display = 'none'; return }
+            const emoji = data.personality_emoji || _MWR_CATEGORY_EMOJI[data.top_category] || '✨'
+            const type  = data.personality_type || data.nickname || '취향 탐험가'
+            const desc  = data.personality_desc || data.ai_summary || ''
+            box.innerHTML = `
+                <div class="pb-chip"><span class="pb-emoji">${emoji}</span><span class="pb-type">${type}</span></div>
+                <div class="pb-detail">
+                    <p class="pb-lead">이번 주 당신의 키피는<br><b>${type}</b> 이에요</p>
+                    ${desc ? `<p class="pb-desc">${desc}</p>` : ''}
+                    <button class="pb-more" onclick="document.getElementById('btn-weekly-report').click()">주간 레포트 보기 ›</button>
+                </div>
+            `
+            box.style.display = 'block'
+        }
     } catch (e) {
         if (box) box.style.display = 'none'
     }
