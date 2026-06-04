@@ -81,7 +81,33 @@ async def handle(message: dict, users: dict):
         if not user_id:
             await send(chat_id, "❗ 먼저 <code>/link YOUR_USER_ID</code> 로 연동해주세요.")
             return
-        await _handle_chat(chat_id, user_id, "마감 임박한 거 정리해줘")
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.get(f"{KEEPIT_URL}/deadlines/{user_id}")
+                data = res.json()
+            deadlines = data.get("deadlines", [])
+            if not deadlines:
+                await send(chat_id, "📭 마감기한이 설정된 콘텐츠가 없어요.")
+                return
+            from datetime import date
+            today = date.today().isoformat()
+            lines = []
+            for d in sorted(deadlines, key=lambda x: x.get("deadline_date") or "9999"):
+                dl   = d.get("deadline_date", "")
+                note = d.get("deadline_note") or ""
+                title = d.get("title") or "(제목 없음)"
+                url   = d.get("url", "")
+                expired = dl < today if dl else False
+                prefix = "⏰ 만료" if expired else "📌"
+                line = f"{prefix} <b>{dl}</b>  {title}"
+                if note:
+                    line += f"\n   💬 {note}"
+                if url:
+                    line += f"\n   🔗 <a href='{url}'>{url[:50]}{'…' if len(url)>50 else ''}</a>"
+                lines.append(line)
+            await send(chat_id, "📅 <b>마감기한 목록</b>\n\n" + "\n\n".join(lines))
+        except Exception as e:
+            await send(chat_id, f"❗ 마감기한 불러오기 실패: {e}")
         return
 
     # ── /link USER_ID 연동 ──
