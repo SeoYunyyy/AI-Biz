@@ -158,7 +158,8 @@ JSON으로 답해줘:
 
 @router.get("/api/weekly-report")
 async def weekly_report(user_id: str = Query("")):
-    since = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=7)).isoformat()
     contents = await _fetch(user_id, since)
     total = len(contents)
 
@@ -174,7 +175,7 @@ async def weekly_report(user_id: str = Query("")):
     coll_count = len(set(c.get('collection_id') for c in contents if c.get('collection_id')))
 
     # 전주 비교
-    prev_since = (datetime.utcnow() - timedelta(days=14)).isoformat()
+    prev_since = (now - timedelta(days=14)).isoformat()
     prev_until = since
     prev_c = await _fetch(user_id, prev_since, prev_until)
     prev_topic_c: Counter = Counter()
@@ -228,7 +229,8 @@ async def weekly_report(user_id: str = Query("")):
 
 @router.get("/api/weekly-stats")
 async def weekly_stats(user_id: str = Query("")):
-    since = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=7)).isoformat()
     contents = await _fetch(user_id, since)
 
     if not contents:
@@ -236,7 +238,7 @@ async def weekly_stats(user_id: str = Query("")):
 
     a = _analyze(contents)
 
-    date_range = [(datetime.utcnow() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(6, -1, -1)]
+    date_range = [(now - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(6, -1, -1)]
     daily_counts = [
         {'day': d, 'label': WEEKDAYS[datetime.strptime(d, '%Y-%m-%d').weekday()], 'cnt': a['day_c'].get(d, 0)}
         for d in date_range
@@ -262,7 +264,7 @@ async def monthly_report(
     year: int = Query(0),
     month: int = Query(0),
 ):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     y = year or now.year
     m = month or now.month
     since = datetime(y, m, 1).isoformat()
@@ -274,10 +276,19 @@ async def monthly_report(
 
     a = _analyze(contents)
 
-    # category별 집계 (type_c 기반)
-    stats = [{'category': k, 'subcategory': '', 'count': v} for k, v in a['type_c'].most_common()]
+    # 실제 카테고리별 집계 (cat_c 기반 - IT/기술, 음악 등)
+    cat_stats = [{'category': k, 'count': v} for k, v in a['cat_c'].most_common()]
+    # 플랫폼 유형별 집계 (type_c 기반 - youtube, naver_blog 등)
+    type_stats = [{'category': k, 'subcategory': '', 'count': v} for k, v in a['type_c'].most_common()]
+
+    top_cat = a['cat_c'].most_common(1)[0][0] if a['cat_c'] else '-'
+    peak_slot = a['slot_c'].most_common(1)[0][0] if a['slot_c'] else '저녁'
     top_topics = [t for t, _ in a['topic_c'].most_common(5)]
-    stats_str = '\n'.join(f"{s['category']}: {s['count']}개" for s in stats)
+    total = len(contents)
+
+    stats_str = '\n'.join(f"{s['category']}: {s['count']}개" for s in cat_stats[:8])
+
+    ai = await _ai_analyze(top_topics, top_cat, peak_slot, total, "달")
 
     report_text = '이번 달 저장 내역을 불러왔어요.'
     try:
@@ -294,7 +305,7 @@ async def monthly_report(
                     "messages": [{
                         "role": "user",
                         "content": (
-                            f"이번 달 저장 패턴:\n{stats_str}\n"
+                            f"이번 달 저장 카테고리:\n{stats_str}\n"
                             f"주요 주제: {', '.join(top_topics)}\n\n"
                             "사용자의 취향과 관심사를 분석한 친근한 월간 레포트를 한국어로 3~4문장 작성."
                         ),
@@ -306,4 +317,13 @@ async def monthly_report(
     except Exception:
         pass
 
-    return {'report': report_text, 'stats': stats}
+    return {
+        'report': report_text,
+        'stats': type_stats,       # 콘텐츠 유형/소비시간 섹션용 (youtube, naver_blog 등)
+        'cat_stats': cat_stats,    # 주요 주제/취향 유형 섹션용 (IT/기술, 음악 등)
+        'total': total,
+        'top_category': top_cat,
+        'personality_type': (ai or {}).get('personality_type'),
+        'personality_emoji': (ai or {}).get('personality_emoji', '📅'),
+        'personality_desc': (ai or {}).get('personality_desc'),
+    }

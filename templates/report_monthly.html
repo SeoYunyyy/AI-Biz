@@ -20,7 +20,7 @@
   .hero-type-name { font-size: 38px; font-weight: 800; color: #fdf3ec; line-height: 1.15; margin-bottom: 14px; }
   .hero-type-desc { font-size: 14px; color: rgba(253,243,236,0.72); line-height: 1.75; max-width: 500px; }
   .hero-right { flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; padding-top: 12px; }
-  .hero-emoji-main { font-size: 120px; line-height: 1; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35)); }
+  .hero-keepi-img { width: 380px; height: 380px; object-fit: contain; filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35)); }
 
   .stats-row-wrap { background: #fdf8f5; padding: 32px 48px; }
   .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -116,7 +116,7 @@
       <div class="hero-type-desc" id="type-desc">데이터를 불러오는 중이에요</div>
     </div>
     <div class="hero-right">
-      <div class="hero-emoji-main" id="hero-emoji-main">📅</div>
+      <img class="hero-keepi-img" id="hero-keepi-img" src="/static/images/keepi/keepi_default.png" alt="키피" />
     </div>
   </div>
 
@@ -177,6 +177,23 @@
 
 <script>
 const AVG_MIN = {youtube:12, blog:5, naver_blog:5, news:3, naver_news:3, instagram:2, other:5, web:5};
+
+const CATEGORY_IMAGE = {
+  'IT/기술': 'keepi_tech.png', '영상/엔터': 'keepi_video.png',
+  '음악': 'keepi_music.png', '독서/책': 'keepi_book.png',
+  '요리/식품': 'keepi_food.png', '여행': 'keepi_travel.png',
+  '패션/뷰티': 'keepi_fashion.png', '운동/헬스': 'keepi_health.png',
+  '교육/학습': 'keepi_book.png', '스포츠': 'keepi_sport.png',
+  '뉴스/사회': 'keepi_news.png', '정치/경제': 'keepi_economy.png',
+  '게임': 'keepi_game.png', '예술/디자인': 'keepi_art.png',
+  '기타/알쓸신잡': 'keepi_etc.png', '종교': 'keepi_religion.png',
+  '카페': 'keepi_cafe.png',
+};
+
+function getCategoryImage(category) {
+  const file = CATEGORY_IMAGE[category] || 'keepi_default.png';
+  return `/static/images/keepi/${file}`;
+}
 
 const _now = new Date();
 let reportYear = _now.getFullYear();
@@ -317,25 +334,27 @@ async function loadReport() {
 
     document.getElementById('ai-body').textContent = data.report || '분석 내용이 없어요.';
 
-    const stats = data.stats || [];
-    const total = stats.reduce((s, t) => s + t.count, 0);
+    const typeStats = data.stats || [];
+    const catStats = data.cat_stats || [];
+    const total = data.total ?? typeStats.reduce((s, t) => s + t.count, 0);
     document.getElementById('stat-total').textContent = total + '개';
-    document.getElementById('stat-types').textContent = stats.length + '종';
+    document.getElementById('stat-types').textContent = typeStats.length + '종';
+
+    const topCat = data.top_category || catStats[0]?.category || '';
+    document.getElementById('hero-keepi-img').src = getCategoryImage(topCat);
 
     if (data.personality_type) {
       document.getElementById('type-name').textContent = data.personality_type;
       document.getElementById('type-desc').textContent = data.personality_desc || '';
-      document.getElementById('hero-emoji-main').textContent = data.personality_emoji || '📅';
     } else {
-      const topCat = stats[0]?.category || '';
       document.getElementById('type-name').textContent = total ? (topCat + ' 탐험가') : '저장된 콘텐츠 없음';
-      document.getElementById('type-desc').textContent = total ? '이번 달 가장 많이 저장한 콘텐츠 유형이에요.' : '이번 달 콘텐츠를 저장해보세요!';
+      document.getElementById('type-desc').textContent = total ? '이번 달 가장 많이 저장한 카테고리예요.' : '이번 달 콘텐츠를 저장해보세요!';
     }
 
-    if (stats.length) {
-      renderTopics(stats);
-      renderContentTypes(stats);
-      renderEstimate(stats);
+    if (catStats.length) renderTopics(catStats);
+    if (typeStats.length) {
+      renderContentTypes(typeStats);
+      renderEstimate(typeStats);
     }
 
   } catch(e) {

@@ -1519,6 +1519,7 @@ function enterChat() {
         const mascotEl = document.getElementById('mascot')
         if (mascotEl) mascotEl.src = '/static/images/keepi/keepi_default.png'
     }
+    window.scrollTo({ top: 0, behavior: 'instant' })
 }
 
 // ── 메인 submit 핸들러 ──
