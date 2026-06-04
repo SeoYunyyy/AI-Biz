@@ -683,6 +683,9 @@ nav {
   justify-content: center;
   gap: 28px;
   max-width: 1400px;
+  height: calc(100vh - 70px);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .stage.chatting .main-col { flex: 1 1 0; min-width: 0; max-width: none; justify-content: center; }
 .stage.chatting .hero-panel { background: transparent; box-shadow: none; padding: 0; }
@@ -806,6 +809,26 @@ nav {
 }
 
 .mascot.talking { animation: mascotTalk 0.5s ease-in-out infinite; }
+
+.keepi-status {
+  min-height: 28px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #7A5030;
+  background: rgba(154,112,85,0.1);
+  border-radius: 20px;
+  padding: 5px 16px;
+  letter-spacing: 0.2px;
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+.keepi-status:empty { background: none; opacity: 0; }
+.keepi-status.thinking { opacity: 1; color: #9A7055; animation: statusPulse 1.2s ease-in-out infinite; }
+.keepi-status.done { opacity: 1; color: #5A9A60; background: rgba(90,154,96,0.1); }
+@keyframes statusPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
 @keyframes mascotTalk {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50%       { transform: translateY(-6px) rotate(2deg); }
@@ -2716,6 +2739,12 @@ nav {
   color: #9a7055;
   margin-bottom: 4px;
 }
+.cal-event-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
 .cal-event-link {
   font-size: 12px;
   color: #5a3002;
@@ -2723,6 +2752,18 @@ nav {
   font-weight: 600;
 }
 .cal-event-link:hover {
+  text-decoration: underline;
+}
+.cal-event-delete-btn {
+  font-size: 11px;
+  color: #b05050;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+}
+.cal-event-delete-btn:hover {
   text-decoration: underline;
 }
 .cal-no-events {

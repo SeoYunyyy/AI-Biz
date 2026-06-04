@@ -188,27 +188,13 @@ async function loadWeekly() {
         setBar('sb-streak',      `${data.streak || 0}일`)
         setBar('sb-time',        data.estimated_time || '0분')
 
-        // mascot 이미지: 이번 주 top_category에 맞는 키피로 교체
         const imgFile = _MWR_CATEGORY_IMAGE[data.top_category] || 'keepi_default.png'
         const mascotEl = document.getElementById('mascot')
-        if (mascotEl) mascotEl.src = `/static/images/keepi/${imgFile}`
-
-        // persona-card 취향 유형 박스
-        if (box) {
-            if (data.empty) { box.style.display = 'none'; return }
-            const emoji = data.personality_emoji || _MWR_CATEGORY_EMOJI[data.top_category] || '✨'
-            const type  = data.personality_type || data.nickname || '취향 탐험가'
-            const desc  = data.personality_desc || data.ai_summary || ''
-            box.innerHTML = `
-                <div class="pb-chip"><span class="pb-emoji">${emoji}</span><span class="pb-type">${type}</span></div>
-                <div class="pb-detail">
-                    <p class="pb-lead">이번 주 당신의 키피는<br><b>${type}</b> 이에요</p>
-                    ${desc ? `<p class="pb-desc">${desc}</p>` : ''}
-                    <button class="pb-more" onclick="document.getElementById('btn-weekly-report').click()">주간 레포트 보기 ›</button>
-                </div>
-            `
-            box.style.display = 'block'
+        if (mascotEl && !document.getElementById('stage')?.classList.contains('chatting')) {
+            mascotEl.src = `/static/images/keepi/${imgFile}`
         }
+
+        if (box) box.style.display = 'none'
     } catch (e) {
         if (box) box.style.display = 'none'
     }
@@ -545,12 +531,13 @@ async function sendChat(chatCollectionId) {
     appendMsg(chatMessages, 'user', text)
     chatInput.value = ''
     chatSend.disabled = true
+    setKeepiStatus('thinking')
 
     const loadingEl = document.createElement('div')
     loadingEl.className = 'chat-loading'
     loadingEl.textContent = '···'
     chatMessages.appendChild(loadingEl)
-    chatMessages.scrollTop = chatMessages.scrollHeight
+    scrollToBottom(chatMessages)
 
     try {
         const urlMatches = text.match(/https?:\/\/[^\s]+/gi) || []
@@ -605,7 +592,7 @@ async function sendChat(chatCollectionId) {
                         chatMessages.appendChild(reminderEl)
                     }
                 }
-                chatMessages.scrollTop = chatMessages.scrollHeight
+                scrollToBottom(chatMessages)
             }
 
             loadingEl.remove()
@@ -644,7 +631,8 @@ async function sendChat(chatCollectionId) {
         appendMsg(chatMessages, 'ai', `오류: ${e.message}`)
     } finally {
         chatSend.disabled = false
-        chatMessages.scrollTop = chatMessages.scrollHeight
+        scrollToBottom(chatMessages)
+        setKeepiStatus('done')
     }
 }
 
@@ -705,12 +693,25 @@ window.editDeadline = function(btn) {
     }
 }
 
+function scrollToBottom(container) {
+    container.scrollTop = container.scrollHeight
+    requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight
+        // 이미지 로드 후 재스크롤
+        const imgs = container.querySelectorAll('img:not([data-scroll-observed])')
+        imgs.forEach(img => {
+            img.setAttribute('data-scroll-observed', '1')
+            img.addEventListener('load', () => { container.scrollTop = container.scrollHeight }, { once: true })
+        })
+    })
+}
+
 function appendMsg(container, role, text) {
     const el = document.createElement('div')
     el.className = `chat-msg ${role}`
     el.textContent = text
     container.appendChild(el)
-    container.scrollTop = container.scrollHeight
+    scrollToBottom(container)
 }
 
 // 검색 결과 카드 HTML
@@ -908,7 +909,7 @@ window.createFolder = async function(name) {
             el.className = 'chat-msg ai'
             el.textContent = res.ok ? `'${name}' 폴더를 만들었어요!` : `폴더 생성에 실패했어요.`
             chatMessages.appendChild(el)
-            chatMessages.scrollTop = chatMessages.scrollHeight
+            scrollToBottom(chatMessages)
         }
         if (res.ok) loadCollections()
     } catch (e) {}
@@ -1458,6 +1459,30 @@ async function saveViaMascot(rawText, urls) {
     }
 }
 
+// ── 키피 상태 텍스트 업데이트 ──
+let _keepiStatusTimer = null
+function setKeepiStatus(state) {
+    const el = document.getElementById('keepi-status')
+    const mascot = document.getElementById('mascot')
+    if (!el) return
+    clearTimeout(_keepiStatusTimer)
+    if (state === 'thinking') {
+        el.textContent = '키피 생각 중 ...'
+        el.className = 'keepi-status thinking'
+        mascot?.classList.remove('happy')
+        mascot?.classList.add('thinking')
+    } else if (state === 'done') {
+        el.textContent = '키피 생각 완료!'
+        el.className = 'keepi-status done'
+        mascot?.classList.remove('thinking')
+        mascot?.classList.add('happy')
+    } else {
+        el.textContent = ''
+        el.className = 'keepi-status'
+        mascot?.classList.remove('thinking', 'happy')
+    }
+}
+
 // ── 대화 모드 진입 ──
 function enterChat() {
     hideBubble()
@@ -1468,6 +1493,8 @@ function enterChat() {
         stage.classList.add('chatting')
         chatHistory = []
         shownIds = new Set()
+        const mascotEl = document.getElementById('mascot')
+        if (mascotEl) mascotEl.src = '/static/images/keepi/keepi_default.png'
     }
 }
 
@@ -1475,14 +1502,8 @@ function enterChat() {
 function handleSubmit() {
     const text = chatInput.value.trim()
     if (!text) return
-    const urls = extractUrls(text)
-    if (urls.length) {
-        chatInput.value = ''
-        openChatPanel(text)
-    } else {
-        enterChat()
-        sendChat()
-    }
+    enterChat()
+    sendChat()
 }
 
 // ── 아카이브 모달 ──
@@ -1727,11 +1748,14 @@ function renderReminderCalendar() {
         ? listItems.map(r => {
             const exp = r.deadline_date < todayStr
             return `
-                <div class="cal-event-item ${exp ? 'expired' : ''}">
+                <div class="cal-event-item ${exp ? 'expired' : ''}" id="cal-ei-${r.id}">
                     <div class="cal-event-deadline">${exp ? '⏰ 만료 · ' : '📌 '}${r.deadline_date}</div>
                     <div class="cal-event-title">${r.title}</div>
                     ${r.deadline_note ? `<div class="cal-event-note">${r.deadline_note}</div>` : ''}
-                    <a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>
+                    <div class="cal-event-actions">
+                        <a href="${r.url}" target="_blank" class="cal-event-link">링크 열기 →</a>
+                        <button class="cal-event-delete-btn" onclick="removeDeadline('${r.id}')">삭제</button>
+                    </div>
                 </div>`
         }).join('')
         : `<div class="cal-no-events">${noMsg}</div>`)
@@ -1929,6 +1953,7 @@ window.removeDeadline = async function(id) {
         })
         if (!res.ok) throw new Error()
         document.getElementById('ri-' + id)?.remove()
+        document.getElementById('cal-ei-' + id)?.remove()
     } catch (e) { alert('삭제에 실패했어요.') }
 }
 
