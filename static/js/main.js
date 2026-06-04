@@ -1324,6 +1324,15 @@ window.executePanelMove = async function(contentId, optionEl) {
 
 // 후속 질문 버튼 클릭 시 채팅 입력에 삽입
 window.followUp = function(btn) {
+    if (btn.textContent.trim() === '맞아요') {
+        btn.style.background = '#5A9A60'
+        btn.style.color = '#fff'
+        btn.style.borderColor = '#5A9A60'
+        btn.disabled = true
+        const siblings = btn.closest('.follow-up-questions')?.querySelectorAll('.follow-up-btn')
+        siblings?.forEach(b => { if (b !== btn) b.style.display = 'none' })
+        return
+    }
     const _root = document.getElementById('ai-fullscreen-overlay') || document.getElementById('panel-body')
     const chatInput = _root?.querySelector('#chat-input') || document.getElementById('chat-input')
     if (chatInput) {
@@ -1678,7 +1687,7 @@ document.getElementById('chat-expand')?.addEventListener('click', () => {
 })
 
 // ── mascot 클릭: 가벼운 인사 ──
-const _greetings = ['링크를 주면 잘 정리해둘게!', '찾고 싶은 게 있으면 물어봐!', '오늘은 뭘 Keep할까?', '안녕! 나는 키피야 🐿️']
+const _greetings = ['링크를 주면 잘 정리해둘게!', '찾고 싶은 게 있으면 물어봐!', '오늘은 뭘 Keep할까?', '안녕! 나는 키피야!']
 document.getElementById('mascot')?.addEventListener('click', () => {
     if (document.getElementById('mascot').classList.contains('talking')) return
     showBubble(_greetings[Math.floor(Math.random() * _greetings.length)])
