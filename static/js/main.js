@@ -557,9 +557,8 @@ async function sendChat(chatCollectionId) {
         const urlMatches = text.match(/https?:\/\/[^\s]+/gi) || []
         if (urlMatches.length > 0) {
             // URL → 저장 (단일 또는 복수)
-            const deadlineMatch = text.match(/마감[：:]\s*(\d{4}-\d{2}-\d{2})/)
-            const deadline = deadlineMatch ? deadlineMatch[1] : null
-            const instruction = deadline ? `마감기한: ${deadline}` : ''
+            // URL 제외한 나머지 텍스트 전체를 instruction으로 전달
+            const instruction = text.replace(/https?:\/\/[^\s]+/gi, '').trim()
             const urls = urlMatches
             loadingEl.textContent = urls.length > 1 ? `0 / ${urls.length} 저장 중···` : '···'
 

@@ -108,7 +108,10 @@ def _build_prompt(metadata: dict, user_instruction: str = "") -> str:
     if user_instruction:
         instruction_block = (
             f"\n사용자 메모: {user_instruction}\n"
-            f"(폴더명이 있으면 user_collection에 반영, '~까지·마감·까지만' 등 마감 표현이 있으면 deadline 필드에도 반영)"
+            f"(폴더명이 있으면 user_collection에 반영. "
+            f"'마감기한 있어', '마감 있음', '~까지', '마감', '까지만' 등 마감 표현이 있으면 "
+            f"has_deadline=true로 처리하고 콘텐츠 본문에서 날짜를 찾아 deadline_date에 반영. "
+            f"날짜를 못 찾아도 has_deadline=true는 유지할 것)"
         )
 
     categories_str = "\n".join(f"- {c}" for c in CATEGORIES)
@@ -121,8 +124,9 @@ def _build_prompt(metadata: dict, user_instruction: str = "") -> str:
 [링크 정보]
 제목: {metadata.get('title', '없음')}
 플랫폼: {metadata.get('platform', '없음')}
-내용: {metadata.get('summary', '없음')}
 URL: {metadata.get('original_url', '없음')}
+내용: {metadata.get('summary', '없음')}
+※ 분류 시 제목과 내용을 모두 참고할 것. 내용이 짧거나 없으면 제목과 URL 도메인으로 판단.
 {instruction_block}
 
 [선택 가능한 대분류 - 반드시 아래 중 하나만 선택]
